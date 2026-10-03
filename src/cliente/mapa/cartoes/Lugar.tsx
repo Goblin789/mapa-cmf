@@ -36,7 +36,9 @@ export function Lugares({ pessoas, lugares, capacidade }: Props) {
         return (
           <div
             key={pessoa.id}
-            className={['absolute z-[1]', aMais ? 'rounded-[3px] outline-[1.5px] outline-red-600' : ''].join(' ')}
+            className={['absolute z-[1]', aMais ? 'rounded-[3px] outline-[1.5px] outline-red-600' : ''].join(
+              ' ',
+            )}
             style={posicao(r)}
             title={aMais ? 'Lugar a mais (acima da lotação)' : undefined}
           >

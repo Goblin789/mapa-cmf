@@ -1,11 +1,12 @@
-// Ganchos globais do modo de edição: atalhos de teclado e aviso antes de sair da página com
-// alterações por guardar.
+// Ganchos globais do modo de edição: atalhos de teclado, o foco ao entrar/sair do modo de edição e
+// aviso antes de sair da página com alterações por guardar.
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useLoja } from '../estado/loja';
 import { ehCampoEditavel } from '../paineis/teclado';
 import { desfazerComAviso, limparSelecaoComAviso, refazerComAviso } from './acoes';
 import { acaoDoAtalho } from './atalhos';
+import { decidirFoco, focoPerdido } from './foco';
 import { haDialogoAberto } from './ui';
 
 /**
@@ -40,6 +41,33 @@ export function useAtalhosEdicao(): void {
     document.addEventListener('keydown', aoTeclar);
     return () => document.removeEventListener('keydown', aoTeclar);
   }, []);
+}
+
+/**
+ * Ao entrar ou sair do modo de edição, o botão com o foco desaparece (Editar, Cancelar, Guardar…):
+ * o foco passa para a barra âmbar ou para o botão Editar, em vez de cair no <body> (ver foco.ts).
+ * Com um diálogo aberto espera que feche: corre depois de ele devolver o foco a quem o abriu.
+ */
+export function useFocoAoMudarModo(modoEdicao: boolean, dialogoAberto: boolean): void {
+  const modoVisto = useRef(modoEdicao);
+  const porTratar = useRef(false);
+  useEffect(() => {
+    if (modoVisto.current !== modoEdicao) {
+      modoVisto.current = modoEdicao;
+      porTratar.current = true;
+    }
+    const decisao = decidirFoco({
+      porTratar: porTratar.current,
+      modoEdicao,
+      dialogoAberto,
+      focoPerdido: focoPerdido(document.activeElement, document.body),
+    });
+    if (decisao === 'esperar') return;
+    porTratar.current = false;
+    if (decisao === 'nada') return;
+    const seletor = decisao === 'barra' ? '[data-barra-edicao]' : '[data-botao-editar]';
+    document.querySelector<HTMLElement>(seletor)?.focus();
+  }, [modoEdicao, dialogoAberto]);
 }
 
 /** Com alterações por guardar, o browser pergunta antes de fechar ou recarregar a página. */

@@ -40,7 +40,7 @@ describe('agruparAlteracoes', () => {
       rotuloCampo: 'Carrinha',
       de: 'ZZ 1001',
       para: 'Sem transporte da empresa',
-      descricao: 'Gil N. — carrinha: ZZ1001 → Sem transporte da empresa',
+      descricao: 'Gil N. — carrinha: ZZ 1001 → Sem transporte da empresa',
     });
   });
 

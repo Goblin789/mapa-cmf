@@ -9,7 +9,7 @@ import { DialogoCancelar } from './DialogoCancelar';
 import { DialogoGuardar } from './DialogoGuardar';
 import { DialogoHistorico } from './DialogoHistorico';
 import { DialogoMoverPara } from './DialogoMoverPara';
-import { useAtalhosEdicao, useAvisoAoSair } from './ganchos';
+import { useAtalhosEdicao, useAvisoAoSair, useFocoAoMudarModo } from './ganchos';
 import { IconeLapis, IconeRelogio } from './icones';
 import { useUiEdicao } from './ui';
 
@@ -34,6 +34,7 @@ export function BotoesCabecalho() {
       {!modoEdicao && (
         <button
           type="button"
+          data-botao-editar
           onClick={entrarEdicaoComAviso}
           title="Mudar pessoas de casa, de carrinha ou de obra (só fica gravado ao Guardar)"
           className={`${BOTAO_CABECALHO} border-slate-900 bg-slate-900 text-white hover:bg-slate-700`}
@@ -91,6 +92,7 @@ export function Edicao() {
   const dialogo = useUiEdicao((s) => s.dialogo);
   const fecharDialogo = useUiEdicao((s) => s.fecharDialogo);
   const modoEdicao = useLoja((s) => s.modoEdicao);
+  useFocoAoMudarModo(modoEdicao, dialogo !== null);
 
   // Fora do modo de edição não há nada para mover nem para cancelar.
   const soEmEdicao = dialogo?.tipo === 'mover' || dialogo?.tipo === 'cancelar';

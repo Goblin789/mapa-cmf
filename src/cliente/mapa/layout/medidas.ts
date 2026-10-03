@@ -34,7 +34,7 @@ const CARRINHA = {
   fundo: 2,
 } as const;
 
-const OBRA = { borda: 1, lado: 4, faixa: 4, cabecalho: 14, folga: 2, fundo: 3 } as const;
+const OBRA = { borda: 1, lado: 4, faixa: 4, cabecalho: 14, folga: 2, fundo: 3, larguraMinima: 124 } as const;
 
 /** Uma obra com mais pessoas do que isto passa a duas colunas. */
 export const OBRA_MAX_UMA_COLUNA = 8;
@@ -57,6 +57,8 @@ export interface GeometriaCasa {
 
 export interface GeometriaCarrinha {
   tipo: 'carrinha';
+  /** Sem os nomes (modo compacto): só a matrícula e a lotação. */
+  compacta: boolean;
   largura: number;
   altura: number;
   /** Carroçaria (sem os espelhos). */
@@ -91,13 +93,19 @@ export function lugaresADesenhar(capacidade: number, ocupados: number): number {
 }
 
 /** Grelha de nomes com `colunas` colunas, a partir de (x0, y0). */
-function grelhaNomes(n: number, colunas: number, x0: number, y0: number): Retangulo[] {
+function grelhaNomes(
+  n: number,
+  colunas: number,
+  x0: number,
+  y0: number,
+  largura: number = NOME.largura,
+): Retangulo[] {
   const lugares: Retangulo[] = [];
   for (let i = 0; i < n; i++) {
     lugares.push({
-      x: x0 + (i % colunas) * (NOME.largura + NOME.entreColunas),
+      x: x0 + (i % colunas) * (largura + NOME.entreColunas),
       y: y0 + Math.floor(i / colunas) * NOME.passo,
-      largura: NOME.largura,
+      largura,
       altura: NOME.altura,
     });
   }
@@ -141,10 +149,16 @@ export function geometriaCasa(nLugares: number): GeometriaCasa {
   };
 }
 
-/** Carrinha vista de cima, frente para cima: matrícula, para-brisas, um lugar por linha, traseira. */
-export function geometriaCarrinha(nLugares: number): GeometriaCarrinha {
+/** Largura da carroçaria da carrinha compacta: o que a matrícula precisa. */
+const CORPO_COMPACTA = 76;
+
+/**
+ * Carrinha vista de cima, frente para cima: matrícula, para-brisas, um lugar por linha, traseira.
+ * Compacta (modo compacto do mapa): mais estreita, sem os lugares, só a matrícula e a lotação.
+ */
+export function geometriaCarrinha(nLugares: number, compacta = false): GeometriaCarrinha {
   const m = CARRINHA;
-  const larguraCorpo = 2 * (m.borda + m.lado) + NOME.largura;
+  const larguraCorpo = compacta ? CORPO_COMPACTA : 2 * (m.borda + m.lado) + NOME.largura;
   const largura = larguraCorpo + 2 * m.espelho;
   const placa = { x: m.espelho + 6, y: m.topo, largura: larguraCorpo - 12, altura: m.placa };
   const parabrisas = {
@@ -157,21 +171,22 @@ export function geometriaCarrinha(nLugares: number): GeometriaCarrinha {
   const xNomes = m.espelho + m.borda + m.lado;
   const estado = {
     x: xNomes,
-    y: y0 + alturaLinhas(nLugares) + 1,
-    largura: NOME.largura,
+    y: compacta ? y0 + 1 : y0 + alturaLinhas(nLugares) + 1,
+    largura: larguraCorpo - 2 * (m.borda + m.lado),
     altura: LINHA_ESTADO,
   };
-  const altura = estado.y + estado.altura + m.fundo;
+  const altura = estado.y + estado.altura + m.fundo + (compacta ? 1 : 0);
   const espelho = (x: number) => ({ x, y: parabrisas.y + 1, largura: m.espelho + 2, altura: 7 });
   return {
     tipo: 'carrinha',
+    compacta,
     largura,
     altura,
     corpo: { x: m.espelho, y: 0, largura: larguraCorpo, altura },
     placa,
     parabrisas,
     espelhos: [espelho(0), espelho(largura - m.espelho - 2)],
-    lugares: grelhaNomes(nLugares, 1, xNomes, y0),
+    lugares: compacta ? [] : grelhaNomes(nLugares, 1, xNomes, y0),
     estado,
   };
 }
@@ -180,7 +195,10 @@ export function geometriaCarrinha(nLugares: number): GeometriaCarrinha {
 export function geometriaObra(nPessoas: number): GeometriaObra {
   const m = OBRA;
   const colunas = nPessoas > OBRA_MAX_UMA_COLUNA ? 2 : 1;
-  const largura = 2 * (m.borda + m.lado) + larguraColunas(colunas);
+  // Uma coluna é estreita para o nome da obra: o cartão tem uma largura mínima e os nomes esticam.
+  const larguraConteudo = Math.max(larguraColunas(colunas), m.larguraMinima);
+  const larguraNome = colunas === 1 ? larguraConteudo : NOME.largura;
+  const largura = 2 * (m.borda + m.lado) + larguraConteudo;
   const cabecalho = {
     x: m.borda + m.lado,
     y: m.faixa + m.folga,
@@ -195,7 +213,7 @@ export function geometriaObra(nPessoas: number): GeometriaObra {
     altura,
     faixa: { x: 0, y: 0, largura, altura: m.faixa },
     cabecalho,
-    lugares: grelhaNomes(nPessoas, colunas, m.borda + m.lado, y0),
+    lugares: grelhaNomes(nPessoas, colunas, m.borda + m.lado, y0, larguraNome),
   };
 }
 

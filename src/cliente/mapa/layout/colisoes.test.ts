@@ -62,7 +62,8 @@ describe('colocarBlocos', () => {
         for (const p of c.pontos) expect(distanciaAoRetangulo(p, c)).toBeGreaterThanOrEqual(PINO);
         for (const outro of r) {
           if (outro === c) continue;
-          for (const p of outro.pontos) expect(distanciaAoRetangulo(p, c)).toBeGreaterThanOrEqual(RAIO_PONTOS);
+          for (const p of outro.pontos)
+            expect(distanciaAoRetangulo(p, c)).toBeGreaterThanOrEqual(RAIO_PONTOS);
         }
       }
     }
@@ -79,12 +80,52 @@ describe('colocarBlocos', () => {
     expect(semSobreposicoes(r, MARGEM_COLISAO)).toBe(true);
   });
 
-  it('fora da região custa caro: o bloco prefere ficar do lado de dentro', () => {
-    const regiao = { x: -300, y: -50, largura: 600, altura: 400 };
-    const [c] = colocarBlocos([bloco('a', 0, 0, 120, 80)], { regiao });
-    // Por cima sairia da região; fica por baixo do ponto, também a PINO px.
-    expect(c?.y).toBe(PINO);
+  it('passar do tamanho do ecrã custa caro: o bloco vai para o lado em vez de alargar o conjunto', () => {
+    // Por cima ou por baixo, o conjunto (ponto + bloco) ficaria mais alto do que o ecrã.
+    const [c] = colocarBlocos([bloco('a', 0, 0, 120, 80)], { ecra: { largura: 400, altura: 85 } });
+    expect(c && c.y < 0 && c.y + c.altura > 0).toBe(true);
     expect(c?.afastamento).toBe(PINO);
+  });
+
+  it('sem limite de ecrã, o mesmo bloco fica por cima do ponto', () => {
+    const [c] = colocarBlocos([bloco('a', 0, 0, 120, 80)], { ecra: null });
+    expect(c?.y).toBe(-PINO - 80);
+  });
+
+  it('prefere ficar centrado no ponto a ficar pendurado para um lado', () => {
+    // Sem nada à volta, o centro do bloco fica por cima do ponto.
+    const [c] = colocarBlocos([bloco('a', 0, 0, 300, 60)]);
+    expect((c?.x ?? 0) + (c?.largura ?? 0) / 2).toBe(0);
+  });
+
+  it('a parte (as casas) é que fica junto do ponto, mesmo que o bloco seja maior', () => {
+    // Bloco com a casa ao meio e carrinhas dos dois lados: o ponto fica por baixo da casa.
+    const [c] = colocarBlocos([
+      {
+        chave: 'casa-ao-meio',
+        pontos: [{ x: 0, y: 0 }],
+        formas: [{ largura: 300, altura: 100, partes: [[{ x: 100, y: 20, largura: 100, altura: 80 }]] }],
+      },
+    ]);
+    expect(c?.afastamento).toBe(PINO);
+    expect((c?.x ?? 0) + 150).toBe(0);
+  });
+
+  it('um bloco pequeno com o ponto ao lado de um grande não fica cercado', () => {
+    // O ponto pequeno fica mesmo onde o grande gostaria de ir: o grande deixa-lhe espaço.
+    const r = colocarBlocos([bloco('grande', 0, 0, 400, 200), bloco('pequeno', -60, -40, 80, 40)]);
+    const pequeno = r.find((c) => c.chave === 'pequeno');
+    expect(pequeno?.afastamento).toBeLessThanOrEqual(PINO + 1);
+    expect(semSobreposicoes(r, MARGEM_COLISAO)).toBe(true);
+  });
+
+  it('dois locais quase no mesmo sítio: cada bloco fica do seu lado (o mais a norte em cima)', () => {
+    // O do sul é maior (põe-se primeiro), mas não fica por cima do outro.
+    const r = colocarBlocos([bloco('sul', 0, 10, 300, 120), bloco('norte', -4, 0, 200, 80)]);
+    const sul = r.find((c) => c.chave === 'sul') as CaixaColocada;
+    const norte = r.find((c) => c.chave === 'norte') as CaixaColocada;
+    expect(norte.y + norte.altura).toBeLessThanOrEqual(sul.y);
+    expect(r.every((c) => c.afastamento <= PINO + 1)).toBe(true);
   });
 
   it('escolhe a forma que cabe melhor e diz qual foi', () => {
@@ -123,8 +164,8 @@ describe('colocarBlocos', () => {
               largura: 300,
               altura: 200,
               partes: [
-                { x: 0, y: 0, largura: 300, altura: 100 },
-                { x: 0, y: 100, largura: 300, altura: 100 },
+                [{ x: 0, y: 0, largura: 300, altura: 100 }],
+                [{ x: 0, y: 100, largura: 300, altura: 100 }],
               ],
             },
           ],
@@ -163,7 +204,34 @@ describe('colocarBlocos', () => {
     const caixas = blocosAleatorios(9, 10, 100);
     const r = colocarBlocos(caixas);
     expect(r.map((c) => c.chave)).toEqual(caixas.map((c) => c.chave));
-    for (const c of r) for (const v of [c.x, c.y, c.largura, c.altura]) expect(Number.isInteger(v)).toBe(true);
+    for (const c of r)
+      for (const v of [c.x, c.y, c.largura, c.altura]) expect(Number.isInteger(v)).toBe(true);
+  });
+
+  it('blocos fixos ficam onde estavam; só os outros procuram sítio, sem se sobreporem', () => {
+    for (let semente = 1; semente <= 10; semente++) {
+      const caixas = blocosAleatorios(semente, 14, 400);
+      const antes = colocarBlocos(caixas);
+      // O bloco 0 cresce (outra forma); os outros ficam fixos.
+      const maior = caixas.map((c, i) => (i === 0 ? { ...c, formas: [{ largura: 260, altura: 220 }] } : c));
+      const fixos = new Map(antes.slice(1).map((c) => [c.chave, { x: c.x, y: c.y, forma: 0 }]));
+      const depois = colocarBlocos(maior, { fixos });
+      for (let i = 1; i < antes.length; i++) {
+        expect({ x: depois[i]?.x, y: depois[i]?.y }).toEqual({ x: antes[i]?.x, y: antes[i]?.y });
+      }
+      expect(semSobreposicoes(depois, MARGEM_COLISAO)).toBe(true);
+      for (const c of depois)
+        for (const outro of depois)
+          if (outro !== c)
+            for (const p of outro.pontos)
+              expect(distanciaAoRetangulo(p, c)).toBeGreaterThanOrEqual(RAIO_PONTOS);
+    }
+  });
+
+  it('um bloco fixo com uma forma que já não existe procura sítio como os outros', () => {
+    const caixas = [bloco('a', 100, 200, 120, 80), bloco('b', 400, 200, 120, 80)];
+    const r = colocarBlocos(caixas, { fixos: new Map([['a', { x: 0, y: 0, forma: 3 }]]) });
+    expect(r).toEqual(colocarBlocos(caixas));
   });
 
   it('marca como deslocado quem ficou mais longe do que o pino', () => {

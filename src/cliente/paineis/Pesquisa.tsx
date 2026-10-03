@@ -21,6 +21,9 @@ const ROTULO_TIPO: Record<ResultadoPesquisa['tipo'], string> = {
 
 /** Se a pessoa estiver numa caixa lateral, mostra o nome dela lá (sem mexer no mapa nem no painel). */
 function mostrarNasCaixas(pessoaId: Id): void {
+  // No telemóvel a lista fica por baixo do mapa e quem faz scroll é a página: fazer scroll até ao nome
+  // tirava o mapa do ecrã. Aí basta a ficha e o mapa.
+  if (!window.matchMedia('(min-width: 768px)').matches) return;
   const chip = document.querySelector(`[data-caixas-laterais] [data-pessoa-id="${CSS.escape(pessoaId)}"]`);
   chip?.scrollIntoView({ block: 'center', behavior: 'smooth' });
 }

@@ -1,7 +1,8 @@
-// Vista inicial: o zoom mais alto em que todos os cartões (já arrumados) cabem no mapa.
-// Como o tamanho dos cartões depende do zoom (escala e resumo), experimenta-se zoom a zoom, de cima para baixo.
+// Vista inicial: o zoom mais alto em que todos os cartões (já arrumados) cabem no mapa, agarrados aos
+// seus locais e sem tapar demasiado o mapa. Como o tamanho dos cartões depende do zoom (escala e modo:
+// completo, compacto, resumo), experimenta-se zoom a zoom, de cima para baixo.
 
-import { disporMapa, linhasChamada } from './disposicao';
+import { areaDesenhada, areaPrevista, disporMapa, linhasChamada } from './disposicao';
 import type { ModoMapa } from './escala';
 import { centro, type Retangulo, uniao } from './geometria';
 import type { GrupoNoMapa } from './grupos';
@@ -41,6 +42,11 @@ function margens(m: number | Margens): Margens {
 
 /** Pinos mais compridos do que isto (px) contam como "longe do local": tenta-se um zoom mais baixo. */
 export const PINO_ACEITAVEL = 72;
+/**
+ * Os cartões não podem tapar mais do que esta fração do mapa: num ecrã mais pequeno passa-se ao modo
+ * seguinte (compacto, depois resumo) em vez de cobrir o mapa de nomes.
+ */
+export const COBERTURA_MAXIMA = 0.31;
 /** Quanto se pode descer de zoom (abaixo do primeiro que cabe) à procura de pinos curtos. */
 const DESCIDA_MAXIMA = 0.75;
 
@@ -49,6 +55,8 @@ interface Medida {
   modo: ModoMapa;
   /** O pino mais comprido (do ponto de um local ao cartão mais próximo desse local). */
   pinoMaximo: number;
+  /** Área tapada pelos cartões (px²). */
+  area: number;
 }
 
 function medir(
@@ -65,7 +73,7 @@ function medir(
     for (const p of g.pontos) rets.push({ x: p.x, y: p.y, largura: 0, altura: 0 });
   }
   const pinos = linhasChamada(d).map((l) => Math.hypot(l.para.x - l.de.x, l.para.y - l.de.y));
-  return { caixa: uniao(rets), modo: d.modo, pinoMaximo: Math.max(0, ...pinos) };
+  return { caixa: uniao(rets), modo: d.modo, pinoMaximo: Math.max(0, ...pinos), area: areaDesenhada(d) };
 }
 
 /** Retângulo de tudo o que se desenha (cartões e locais reais), em píxeis do mundo. */
@@ -80,15 +88,17 @@ export function caixaDeTudo(
 }
 
 /**
- * O zoom mais alto em que tudo cabe. Se nesse zoom algum bloco ficar longe do seu local (pino maior
- * do que PINO_ACEITAVEL), experimenta até DESCIDA_MAXIMA abaixo (sem passar ao resumo) e fica com o
- * primeiro que tenha os pinos curtos; se nenhum tiver, com o que tiver o pino mais curto.
+ * O zoom mais alto em que tudo cabe sem tapar mais de COBERTURA_MAXIMA do mapa. Se nesse zoom algum
+ * bloco ficar longe do seu local (pino maior do que PINO_ACEITAVEL), experimenta até DESCIDA_MAXIMA
+ * abaixo (sem mudar de modo) e fica com o primeiro que tenha os pinos curtos; se nenhum tiver, com o
+ * que tiver o pino mais curto.
  */
 export function enquadrarTudo(grupos: readonly GrupoNoMapa[], o: OpcoesEnquadramento): Enquadramento | null {
   if (grupos.length === 0 || o.largura <= 0 || o.altura <= 0) return null;
   const m = margens(o.margem);
   const livreL = o.largura - m.esquerda - m.direita;
   const livreA = o.altura - m.cima - m.baixo;
+  const areaMapa = o.largura * o.altura;
   const expandidos = o.expandidos ?? new Set<string>();
   const passos = Math.max(0, Math.round((o.zoomMaximo - o.zoomMinimo) / o.passo));
   const enquadramento = (zoom: number, caixa: Retangulo, cabe: boolean): Enquadramento => {
@@ -98,13 +108,13 @@ export function enquadrarTudo(grupos: readonly GrupoNoMapa[], o: OpcoesEnquadram
     return { zoom, centro: desprojetar(centroMapa, zoom), cabe };
   };
   let ultimo: Enquadramento | null = null;
-  let primeiroQueCabe: { zoom: number; modo: ModoMapa } | null = null;
+  let primeiroQueServe: { zoom: number; modo: ModoMapa } | null = null;
   let melhor: { e: Enquadramento; pino: number } | null = null;
   for (let k = 0; k <= passos; k++) {
     const zoom = o.zoomMaximo - k * o.passo;
-    if (primeiroQueCabe && primeiroQueCabe.zoom - zoom > DESCIDA_MAXIMA + 1e-9) break;
+    if (primeiroQueServe && primeiroQueServe.zoom - zoom > DESCIDA_MAXIMA + 1e-9) break;
     // Se nem os pontos dos locais cabem, os cartões também não: escusa de os arrumar.
-    if (k < passos && !primeiroQueCabe) {
+    if (k < passos && !primeiroQueServe) {
       const pontos = uniao(
         grupos.map((g) => {
           const p = projetar(g.lat, g.lng, zoom);
@@ -113,14 +123,17 @@ export function enquadrarTudo(grupos: readonly GrupoNoMapa[], o: OpcoesEnquadram
       );
       if (pontos && (pontos.largura > livreL || pontos.altura > livreA)) continue;
     }
+    // Se os cartões vão tapar demasiado, escusa de os colocar (desce até ao modo seguinte).
+    const prevista = areaPrevista(grupos, { zoom, larguraMapa: o.largura, alturaMapa: o.altura, expandidos });
+    if (k < passos && prevista > COBERTURA_MAXIMA * areaMapa) continue;
     const medida = medir(grupos, zoom, o.largura, expandidos, o.altura);
     if (!medida.caixa) return null;
     const cabe = medida.caixa.largura <= livreL && medida.caixa.altura <= livreA;
     ultimo = enquadramento(zoom, medida.caixa, cabe);
-    if (!cabe) continue;
-    if (primeiroQueCabe && medida.modo !== primeiroQueCabe.modo) break;
+    if (!cabe || (k < passos && medida.area > COBERTURA_MAXIMA * areaMapa)) continue;
+    if (primeiroQueServe && medida.modo !== primeiroQueServe.modo) break;
     if (medida.pinoMaximo <= PINO_ACEITAVEL) return ultimo;
-    primeiroQueCabe ??= { zoom, modo: medida.modo };
+    primeiroQueServe ??= { zoom, modo: medida.modo };
     if (!melhor || medida.pinoMaximo < melhor.pino) melhor = { e: ultimo, pino: medida.pinoMaximo };
   }
   return melhor?.e ?? ultimo;
@@ -154,4 +167,3 @@ export function centroParaIrPara(
   ]);
   return desprojetar(centro(caixa ?? { x: g.x, y: g.y, largura: g.largura, altura: g.altura }), zoom);
 }
-

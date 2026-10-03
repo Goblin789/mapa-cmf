@@ -1,9 +1,10 @@
-// Disposição de todos os cartões no mapa para um zoom: os locais muito perto uns dos outros juntam-se
-// num só bloco (as duas ruas de Himeling, a ~360 m), cada bloco é arrumado (arrumacao.ts), escalado
-// (escala.ts) e colocado agarrado ao seu local (colisoes.ts). No resumo, cada bloco é uma pastilha.
+// Disposição de todos os cartões no mapa para um zoom: cada local é um bloco (as suas casas, as
+// carrinhas que lá dormem e as obras), arrumado (arrumacao.ts), escalado (escala.ts) e colocado agarrado
+// ao seu local (colisoes.ts). As duas ruas de Himeling são dois blocos que se arrumam à volta dos pontos.
+// No modo compacto as carrinhas aparecem sem os nomes; no resumo, cada local (ou locais muito perto
+// uns dos outros) é uma pastilha.
 // Tudo em píxeis do mundo (projecao.ts): não muda ao deslocar o mapa, só com o zoom ou os dados.
 
-import { colocarBlocos, type FormaBloco, MARGEM_COLISAO, PINO } from './colisoes';
 import {
   type Arrumacao,
   caixaDoLocal,
@@ -11,9 +12,11 @@ import {
   type LocalAArrumar,
   opcoesDeArrumacao,
   pontuacao,
+  rotulosJuntoDosPontos,
 } from './arrumacao';
+import { colocarBlocos, type FormaBloco, MARGEM_COLISAO, PINO } from './colisoes';
 import { ESCALA_MINIMA, escalaCartoes, type ModoMapa, modoMapa } from './escala';
-import { type Retangulo, pontoMaisProximo, type Segmento, uniao } from './geometria';
+import { pontoMaisProximo, type Retangulo, type Segmento, uniao } from './geometria';
 import { chaveCarrinha, chaveCasa, chaveGrupo, chaveObra, type GrupoNoMapa } from './grupos';
 import {
   type GeometriaResumo,
@@ -25,8 +28,10 @@ import {
 import { type Ponto, projetarArredondado } from './projecao';
 import { nomeRotulo } from './textos';
 
-/** Locais a menos do que isto (px no ecrã) juntam-se num só bloco. */
+/** No resumo, locais a menos do que isto (px no ecrã) juntam-se numa só pastilha. */
 export const DISTANCIA_JUNTAR = 24;
+/** Quantas arrumações de cada bloco se experimentam ao colocá-lo no mapa. */
+const ARRUMACOES_A_EXPERIMENTAR = 6;
 /** Custo (px) de usar uma arrumação com o dobro da pontuação da melhor (ver arrumacao.ts). */
 const CUSTO_FORMA = 40;
 
@@ -47,6 +52,7 @@ interface GrupoDispostoBase {
   deslocado: boolean;
 }
 
+/** Um bloco é uma pastilha ('resumo') ou um conjunto de cartões ('completo', também no modo compacto). */
 export type GrupoDisposto = GrupoDispostoBase &
   ({ modo: 'resumo'; geometria: GeometriaResumo } | { modo: 'completo'; arrumacao: Arrumacao });
 
@@ -73,8 +79,15 @@ export interface OpcoesDisposicao {
   larguraMapa?: number;
   /** Altura do mapa no ecrã (com a largura, dá a proporção da região onde os blocos devem ficar). */
   alturaMapa?: number;
-  /** Chaves "grupo:<localId>" abertas à mão no resumo. */
+  /** Chaves "grupo:<localId>" abertas à mão no resumo (ou no compacto: com as carrinhas inteiras). */
   expandidos?: ReadonlySet<string>;
+  /**
+   * A disposição que está no ecrã (modo de edição): no mesmo zoom, os blocos cuja arrumação não mudou
+   * ficam onde estavam e só os outros procuram sítio. Sem isto, refazia-se a colocação toda e muitos
+   * cartões mudavam de sítio ao largar alguém numa casa cheia (cresce uma linha) ou quando a barra da
+   * edição aparece (o mapa fica mais baixo).
+   */
+  anterior?: Disposicao | null;
 }
 
 /** Junta os locais cujos pontos estão a menos de `distancia` px (em cadeia), de norte para sul. */
@@ -114,7 +127,8 @@ export function rotuloDoLocal(grupo: GrupoNoMapa): string | null {
   return nomeRotulo(grupo.nome);
 }
 
-export function localAArrumar(grupo: GrupoNoMapa): LocalAArrumar {
+/** Os cartões de um local para arrumar. `carrinhasCompactas`: sem os nomes (modo compacto). */
+export function localAArrumar(grupo: GrupoNoMapa, carrinhasCompactas = false): LocalAArrumar {
   return {
     localId: grupo.localId,
     rotulo: rotuloDoLocal(grupo),
@@ -122,7 +136,10 @@ export function localAArrumar(grupo: GrupoNoMapa): LocalAArrumar {
       (c): ElementoCartao => ({ chave: chaveCasa(c.id), geometria: geometriaCasa(c.nLugares) }),
     ),
     carrinhas: grupo.carrinhas.map(
-      (c): ElementoCartao => ({ chave: chaveCarrinha(c.id), geometria: geometriaCarrinha(c.nLugares) }),
+      (c): ElementoCartao => ({
+        chave: chaveCarrinha(c.id),
+        geometria: geometriaCarrinha(c.nLugares, carrinhasCompactas),
+      }),
     ),
     obras: grupo.obras.map(
       (o): ElementoCartao => ({ chave: chaveObra(o.id), geometria: geometriaObra(o.nPessoas) }),
@@ -138,14 +155,11 @@ export function partesResumo(locais: readonly GrupoNoMapa[]): number {
   ).length;
 }
 
-/** O cartão que representa o local no mapa (onde chega o pino): a primeira casa, senão a primeira carrinha. */
-export function chavePrincipal(g: GrupoNoMapa): string | null {
-  const casa = g.casas[0];
-  if (casa) return chaveCasa(casa.id);
-  const carrinha = g.carrinhas[0];
-  if (carrinha) return chaveCarrinha(carrinha.id);
-  const obra = g.obras[0];
-  return obra ? chaveObra(obra.id) : null;
+/** Os cartões onde chega o pino do local: as casas; sem casas, as carrinhas; senão, as obras. */
+export function chavesPrincipais(g: GrupoNoMapa): Set<string> {
+  if (g.casas.length > 0) return new Set(g.casas.map((c) => chaveCasa(c.id)));
+  if (g.carrinhas.length > 0) return new Set(g.carrinhas.map((c) => chaveCarrinha(c.id)));
+  return new Set(g.obras.map((o) => chaveObra(o.id)));
 }
 
 /** Chaves dos cartões de um local (para as linhas de chamada e as métricas). */
@@ -161,25 +175,19 @@ export function chavesDoLocal(g: GrupoNoMapa): Set<string> {
 export const FOLGA_BORDA = 16;
 
 /**
- * A região onde os blocos devem ficar: o tamanho do mapa no ecrã (menos uma folga), centrado nos
- * locais. Só existe enquanto os locais cabem no mapa (vista de conjunto); a partir daí cada bloco fica
- * simplesmente junto do seu local.
+ * Tamanho máximo do conjunto na vista de conjunto: o mapa no ecrã, menos uma folga. Só existe enquanto
+ * os pontos dos locais cabem no mapa; mais perto, cada bloco fica simplesmente junto do seu local.
  */
-export function regiaoDosLocais(
+export function limiteDoEcra(
   pontos: readonly Ponto[],
   mapa: { largura: number; altura: number } | null,
-): Retangulo | null {
+): { largura: number; altura: number } | null {
   const caixa = uniao(pontos.map((p) => ({ x: p.x, y: p.y, largura: 0, altura: 0 })));
   if (!caixa || !mapa || !Number.isFinite(mapa.largura) || !Number.isFinite(mapa.altura)) return null;
   const largura = mapa.largura - 2 * FOLGA_BORDA;
   const altura = mapa.altura - 2 * FOLGA_BORDA;
   if (caixa.largura > largura || caixa.altura > altura) return null;
-  return {
-    x: Math.round(caixa.x + caixa.largura / 2 - largura / 2),
-    y: Math.round(caixa.y + caixa.altura / 2 - altura / 2),
-    largura: Math.round(largura),
-    altura: Math.round(altura),
-  };
+  return { largura, altura };
 }
 
 const escalar = (r: Retangulo, s: number, x0: number, y0: number): Retangulo => ({
@@ -189,20 +197,49 @@ const escalar = (r: Retangulo, s: number, x0: number, y0: number): Retangulo => 
   altura: r.altura * s,
 });
 
+/** Disposições já calculadas para estes grupos (o enquadramento e o mapa pedem as mesmas). */
+const memoria = new WeakMap<readonly GrupoNoMapa[], Map<string, Disposicao>>();
+const MAXIMO_EM_MEMORIA = 48;
+
+/**
+ * A disposição dos grupos para um zoom (calculada uma vez por grupos, zoom, tamanho e abertos). Com uma
+ * disposição anterior não se guarda: depende do que estava no ecrã.
+ */
 export function disporMapa(grupos: readonly GrupoNoMapa[], opcoes: OpcoesDisposicao): Disposicao {
+  if (opcoes.anterior) return calcularDisposicao(grupos, opcoes);
+  const chave = [
+    opcoes.zoom,
+    opcoes.larguraMapa ?? '-',
+    opcoes.alturaMapa ?? '-',
+    [...(opcoes.expandidos ?? [])].sort().join(','),
+  ].join('|');
+  let porChave = memoria.get(grupos);
+  if (!porChave) {
+    porChave = new Map();
+    memoria.set(grupos, porChave);
+  }
+  const guardada = porChave.get(chave);
+  if (guardada) return guardada;
+  const d = calcularDisposicao(grupos, opcoes);
+  if (porChave.size >= MAXIMO_EM_MEMORIA) porChave.clear();
+  porChave.set(chave, d);
+  return d;
+}
+
+/** Um bloco já arrumado (as arrumações possíveis), antes de se saber onde fica. */
+type Medido = Omit<GrupoDispostoBase, 'x' | 'y' | 'deslocado' | 'largura' | 'altura'> &
+  ({ modo: 'resumo'; geometria: GeometriaResumo } | { modo: 'completo'; opcoes: Arrumacao[] });
+
+/** Os blocos de um zoom, arrumados mas ainda sem sítio (barato: não faz a colocação). */
+function medirBlocos(grupos: readonly GrupoNoMapa[], opcoes: OpcoesDisposicao) {
   const { zoom } = opcoes;
   const largura = opcoes.larguraMapa ?? Number.POSITIVE_INFINITY;
   const expandidos = opcoes.expandidos ?? new Set<string>();
   const modo = modoMapa(zoom, largura);
   const escala = escalaCartoes(zoom, largura);
   const pontos = grupos.map((g) => projetarArredondado(g.lat, g.lng, zoom));
-  const juntos = juntarProximos(grupos, pontos);
-
-  type Medido = Omit<GrupoDispostoBase, 'x' | 'y' | 'deslocado' | 'largura' | 'altura'> &
-    (
-      | { modo: 'resumo'; geometria: GeometriaResumo }
-      | { modo: 'completo'; opcoes: Arrumacao[] }
-    );
+  // Só as pastilhas do resumo juntam locais vizinhos; com cartões, cada local tem o seu bloco.
+  const juntos = juntarProximos(grupos, pontos, modo === 'resumo' ? DISTANCIA_JUNTAR : 0);
   const medidos: Medido[] = juntos.map((indices) => {
     const locais = indices.map((i) => grupos[i] as GrupoNoMapa);
     const pts = indices.map((i) => pontos[i] as Ponto);
@@ -218,15 +255,85 @@ export function disporMapa(grupos: readonly GrupoNoMapa[], opcoes: OpcoesDisposi
         geometria: geometriaResumo(partesResumo(locais)),
       };
     }
+    const compactas = modo === 'compacto' && !aberto;
     return {
       chave,
       locais,
       pontos: pts,
       escala: modo === 'resumo' ? ESCALA_MINIMA : escala,
       modo: 'completo',
-      opcoes: opcoesDeArrumacao(locais.map(localAArrumar)),
+      // Com rótulo há o dobro das arrumações (rótulo em cima ou em baixo).
+      opcoes: opcoesDeArrumacao(
+        locais.map((l) => localAArrumar(l, compactas)),
+        ARRUMACOES_A_EXPERIMENTAR * (locais.some((l) => rotuloDoLocal(l)) ? 2 : 1),
+      ),
     };
   });
+  return { modo, escala, pontos, medidos };
+}
+
+/**
+ * Área (px²) que os cartões vão tapar neste zoom, sem os colocar: é igual em todas as arrumações
+ * (os mesmos cartões e rótulos). Serve para o enquadramento saltar zooms que tapariam o mapa.
+ */
+export function areaPrevista(grupos: readonly GrupoNoMapa[], opcoes: OpcoesDisposicao): number {
+  let area = 0;
+  for (const m of medirBlocos(grupos, opcoes).medidos) {
+    if (m.modo === 'resumo') {
+      area += m.geometria.largura * m.geometria.altura;
+      continue;
+    }
+    const a = m.opcoes[0] as Arrumacao;
+    const base =
+      a.cartoes.reduce((t, c) => t + c.geometria.largura * c.geometria.altura, 0) +
+      a.rotulos.reduce((t, r) => t + r.retangulo.largura * r.retangulo.altura, 0);
+    area += base * m.escala * m.escala;
+  }
+  return area;
+}
+
+/** As duas arrumações põem os mesmos cartões, do mesmo tamanho, nos mesmos sítios. */
+function mesmaArrumacao(a: Arrumacao, b: Arrumacao): boolean {
+  return (
+    a.largura === b.largura &&
+    a.altura === b.altura &&
+    a.cartoes.length === b.cartoes.length &&
+    a.cartoes.every((c, i) => {
+      const d = b.cartoes[i];
+      return (
+        d !== undefined &&
+        d.chave === c.chave &&
+        d.x === c.x &&
+        d.y === c.y &&
+        d.geometria.largura === c.geometria.largura &&
+        d.geometria.altura === c.geometria.altura
+      );
+    })
+  );
+}
+
+/** Os blocos que já estavam no ecrã com a mesma arrumação: onde estavam e com que forma (índice). */
+function fixosDe(medidos: readonly Medido[], anterior: Disposicao) {
+  const antes = new Map(anterior.grupos.map((g) => [g.chave, g]));
+  const fixos = new Map<string, { x: number; y: number; forma: number }>();
+  for (const m of medidos) {
+    const g = antes.get(m.chave);
+    if (!g) continue;
+    if (m.modo === 'resumo' && g.modo === 'resumo') {
+      if (g.geometria.largura === m.geometria.largura && g.geometria.altura === m.geometria.altura)
+        fixos.set(m.chave, { x: g.x, y: g.y, forma: 0 });
+    } else if (m.modo === 'completo' && g.modo === 'completo' && g.escala === m.escala) {
+      const forma = m.opcoes.findIndex((a) => mesmaArrumacao(a, g.arrumacao));
+      if (forma >= 0) fixos.set(m.chave, { x: g.x, y: g.y, forma });
+    }
+  }
+  return fixos;
+}
+
+function calcularDisposicao(grupos: readonly GrupoNoMapa[], opcoes: OpcoesDisposicao): Disposicao {
+  const { zoom } = opcoes;
+  const largura = opcoes.larguraMapa ?? Number.POSITIVE_INFINITY;
+  const { modo, escala, pontos, medidos } = medirBlocos(grupos, opcoes);
 
   const formasDe = (m: Medido): FormaBloco[] => {
     if (m.modo === 'resumo') return [{ largura: m.geometria.largura, altura: m.geometria.altura }];
@@ -236,27 +343,37 @@ export function disporMapa(grupos: readonly GrupoNoMapa[], opcoes: OpcoesDisposi
       largura: Math.ceil(a.largura * s),
       altura: Math.ceil(a.altura * s),
       custoExtra: melhor > 0 ? (pontuacao(a) / melhor - 1) * CUSTO_FORMA : 0,
-      // Cada ponto conta até ao seu cartão principal (a casa); num bloco com várias ruas, até à sua rua.
+      // Cada ponto conta até ao seu cartão principal mais perto (uma casa) ou ao seu rótulo (o nome do
+      // sítio); num bloco com vários locais, até aos cartões desse local. O rótulo conta onde a arrumação
+      // o pôs; depois de colocado o bloco só pode chegar mais perto do ponto (rotulosJuntoDosPontos).
       partes: m.locais.map((local) => {
-        const r =
+        const rotulo = a.rotulos.find((r) => r.localId === local.localId)?.retangulo;
+        const rets =
           m.locais.length > 1
-            ? caixaDoLocal(a, local.localId, chavesDoLocal(local))
-            : (() => {
-                const c = a.cartoes.find((x) => x.chave === chavePrincipal(local));
-                return c ? { x: c.x, y: c.y, largura: c.geometria.largura, altura: c.geometria.altura } : null;
-              })();
-        const base = r ?? { x: 0, y: 0, largura: a.largura, altura: a.altura };
-        return { x: base.x * s, y: base.y * s, largura: base.largura * s, altura: base.altura * s };
+            ? [caixaDoLocal(a, local.localId, chavesDoLocal(local))].filter((r): r is Retangulo => r !== null)
+            : [
+                ...a.cartoes
+                  .filter((x) => chavesPrincipais(local).has(x.chave))
+                  .map((c) => ({ x: c.x, y: c.y, largura: c.geometria.largura, altura: c.geometria.altura })),
+                ...(rotulo ? [rotulo] : []),
+              ];
+        return rets.map((r) => escalar(r, s, 0, 0));
+      }),
+      rotulos: m.locais.map((local) => {
+        const r = a.rotulos.find((x) => x.localId === local.localId)?.retangulo;
+        return r ? escalar(r, s, 0, 0) : null;
       }),
     }));
   };
 
+  const anterior = opcoes.anterior;
   const colocadas = colocarBlocos(
     medidos.map((m) => ({ chave: m.chave, pontos: m.pontos, formas: formasDe(m) })),
     {
       margem: MARGEM_COLISAO,
       pino: PINO,
-      regiao: regiaoDosLocais(pontos, opcoes.alturaMapa ? { largura, altura: opcoes.alturaMapa } : null),
+      ecra: limiteDoEcra(pontos, opcoes.alturaMapa ? { largura, altura: opcoes.alturaMapa } : null),
+      fixos: anterior && anterior.zoom === zoom && anterior.modo === modo ? fixosDe(medidos, anterior) : null,
     },
   );
 
@@ -288,7 +405,16 @@ export function disporMapa(grupos: readonly GrupoNoMapa[], opcoes: OpcoesDisposi
       }
       return;
     }
-    const arrumacao = m.opcoes[c.forma] ?? (m.opcoes[0] as Arrumacao);
+    // Com o bloco no sítio, o rótulo de cada local desliza na sua faixa para junto do seu ponto (sem isto
+    // ficava sempre à esquerda: num bloco a oeste do ponto, o nome do sítio aparecia a 10–20 km dele).
+    // Os pontos vão em píxeis base do bloco.
+    const pontosBase = new Map(
+      m.locais.map((l, k) => {
+        const p = m.pontos[k] as Ponto;
+        return [l.localId, { x: (p.x - c.x) / m.escala, y: (p.y - c.y) / m.escala }] as const;
+      }),
+    );
+    const arrumacao = rotulosJuntoDosPontos(m.opcoes[c.forma] ?? (m.opcoes[0] as Arrumacao), pontosBase);
     dispostos.push({ ...base, modo: 'completo', arrumacao });
     for (const cartao of arrumacao.cartoes) {
       cartoes.set(cartao.chave, {
@@ -310,23 +436,29 @@ export function disporMapa(grupos: readonly GrupoNoMapa[], opcoes: OpcoesDisposi
   return { zoom, modo, escala, grupos: dispostos, cartoes };
 }
 
+/** Rótulo do local no bloco, em píxeis do mundo (null se não tiver). */
+export function rotuloNoMapa(g: GrupoDisposto, localId: string): Retangulo | null {
+  if (g.modo !== 'completo') return null;
+  const r = g.arrumacao.rotulos.find((x) => x.localId === localId)?.retangulo;
+  return r ? escalar(r, g.escala, g.x, g.y) : null;
+}
+
 /**
- * Onde chega o pino do local i do bloco (mundo): o seu cartão principal (a casa); num bloco com
- * várias ruas, o cartão dessa rua mais perto do ponto; no resumo, a pastilha.
+ * Onde chega o pino do local i do bloco (mundo): o cartão principal (casa; sem casas, carrinha) ou o
+ * rótulo do local, o que estiver mais perto do ponto; num bloco com vários locais, o cartão desse local
+ * mais perto; no resumo, a pastilha.
  */
 export function retanguloDoLocal(d: Disposicao, g: GrupoDisposto, i: number): Retangulo {
   const local = g.locais[i];
   const ponto = g.pontos[i];
   const inteiro = { x: g.x, y: g.y, largura: g.largura, altura: g.altura };
   if (g.modo !== 'completo' || !local || !ponto) return inteiro;
-  if (g.locais.length === 1) {
-    const chave = chavePrincipal(local);
-    return (chave ? d.cartoes.get(chave)?.retangulo : undefined) ?? inteiro;
-  }
   let melhor: Retangulo = inteiro;
   let melhorD = Number.POSITIVE_INFINITY;
-  for (const chave of chavesDoLocal(local)) {
-    const r = d.cartoes.get(chave)?.retangulo;
+  const candidatos = (g.locais.length === 1 ? [...chavesPrincipais(local)] : [...chavesDoLocal(local)])
+    .map((chave) => d.cartoes.get(chave)?.retangulo)
+    .concat(g.locais.length === 1 ? [rotuloNoMapa(g, local.localId) ?? undefined] : []);
+  for (const r of candidatos) {
     if (!r) continue;
     const p = pontoMaisProximo(r, ponto);
     const dist = Math.hypot(p.x - ponto.x, p.y - ponto.y);
@@ -338,13 +470,47 @@ export function retanguloDoLocal(d: Disposicao, g: GrupoDisposto, i: number): Re
   return melhor;
 }
 
+/** Retângulos que tapam o mapa: pastilhas e, nos blocos completos, cada cartão e cada rótulo. */
+export function retangulosDesenhados(d: Disposicao): Retangulo[] {
+  const rets: Retangulo[] = [];
+  for (const g of d.grupos) {
+    if (g.modo === 'resumo') {
+      rets.push({ x: g.x, y: g.y, largura: g.largura, altura: g.altura });
+      continue;
+    }
+    const s = g.escala;
+    for (const c of g.arrumacao.cartoes) {
+      rets.push({
+        x: g.x + c.x * s,
+        y: g.y + c.y * s,
+        largura: c.geometria.largura * s,
+        altura: c.geometria.altura * s,
+      });
+    }
+    for (const r of g.arrumacao.rotulos) {
+      rets.push({
+        x: g.x + r.retangulo.x * s,
+        y: g.y + r.retangulo.y * s,
+        largura: r.retangulo.largura * s,
+        altura: r.retangulo.altura * s,
+      });
+    }
+  }
+  return rets;
+}
+
+/** Área (px²) tapada pelos cartões: os retângulos desenhados não se sobrepõem, por isso basta somar. */
+export function areaDesenhada(d: Disposicao): number {
+  return retangulosDesenhados(d).reduce((t, r) => t + r.largura * r.altura, 0);
+}
+
 export interface LinhaChamada extends Segmento {
   chave: string;
   /** Mais comprida do que o pino: o bloco teve de se afastar. */
   longa: boolean;
 }
 
-/** Do ponto de cada local ao seu cartão principal (o "pino" e as linhas de chamada). */
+/** Do ponto de cada local ao cartão principal mais perto (o "pino" e as linhas de chamada). */
 export function linhasChamada(d: Disposicao): LinhaChamada[] {
   const linhas: LinhaChamada[] = [];
   for (const g of d.grupos) {

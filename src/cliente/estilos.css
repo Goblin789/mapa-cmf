@@ -74,7 +74,7 @@ body {
 }
 
 /* A obra é um retângulo: acende o contorno. */
-.cartao-mapa.rounded-\[5px\][data-alvo-estado="por-cima"] {
+.cartao-obra[data-alvo-estado="por-cima"] {
   border-color: #2563eb;
   box-shadow: 0 0 0 2px #2563eb;
   background: #eff6ff;

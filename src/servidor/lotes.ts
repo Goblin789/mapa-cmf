@@ -3,7 +3,7 @@
 // browser usa na simulação; aqui só se acrescenta a gravação atómica. As frases são funções puras.
 
 import { asc, desc, eq, inArray } from 'drizzle-orm';
-import type { AlteracaoHistorico, ConflitoServidor, EntradaHistorico } from '../cliente/estado/api';
+import type { AlteracaoHistorico, ConflitoServidor, EntradaHistorico } from '../dominio/api';
 import {
   aplicarOperacoes,
   type CampoMovivel,

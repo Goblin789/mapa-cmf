@@ -46,7 +46,9 @@ export function PastilhaResumo({ disposto, esquerda, topo, destaque }: Props) {
     return casa ? [ocupacaoCasa(casa, indices.moradores.get(id)?.length ?? 0)] : [];
   });
   const casas = somar(ocCasas.map((o) => ({ ocupados: o.ocupados, lugares: o.lotacao, nivel: o.nivel })));
-  const acimaContrato = ocCasas.filter((o) => o.aviso === 'acima_maximo' || o.aviso === 'acima_tolerado').length;
+  const acimaContrato = ocCasas.filter(
+    (o) => o.aviso === 'acima_maximo' || o.aviso === 'acima_tolerado',
+  ).length;
   const carrinhas = somar(
     carrinhasIds.flatMap((id) => {
       const c = indices.carrinhas.get(id);
@@ -57,12 +59,16 @@ export function PastilhaResumo({ disposto, esquerda, topo, destaque }: Props) {
 
   const descricao = [
     nome,
-    casasIds.length > 0 ? `${contar(casasIds.length, 'casa', 'casas')}: ${casas.ocupados}/${casas.lugares}` : null,
+    casasIds.length > 0
+      ? `${contar(casasIds.length, 'casa', 'casas')}: ${casas.ocupados}/${casas.lugares}`
+      : null,
     acimaContrato > 0 ? `${contar(acimaContrato, 'casa', 'casas')} acima do contrato` : null,
     carrinhasIds.length > 0
       ? `${contar(carrinhasIds.length, 'carrinha', 'carrinhas')}: ${carrinhas.ocupados}/${carrinhas.lugares}`
       : null,
-    obrasIds.length > 0 ? `${contar(obrasIds.length, 'obra', 'obras')}: ${contar(pessoasObras, 'pessoa', 'pessoas')}` : null,
+    obrasIds.length > 0
+      ? `${contar(obrasIds.length, 'obra', 'obras')}: ${contar(pessoasObras, 'pessoa', 'pessoas')}`
+      : null,
   ]
     .filter(Boolean)
     .join(' · ');
@@ -80,13 +86,13 @@ export function PastilhaResumo({ disposto, esquerda, topo, destaque }: Props) {
         aria-expanded={false}
         onClick={() => alternarExpandido(disposto.chave)}
       >
-        <span className="absolute truncate text-[10px] font-bold leading-3 text-slate-900" style={posicao(g.nome)}>
+        <span
+          className="absolute truncate text-[10px] font-bold leading-3 text-slate-900"
+          style={posicao(g.nome)}
+        >
           {nome}
         </span>
-        <span
-          className="absolute flex items-center gap-1.5 text-slate-600"
-          style={posicao(g.linha)}
-        >
+        <span className="absolute flex items-center gap-1.5 text-slate-600" style={posicao(g.linha)}>
           {casasIds.length > 0 && (
             <span className="flex items-center gap-0.5">
               <IconeCasa tamanho={11} />
@@ -101,7 +107,11 @@ export function PastilhaResumo({ disposto, esquerda, topo, destaque }: Props) {
           {carrinhasIds.length > 0 && (
             <span className="flex items-center gap-0.5">
               <IconeCarrinha tamanho={11} />
-              <PastilhaLotacao ocupados={carrinhas.ocupados} lugares={carrinhas.lugares} nivel={carrinhas.nivel} />
+              <PastilhaLotacao
+                ocupados={carrinhas.ocupados}
+                lugares={carrinhas.lugares}
+                nivel={carrinhas.nivel}
+              />
             </span>
           )}
           {obrasIds.length > 0 && (

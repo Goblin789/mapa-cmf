@@ -43,6 +43,14 @@ export function nomeJunto(nomes: readonly string[]): string {
   return primeiras.join(' · ');
 }
 
+/**
+ * Largura (px base) do rótulo de um local escrito a 10 px em negrito: uma estimativa por excesso
+ * (o texto nunca fica cortado; no pior caso sobra um pouco de espaço).
+ */
+export function larguraRotulo(texto: string): number {
+  return Math.ceil(texto.length * 6.2) + 4;
+}
+
 /** "1 casa" / "4 casas". */
 export function contar(n: number, singular: string, plural: string): string {
   return `${n} ${n === 1 ? singular : plural}`;

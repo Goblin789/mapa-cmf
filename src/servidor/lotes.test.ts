@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { Operacao } from '../dominio/operacoes';
+import { aplicarOperacoes, compactarOperacoes, type Operacao } from '../dominio/operacoes';
 import { estadoExemplo } from '../dominio/teste-fabrica';
+import type { Pessoa } from '../dominio/tipos';
 import { inserirDadosFicticios, inserirLotes } from './dados-de-teste';
 import * as esquema from './db/esquema';
 import { abrirBd, type Bd } from './db/ligacao';
@@ -75,7 +76,7 @@ describe('descreverConflito', () => {
         esperado: 'zz1002',
         atual: 'zz1001',
       }),
-    ).toBe('Ana T. — carrinha: esperavas ZZ1002, mas agora está em ZZ1001 (alguém mudou entretanto)');
+    ).toBe('Ana T. — carrinha: esperavas ZZ 1002, mas agora está em ZZ 1001 (alguém mudou entretanto)');
     expect(
       descreverConflito(estado, { pessoaId: 'p-ana', campo: 'casaId', esperado: 'casa-2', atual: 'casa-1' }),
     ).toBe('Ana T. — casa: esperavas Casa Dois, mas agora está em Casa Um (alguém mudou entretanto)');
@@ -95,7 +96,7 @@ describe('descreverConflito', () => {
         atual: null,
       }),
     ).toBe(
-      'Helena Z. — carrinha: esperavas ZZ1001, mas agora está sem transporte da empresa (alguém mudou entretanto)',
+      'Helena Z. — carrinha: esperavas ZZ 1001, mas agora está sem transporte da empresa (alguém mudou entretanto)',
     );
     expect(
       descreverConflito(estado, { pessoaId: 'p-helena', campo: 'obraId', esperado: 'obra-a', atual: null }),
@@ -127,7 +128,7 @@ describe('descreverAlteracao', () => {
       'Gil N. — casa: Fora das casas CMF → Casa Três',
     );
     expect(descreverAlteracao(estado, linha('carrinhaId', '"zz1001"', 'null'))).toBe(
-      'Gil N. — carrinha: ZZ1001 → Sem transporte da empresa',
+      'Gil N. — carrinha: ZZ 1001 → Sem transporte da empresa',
     );
     expect(descreverAlteracao(estado, linha('obraId', '"obra-b"', '"obra-a"'))).toBe(
       'Gil N. — obra: Obra Beta → Obra Alfa',
@@ -250,6 +251,72 @@ describe('gravarLote e lerHistorico na base de dados', () => {
     expect(bd.select().from(esquema.alteracoes).all()).toStrictEqual([]);
   });
 
+  // A simulação do browser tem de dar exatamente o que a gravação dá. A gravação compacta as operações,
+  // por isso quem vai e volta (A → B → A) não muda nada, nem a marca "a confirmar": a simulação tem de
+  // aplicar as operações já compactadas (os `pendentes` da loja), não todos os passos.
+  it('o que fica gravado é a simulação com as operações compactadas, marcas incluídas', () => {
+    const antes = carregarEstado(bd, AGORA);
+    const ops = [
+      mover('p-alvaro', 'casaId', null, 'casa-monte'),
+      mover('p-alvaro', 'carrinhaId', null, 'car-1'),
+      mover('p-alvaro', 'casaId', 'casa-monte', null),
+      mover('p-ze', 'casaId', 'casa-ribeira', 'casa-monte'),
+    ];
+    expect(gravarLote(bd, pedido(ops))).toMatchObject({ tipo: 'gravado' });
+    const gravado = carregarEstado(bd, AGORA).pessoas;
+    expect(gravado).toStrictEqual(aplicarOperacoes(antes, compactarOperacoes(ops)).pessoas);
+    expect(gravado.find((p) => p.id === 'p-alvaro')).toMatchObject({
+      casaId: null,
+      casaAConfirmar: true,
+      carrinhaId: 'car-1',
+      carrinhaAConfirmar: false,
+    });
+    // Sem compactar, a marca da casa do Álvaro desaparecia na simulação mas não na base de dados.
+    expect(aplicarOperacoes(antes, ops).pessoas).not.toStrictEqual(gravado);
+  });
+
+  it('em sequências aleatórias de mudanças, gravado = simulação compactada', () => {
+    const destinos: Record<Operacao['campo'], (string | null)[]> = {
+      casaId: [null, 'casa-monte', 'casa-ribeira'],
+      carrinhaId: [null, 'car-1', 'car-2'],
+      obraId: [null, 'obra-vale'],
+    };
+    const campos = Object.keys(destinos) as Operacao['campo'][];
+    const pessoas = ['p-ze', 'p-alvaro', 'p-elia'];
+    const resultados = new Set<string>();
+    for (let semente = 1; semente <= 30; semente++) {
+      let s = semente;
+      const sortear = (n: number) => {
+        s = (Math.imul(s, 1103515245) + 12345) >>> 0;
+        return (s >>> 16) % n;
+      };
+      const bdAleatoria = abrirBd(':memory:');
+      inserirDadosFicticios(bdAleatoria);
+      const antes = carregarEstado(bdAleatoria, AGORA);
+      // Como no browser: cada mudança parte de onde a pessoa está na simulação.
+      const atual = new Map(antes.pessoas.map((p) => [p.id, { ...p }]));
+      const ops: Operacao[] = [];
+      for (let i = 0; i < 2 + sortear(8); i++) {
+        const pessoaId = pessoas[sortear(pessoas.length)] as string;
+        const campo = campos[sortear(campos.length)] as Operacao['campo'];
+        const opcoes = destinos[campo];
+        const para = opcoes[sortear(opcoes.length)] ?? null;
+        const p = atual.get(pessoaId) as Pessoa;
+        if (p[campo] === para) continue;
+        ops.push(mover(pessoaId, campo, p[campo], para));
+        p[campo] = para;
+      }
+      const r = gravarLote(bdAleatoria, pedido(ops));
+      resultados.add(r.tipo);
+      expect(carregarEstado(bdAleatoria, AGORA).pessoas, `semente ${semente}`).toStrictEqual(
+        aplicarOperacoes(antes, compactarOperacoes(ops)).pessoas,
+      );
+      bdAleatoria.$client.close();
+    }
+    // As sementes cobrem os dois casos: há lotes gravados e lotes em que tudo se anula.
+    expect(resultados).toStrictEqual(new Set(['gravado', 'vazio']));
+  });
+
   it('se uma escrita falhar a meio, nada fica gravado (transação)', () => {
     const antes = carregarEstado(bd, AGORA);
     bd.$client.exec(
@@ -276,7 +343,7 @@ describe('gravarLote e lerHistorico na base de dados', () => {
     expect(historico.map((h) => h.loteId)).toStrictEqual([3, 2]);
     expect(historico.map((h) => h.alteracoes.map((a) => a.descricao))).toStrictEqual([
       ['Zé Teste — obra: Obra do Vale → sem obra'],
-      ['Zé Teste — carrinha: ZZ0002 → ZZ0101'],
+      ['Zé Teste — carrinha: ZZ 0002 → ZZ 0101'],
     ]);
     expect(lerHistorico(bd, 1).map((h) => h.loteId)).toStrictEqual([3]);
   });

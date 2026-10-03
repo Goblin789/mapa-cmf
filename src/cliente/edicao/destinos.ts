@@ -44,7 +44,7 @@ export interface Destino {
   clienteId: Id | null;
   /** Textos onde a pesquisa procura (já normalizados). */
   termos: string[];
-  /** Textos compactos (matrículas), para "cf5001" encontrar "CF 5001". */
+  /** Textos compactos (matrículas), para "zz1001" encontrar "ZZ 1001". */
   termosCompactos: string[];
 }
 

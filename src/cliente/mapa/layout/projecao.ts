@@ -45,3 +45,9 @@ export function projetarArredondado(lat: number, lng: number, zoom: number): Pon
   const p = projetar(lat, lng, zoom);
   return { x: Math.round(p.x), y: Math.round(p.y) };
 }
+
+/** Metros no terreno por píxel do ecrã, à latitude `lat` e neste zoom (Web Mercator). */
+export function metrosPorPixel(lat: number, zoom: number): number {
+  const CIRCUNFERENCIA_TERRA = 40075016.686;
+  return (CIRCUNFERENCIA_TERRA * Math.cos((lat * Math.PI) / 180)) / escalaZoom(zoom);
+}

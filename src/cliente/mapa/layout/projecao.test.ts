@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { desprojetar, escalaZoom, projetar, projetarArredondado } from './projecao';
+import { desprojetar, escalaZoom, metrosPorPixel, projetar, projetarArredondado } from './projecao';
 
 describe('projetar', () => {
   it('põe (0, 0) no centro do mundo', () => {
@@ -49,5 +49,17 @@ describe('projetar', () => {
   it('arredonda ao píxel como o latLngToLayerPoint', () => {
     const p = projetarArredondado(49.6116, 6.1319, 10);
     expect(Number.isInteger(p.x) && Number.isInteger(p.y)).toBe(true);
+  });
+});
+
+describe('metrosPorPixel', () => {
+  it('no equador, no zoom 0, a Terra inteira cabe em 256 px; cada zoom divide por dois', () => {
+    expect(metrosPorPixel(0, 0)).toBeCloseTo(40075016.686 / 256, 3);
+    expect(metrosPorPixel(0, 1)).toBeCloseTo(metrosPorPixel(0, 0) / 2, 6);
+  });
+
+  it('no Luxemburgo, no zoom 11, cada píxel são uns 50 m', () => {
+    expect(metrosPorPixel(49.6, 11)).toBeGreaterThan(48);
+    expect(metrosPorPixel(49.6, 11)).toBeLessThan(51);
   });
 });

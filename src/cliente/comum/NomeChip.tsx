@@ -89,7 +89,7 @@ export function NomeChip({ pessoa, compacto = false, className = '' }: Props) {
         <>
           <span
             aria-hidden="true"
-            className="pointer-events-none absolute -top-1 -right-1 size-2 rounded-full bg-blue-600 ring-2 ring-white"
+            className="pointer-events-none absolute -top-1 -right-1 size-2 rounded-full bg-amber-500 ring-2 ring-white"
           />
           <span className="sr-only"> (alterado)</span>
         </>

@@ -22,7 +22,7 @@ function nomeDaPessoa(estado: Estado, id: Id): string {
   return estado.pessoas.find((p) => p.id === id)?.nomeCurto ?? id;
 }
 
-/** Nome a mostrar para um valor de campo; as matrículas vêm formatadas ("CF 5001"). */
+/** Nome a mostrar para um valor de campo; as matrículas vêm formatadas ("ZZ 1001"). */
 export function rotuloDoValor(estado: Estado, campo: CampoMovivel, valor: Id | null): string {
   const nome = nomeDoValor(estado, campo, valor);
   return campo === 'carrinhaId' && valor !== null ? formatarMatricula(nome) : nome;
@@ -226,7 +226,7 @@ export function resumirPasso(estado: Estado, passo: readonly Operacao[]): string
   const [primeira] = passo;
   if (!primeira) return 'nada';
   if (passo.length === 1) {
-    // Como descreverOperacao, mas com as matrículas formatadas como no resto do ecrã ("CF 5001").
+    // Como descreverOperacao, mas com as matrículas formatadas como no resto do ecrã ("ZZ 1001").
     const { campo, de, para } = primeira;
     return `${nomeDaPessoa(estado, primeira.pessoaId)} — ${ROTULO_CAMPO[campo].toLowerCase()}: ${rotuloDoValor(
       estado,

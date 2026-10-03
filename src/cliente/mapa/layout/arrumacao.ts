@@ -4,11 +4,15 @@
 //   ou por baixo das casas, as obras a seguir;
 // - experimentam-se todas as combinações (colunas de cada grelha, ao lado/por baixo) e fica a que
 //   ocupa menos área sem ficar alta e estreita (o espaço vertical é o que mais falta no ecrã);
-// - os locais com várias casas (ou só com carrinhas) levam um rótulo com o nome do local por cima.
+// - os locais com várias casas (ou só com carrinhas) levam um rótulo com o nome do local por cima (ou
+//   por baixo), numa faixa da largura dos cartões; depois de o bloco ter sítio no mapa, o rótulo desliza
+//   na faixa até ficar junto do ponto do local (rotulosJuntoDosPontos).
 
 import type { Id } from '../../../dominio/tipos';
 import { type Retangulo, uniao } from './geometria';
 import type { GeometriaCartao } from './medidas';
+import type { Ponto } from './projecao';
+import { larguraRotulo } from './textos';
 
 /** Espaço entre cartões do mesmo bloco. */
 export const FOLGA_CARTOES = 4;
@@ -33,10 +37,17 @@ export interface CartaoArrumado extends ElementoCartao {
   y: number;
 }
 
+export type AlinhamentoRotulo = 'esquerda' | 'centro' | 'direita';
+
 export interface RotuloArrumado {
   localId: Id;
   texto: string;
+  /** Onde se escreve o nome: a largura estimada do texto (por excesso), dentro da faixa. */
   retangulo: Retangulo;
+  /** A linha reservada ao rótulo (a largura dos cartões do local): o rótulo pode deslizar nela. */
+  faixa: Retangulo;
+  /** O texto encosta ao lado do ponto do local (a largura estimada sobra do outro lado). */
+  alinhamento: AlinhamentoRotulo;
 }
 
 export interface Arrumacao {
@@ -65,6 +76,7 @@ function deslocar(a: Arrumacao, dx: number, dy: number): Arrumacao {
     rotulos: a.rotulos.map((r) => ({
       ...r,
       retangulo: { ...r.retangulo, x: r.retangulo.x + dx, y: r.retangulo.y + dy },
+      faixa: { ...r.faixa, x: r.faixa.x + dx, y: r.faixa.y + dy },
     })),
   };
 }
@@ -120,16 +132,56 @@ export function juntar(a: Arrumacao, b: Arrumacao, direcao: Direcao, folga = FOL
   };
 }
 
-function comRotulo(a: Arrumacao, localId: Id, texto: string | null): Arrumacao {
+/**
+ * O nome do local por cima dos cartões ou, em alternativa, por baixo: quando o bloco fica por baixo do
+ * ponto, o rótulo em baixo deixa as casas encostadas ao ponto (o pino não atravessa o rótulo).
+ */
+function comRotulo(a: Arrumacao, localId: Id, texto: string | null, embaixo = false): Arrumacao {
   if (!texto) return a;
-  const deslocada = deslocar(a, 0, ROTULO.altura + ROTULO.folga);
+  const altura = a.altura + ROTULO.altura + ROTULO.folga;
+  const deslocada = embaixo ? a : deslocar(a, 0, ROTULO.altura + ROTULO.folga);
+  const y = embaixo ? a.altura + ROTULO.folga : 0;
   return {
     ...deslocada,
-    altura: a.altura + ROTULO.altura + ROTULO.folga,
+    altura,
     rotulos: [
-      { localId, texto, retangulo: { x: 0, y: 0, largura: a.largura, altura: ROTULO.altura } },
+      // Só a largura do texto (o pino pode chegar ao rótulo: é o nome do sítio), à esquerda da faixa até
+      // se saber onde fica o ponto.
+      {
+        localId,
+        texto,
+        retangulo: { x: 0, y, largura: Math.min(a.largura, larguraRotulo(texto)), altura: ROTULO.altura },
+        faixa: { x: 0, y, largura: a.largura, altura: ROTULO.altura },
+        alinhamento: 'esquerda',
+      },
       ...deslocada.rotulos,
     ],
+  };
+}
+
+/**
+ * Leva o rótulo de cada local, dentro da sua faixa, para junto do ponto desse local (`pontos`, em píxeis
+ * base relativos ao bloco): centrado na vertical do ponto ou, se o ponto ficar para lá de uma ponta da
+ * faixa, encostado a essa ponta, com o texto alinhado desse lado. Assim o nome do sítio fica junto do sítio
+ * mesmo quando o bloco está todo para um lado do ponto. A distância do ponto ao rótulo fica igual à
+ * distância do ponto à faixa (é o que a colocação dos blocos usa).
+ */
+export function rotulosJuntoDosPontos(a: Arrumacao, pontos: ReadonlyMap<Id, Ponto>): Arrumacao {
+  if (a.rotulos.length === 0) return a;
+  return {
+    ...a,
+    rotulos: a.rotulos.map((r) => {
+      const p = pontos.get(r.localId);
+      if (!p) return r;
+      const { faixa: f } = r;
+      const w = r.retangulo.largura;
+      const minimo = f.x;
+      const maximo = f.x + f.largura - w;
+      const x = Math.min(maximo, Math.max(minimo, Math.round(p.x - w / 2)));
+      const alinhamento: AlinhamentoRotulo =
+        p.x <= f.x + w / 2 ? 'esquerda' : p.x >= f.x + f.largura - w / 2 ? 'direita' : 'centro';
+      return { ...r, retangulo: { ...r.retangulo, x }, alinhamento };
+    }),
   };
 }
 
@@ -148,22 +200,53 @@ export function pontuacao(a: Pick<Arrumacao, 'largura' | 'altura'>): number {
 
 const colunasPossiveis = (n: number) => Array.from({ length: Math.max(1, n) }, (_, i) => i + 1);
 
-/** Todas as arrumações de um local, da melhor para a pior (sem repetir tamanhos iguais). */
+/** Ordem dos cartões no DOM (e do Tab): casas, carrinhas, obras, cada tipo pela ordem dada. */
+function porTipo(a: Arrumacao): Arrumacao {
+  const ordem = { casa: 0, carrinha: 1, obra: 2 } as const;
+  const cartoes = a.cartoes
+    .map((c, i) => ({ c, i }))
+    .sort((x, y) => ordem[x.c.geometria.tipo] - ordem[y.c.geometria.tipo] || x.i - y.i)
+    .map(({ c }) => c);
+  return { ...a, cartoes };
+}
+
+/**
+ * Casas e carrinhas juntas, de todas as maneiras: carrinhas ao lado ou por baixo das casas, ou
+ * repartidas pelos dois lados (as casas ficam ao meio, junto do ponto, e o bloco fica centrado no
+ * local em vez de pendurado para um lado).
+ */
+function casasECarrinhas(local: LocalAArrumar, casas: Arrumacao): Arrumacao[] {
+  const opcoes: Arrumacao[] = [];
+  const n = local.carrinhas.length;
+  for (const cv of colunasPossiveis(n)) {
+    const carrinhas = grelha(local.carrinhas, cv);
+    opcoes.push(juntar(casas, carrinhas, 'lado'));
+    if (casas.cartoes.length > 0 && n > 0) opcoes.push(juntar(casas, carrinhas, 'baixo'));
+  }
+  if (casas.cartoes.length > 0 && n >= 2) {
+    // A primeira metade à esquerda, o resto à direita (com um número ímpar, a direita leva mais).
+    const esquerda = local.carrinhas.slice(0, Math.floor(n / 2));
+    const direita = local.carrinhas.slice(Math.floor(n / 2));
+    for (const cv of colunasPossiveis(direita.length)) {
+      const ge = grelha(esquerda, Math.min(cv, esquerda.length));
+      opcoes.push(juntar(juntar(ge, casas, 'lado'), grelha(direita, cv), 'lado'));
+    }
+  }
+  return opcoes;
+}
+
+/** Todas as arrumações de um local, da melhor para a pior (sem repetir arrumações iguais). */
 export function arrumacoesDoLocal(local: LocalAArrumar): Arrumacao[] {
   const resultado: Arrumacao[] = [];
   for (const cc of colunasPossiveis(local.casas.length)) {
-    const casas = grelha(local.casas, cc);
-    for (const cv of colunasPossiveis(local.carrinhas.length)) {
-      const carrinhas = grelha(local.carrinhas, cv);
+    for (const primeiro of casasECarrinhas(local, grelha(local.casas, cc))) {
       for (const co of colunasPossiveis(local.obras.length)) {
         const obras = grelha(local.obras, co);
-        for (const d1 of ['lado', 'baixo'] as const) {
-          const primeiro = juntar(casas, carrinhas, d1);
-          for (const d2 of ['lado', 'baixo'] as const) {
-            resultado.push(comRotulo(juntar(primeiro, obras, d2), local.localId, local.rotulo));
-            if (obras.cartoes.length === 0) break;
-          }
-          if (carrinhas.cartoes.length === 0 || casas.cartoes.length === 0) break;
+        for (const d2 of ['lado', 'baixo'] as const) {
+          const bloco = juntar(primeiro, obras, d2);
+          resultado.push(porTipo(comRotulo(bloco, local.localId, local.rotulo)));
+          if (local.rotulo) resultado.push(porTipo(comRotulo(bloco, local.localId, local.rotulo, true)));
+          if (obras.cartoes.length === 0) break;
         }
       }
     }
@@ -173,7 +256,9 @@ export function arrumacoesDoLocal(local: LocalAArrumar): Arrumacao[] {
     .map((a, i) => ({ a, i, p: pontuacao(a) }))
     .sort((x, y) => x.p - y.p || x.i - y.i)
     .filter(({ a }) => {
-      const chave = `${a.largura}x${a.altura}`;
+      // O mesmo tamanho com a primeira casa noutro sítio é outra arrumação (ex.: casa ao meio).
+      const primeiro = a.cartoes[0];
+      const chave = `${a.largura}x${a.altura}:${primeiro?.x ?? 0},${primeiro?.y ?? 0}`;
       if (vistos.has(chave)) return false;
       vistos.add(chave);
       return true;

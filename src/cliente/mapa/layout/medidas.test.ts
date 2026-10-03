@@ -93,7 +93,33 @@ describe('carrinha', () => {
   });
 });
 
+describe('carrinha compacta', () => {
+  it('sem lugares, mais estreita e muito mais curta; a matrícula e a lotação continuam lá', () => {
+    const compacta = geometriaCarrinha(9, true);
+    const inteira = geometriaCarrinha(9);
+    expect(compacta.compacta).toBe(true);
+    expect(inteira.compacta).toBe(false);
+    expect(compacta.lugares).toEqual([]);
+    expect(compacta.largura).toBeLessThan(inteira.largura);
+    expect(compacta.altura).toBeLessThan(inteira.altura / 3);
+    // Não depende dos lugares.
+    expect(geometriaCarrinha(5, true)).toEqual({ ...geometriaCarrinha(9, true) });
+    expect(compacta.estado.y).toBeGreaterThan(compacta.parabrisas.y + compacta.parabrisas.altura);
+    expect(compacta.estado.y + compacta.estado.altura).toBeLessThanOrEqual(compacta.altura);
+    expect(
+      contem(caixa(compacta), { x: compacta.placa.x + compacta.placa.largura, y: compacta.placa.y }),
+    ).toBe(true);
+  });
+});
+
 describe('obra', () => {
+  it('com uma coluna, o cartão tem largura para o nome da obra e os nomes ocupam-na toda', () => {
+    const g = geometriaObra(3);
+    expect(g.largura).toBeGreaterThan(NOME.largura + 40);
+    for (const l of g.lugares) expect(l.largura).toBe(g.cabecalho.largura);
+    lugaresArrumados(g);
+  });
+
   it('uma coluna até OBRA_MAX_UMA_COLUNA pessoas, depois duas', () => {
     const uma = geometriaObra(OBRA_MAX_UMA_COLUNA);
     const duas = geometriaObra(OBRA_MAX_UMA_COLUNA + 1);

@@ -27,7 +27,8 @@ export function classeDestaque(destaque: Destaque): string {
 }
 
 /** Foco do teclado num botão do mapa: um anel (box-shadow), que o Leaflet não apaga. */
-export const CLASSE_FOCO_TECLADO = 'focus-visible:ring-2 focus-visible:ring-sky-600 focus-visible:ring-offset-1';
+export const CLASSE_FOCO_TECLADO =
+  'focus-visible:ring-2 focus-visible:ring-sky-600 focus-visible:ring-offset-1';
 
 /** Classe que liga o CSS dos nomes no mapa (estilos.css: mais justos do que na lista). */
 export const CLASSE_NOMES_MAPA = 'nomes-mapa';

@@ -5,6 +5,7 @@
 import { useEffect } from 'react';
 import { BarraEdicao } from './edicao/BarraEdicao';
 import { BotoesCabecalho, ContornoEdicao, Edicao } from './edicao/Edicao';
+import { textoDoErro } from './edicao/erros';
 import { useLoja } from './estado/loja';
 import { Mapa } from './mapa/Mapa';
 import { CaixasLaterais } from './paineis/CaixasLaterais';
@@ -29,7 +30,7 @@ export function App() {
       <div className="grid h-full place-items-center p-6 text-center">
         <div>
           <p className="font-semibold text-red-700">Não foi possível carregar os dados.</p>
-          <p className="mt-1 text-sm text-slate-600">{erro}</p>
+          <p className="mt-1 text-sm text-slate-600">{textoDoErro(erro)}</p>
           <button
             type="button"
             className="mt-4 rounded bg-slate-900 px-3 py-1.5 text-sm text-white"
@@ -66,7 +67,7 @@ export function App() {
       </header>
       {erro && (
         <p role="alert" className="border-b border-red-200 bg-red-50 px-3 py-1.5 text-sm text-red-900">
-          Não foi possível atualizar os dados: {erro}{' '}
+          Não foi possível atualizar os dados. {textoDoErro(erro)}{' '}
           <button type="button" className="font-semibold underline" onClick={() => void carregar()}>
             Tentar outra vez
           </button>

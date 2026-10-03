@@ -41,7 +41,12 @@ function Lugar({ g, children }: { g: GeometriaCartao; children: ReactNode }) {
     >
       <div
         className="absolute left-0 top-0"
-        style={{ width: g.largura, height: g.altura, transform: `scale(${ESCALA_DOCA})`, transformOrigin: '0 0' }}
+        style={{
+          width: g.largura,
+          height: g.altura,
+          transform: `scale(${ESCALA_DOCA})`,
+          transformOrigin: '0 0',
+        }}
       >
         {children}
       </div>
@@ -75,7 +80,8 @@ export function DocaCarrinhas({ modelo }: { modelo: ModeloMapa }) {
   return (
     <section
       className={[
-        'flex max-h-[calc(100%-5rem)] w-[260px] max-w-full flex-col overflow-hidden rounded-lg border bg-white/95 shadow-md select-none',
+        // Sem max-h em percentagem (o contentor tem altura automática): encolhe pelo min-h-0 e a lista rola.
+        'flex min-h-0 w-[260px] max-w-full flex-col overflow-hidden rounded-lg border bg-white/95 shadow-md select-none',
         algumDestacado ? 'border-slate-900 ring-2 ring-slate-900' : 'border-slate-300',
       ].join(' ')}
       aria-label={titulo}
@@ -97,7 +103,13 @@ export function DocaCarrinhas({ modelo }: { modelo: ModeloMapa }) {
           className="shrink-0 text-slate-500"
           style={{ transform: aberta ? 'rotate(90deg)' : undefined }}
         >
-          <path d="M2 1 L6 4 L2 7" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+          <path
+            d="M2 1 L6 4 L2 7"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+          />
         </svg>
         <span className="min-w-0 flex-1 truncate">{titulo}</span>
         <span className="rounded-full bg-slate-200 px-1.5 text-[11px] tabular-nums">{total}</span>
@@ -138,7 +150,13 @@ export function DocaCarrinhas({ modelo }: { modelo: ModeloMapa }) {
                   const g = geometriaCasa(c.nLugares);
                   return (
                     <Lugar key={c.id} g={g}>
-                      <CartaoCasa casaId={c.id} geometria={g} x={0} y={0} destaque={destaqueDe(chaveCasa(c.id))} />
+                      <CartaoCasa
+                        casaId={c.id}
+                        geometria={g}
+                        x={0}
+                        y={0}
+                        destaque={destaqueDe(chaveCasa(c.id))}
+                      />
                     </Lugar>
                   );
                 })}
@@ -155,7 +173,13 @@ export function DocaCarrinhas({ modelo }: { modelo: ModeloMapa }) {
                   const g = geometriaObra(o.nPessoas);
                   return (
                     <Lugar key={o.id} g={g}>
-                      <CartaoObra obraId={o.id} geometria={g} x={0} y={0} destaque={destaqueDe(chaveObra(o.id))} />
+                      <CartaoObra
+                        obraId={o.id}
+                        geometria={g}
+                        x={0}
+                        y={0}
+                        destaque={destaqueDe(chaveObra(o.id))}
+                      />
                     </Lugar>
                   );
                 })}

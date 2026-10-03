@@ -12,11 +12,18 @@ import {
   type LocalAArrumar,
   opcoesDeArrumacao,
   pontuacao,
+  type RotuloArrumado,
+  rotulosJuntoDosPontos,
 } from './arrumacao';
+import { distanciaAoRetangulo } from './colisoes';
 import { type Retangulo, sobrepoem } from './geometria';
 import { geometriaCarrinha, geometriaCasa } from './medidas';
+import type { Ponto } from './projecao';
 
-const casa = (id: string, n: number): ElementoCartao => ({ chave: `casa:${id}`, geometria: geometriaCasa(n) });
+const casa = (id: string, n: number): ElementoCartao => ({
+  chave: `casa:${id}`,
+  geometria: geometriaCasa(n),
+});
 const carrinha = (id: string, n: number): ElementoCartao => ({
   chave: `carrinha:${id}`,
   geometria: geometriaCarrinha(n),
@@ -114,10 +121,28 @@ describe('arrumar um local', () => {
     const opcoes = arrumacoesDoLocal(RUA);
     const pontos = opcoes.map(pontuacao);
     expect([...pontos].sort((x, y) => x - y)).toEqual(pontos);
-    expect(new Set(opcoes.map((o) => `${o.largura}x${o.altura}`)).size).toBe(opcoes.length);
+    const chave = (o: Arrumacao) => `${o.largura}x${o.altura}:${o.cartoes[0]?.x},${o.cartoes[0]?.y}`;
+    expect(new Set(opcoes.map(chave)).size).toBe(opcoes.length);
     for (const o of opcoes) {
       expect(o.cartoes).toHaveLength(8);
       arrumada(o);
+    }
+  });
+
+  it('há uma opção com a casa ao meio e as carrinhas repartidas pelos dois lados', () => {
+    const opcoes = arrumacoesDoLocal(UMA_CASA);
+    const aoMeio = opcoes.find((o) => {
+      const casa = o.cartoes.find((c) => c.chave === 'casa:C1');
+      const vans = o.cartoes.filter((c) => c.geometria.tipo === 'carrinha');
+      return casa && vans.some((v) => v.x < casa.x) && vans.some((v) => v.x > casa.x);
+    });
+    expect(aoMeio).toBeDefined();
+    if (aoMeio) arrumada(aoMeio);
+  });
+
+  it('os cartões vêm sempre pela ordem casas, carrinhas, obras (a ordem do Tab)', () => {
+    for (const o of arrumacoesDoLocal(UMA_CASA)) {
+      expect(o.cartoes.map((c) => c.chave)).toEqual(['casa:C1', 'carrinha:V1', 'carrinha:V2']);
     }
   });
 
@@ -128,9 +153,76 @@ describe('arrumar um local', () => {
     for (const c of a.cartoes) expect(c.y).toBeGreaterThanOrEqual((rotulo?.retangulo.altura ?? 0) + 1);
   });
 
+  it('com rótulo, também há a mesma arrumação com o rótulo por baixo (para um bloco por baixo do ponto)', () => {
+    const opcoes = arrumacoesDoLocal(RUA);
+    const emBaixo = opcoes.filter((o) => (o.rotulos[0]?.retangulo.y ?? 0) > 0);
+    expect(emBaixo.length).toBeGreaterThan(0);
+    for (const o of emBaixo) {
+      const r = o.rotulos[0]?.retangulo as Retangulo;
+      expect(r.y + r.altura).toBe(o.altura);
+      for (const c of o.cartoes) expect(c.y + c.geometria.altura).toBeLessThanOrEqual(r.y);
+      arrumada(o);
+    }
+  });
+
+  it('o rótulo tem uma faixa da largura dos cartões e começa encostado à esquerda', () => {
+    for (const o of arrumacoesDoLocal(RUA)) {
+      const r = o.rotulos[0] as RotuloArrumado;
+      expect(r.faixa).toEqual({ x: 0, y: r.retangulo.y, largura: o.largura, altura: r.retangulo.altura });
+      expect(r.retangulo.x).toBe(0);
+      expect(r.alinhamento).toBe('esquerda');
+    }
+  });
+
   it('a pontuação prefere blocos largos a altos com a mesma área', () => {
     expect(pontuacao({ largura: 400, altura: 200 })).toBeLessThan(pontuacao({ largura: 200, altura: 400 }));
     expect(pontuacao({ largura: 400, altura: 200 })).toBeLessThan(pontuacao({ largura: 1600, altura: 50 }));
+  });
+});
+
+describe('rotulosJuntoDosPontos', () => {
+  const a = arrumarLocal(RUA);
+  const original = a.rotulos[0] as RotuloArrumado;
+  const { faixa } = original;
+  const rotulo = (p: Ponto) => rotulosJuntoDosPontos(a, new Map([['L2', p]])).rotulos[0] as RotuloArrumado;
+
+  it('com o ponto para lá da ponta direita, o rótulo encosta à direita (antes ficava sempre à esquerda)', () => {
+    const r = rotulo({ x: a.largura + 60, y: faixa.y + 5 });
+    expect(r.retangulo.x + r.retangulo.largura).toBe(faixa.x + faixa.largura);
+    expect(r.alinhamento).toBe('direita');
+  });
+
+  it('com o ponto à esquerda, fica encostado à esquerda', () => {
+    const r = rotulo({ x: -40, y: -10 });
+    expect(r.retangulo.x).toBe(faixa.x);
+    expect(r.alinhamento).toBe('esquerda');
+  });
+
+  it('com o ponto por cima do meio da faixa, o rótulo fica centrado nele', () => {
+    const r = rotulo({ x: Math.round(a.largura / 2), y: -10 });
+    expect(Math.abs(r.retangulo.x + r.retangulo.largura / 2 - a.largura / 2)).toBeLessThanOrEqual(1);
+    expect(r.alinhamento).toBe('centro');
+  });
+
+  it('fica dentro da faixa, do mesmo tamanho, e tão perto do ponto como a faixa', () => {
+    const w = original.retangulo.largura;
+    for (const x of [-500, -1, 0, 30, w / 2, a.largura / 2, a.largura - 3, a.largura + 2, 900]) {
+      for (const y of [-30, faixa.y + 2, a.altura + 20]) {
+        const r = rotulo({ x, y });
+        expect(r.retangulo.x).toBeGreaterThanOrEqual(faixa.x);
+        expect(r.retangulo.x + r.retangulo.largura).toBeLessThanOrEqual(faixa.x + faixa.largura);
+        expect({ ...r.retangulo, x: 0 }).toEqual({ ...original.retangulo, x: 0 });
+        expect(distanciaAoRetangulo({ x, y }, r.retangulo)).toBeCloseTo(
+          distanciaAoRetangulo({ x, y }, faixa),
+          0,
+        );
+      }
+    }
+  });
+
+  it('não mexe nos cartões nem nos rótulos de locais sem ponto', () => {
+    expect(rotulosJuntoDosPontos(a, new Map([['outro', { x: 999, y: 0 }]])).rotulos).toEqual(a.rotulos);
+    expect(rotulosJuntoDosPontos(a, new Map([['L2', { x: 999, y: 0 }]])).cartoes).toEqual(a.cartoes);
   });
 });
 

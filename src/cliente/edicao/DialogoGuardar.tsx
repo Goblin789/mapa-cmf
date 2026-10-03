@@ -9,6 +9,7 @@ import { MarcaCliente } from '../paineis/pecas';
 import { comPlural } from '../paineis/textos';
 import { BOTAO_PERIGO, BOTAO_PRIMARIO, BOTAO_SECUNDARIO } from './classes';
 import { Dialogo } from './Dialogo';
+import { textoDoErro } from './erros';
 import { IconeAviso, IconeGuardar, IconeRodar } from './icones';
 import { agruparAlteracoes, calcularAvisos } from './resumo';
 import { useUiEdicao } from './ui';
@@ -147,7 +148,8 @@ export function DialogoGuardar({ aoFechar }: { aoFechar: () => void }) {
             >
               <IconeAviso className="mt-0.5 h-4 w-4 text-red-700" />
               <span>
-                <strong className="font-semibold">Não foi possível guardar.</strong> {erroGuardar}
+                <strong className="font-semibold">Não foi possível guardar.</strong>{' '}
+                {textoDoErro(erroGuardar)}
               </span>
             </p>
           )}

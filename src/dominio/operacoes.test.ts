@@ -409,7 +409,7 @@ describe('nomeDoValor', () => {
   it('nomes de casa, carrinha (matrícula) e obra', () => {
     const estado = estadoExemplo();
     expect(nomeDoValor(estado, 'casaId', 'casa-2')).toBe('Casa Dois');
-    expect(nomeDoValor(estado, 'carrinhaId', 'zz1003')).toBe('ZZ1003');
+    expect(nomeDoValor(estado, 'carrinhaId', 'zz1003')).toBe('ZZ 1003');
     expect(nomeDoValor(estado, 'obraId', 'obra-a')).toBe('Obra Alfa');
   });
 
@@ -435,7 +435,7 @@ describe('descreverOperacao', () => {
       'Ana T. — casa: Casa Um → Casa Três',
     );
     expect(descreverOperacao(estado, mover('p-helena', 'carrinhaId', null, 'zz1001'))).toBe(
-      'Helena Z. — carrinha: Sem transporte da empresa → ZZ1001',
+      'Helena Z. — carrinha: Sem transporte da empresa → ZZ 1001',
     );
     expect(descreverOperacao(estado, mover('p-filipe', 'obraId', 'obra-a', null))).toBe(
       'Filipe Q. — obra: Obra Alfa → sem obra',

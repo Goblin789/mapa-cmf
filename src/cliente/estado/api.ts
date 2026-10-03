@@ -1,27 +1,18 @@
-import type { Conflito, Operacao } from '../../dominio/operacoes';
+import type {
+  AlteracaoHistorico,
+  ConflitoServidor,
+  EntradaHistorico,
+  PedidoGuardar,
+  RespostaGuardar,
+} from '../../dominio/api';
 import type { Estado } from '../../dominio/tipos';
+
+export type { AlteracaoHistorico, ConflitoServidor, EntradaHistorico, PedidoGuardar, RespostaGuardar };
 
 export async function obterEstado(): Promise<Estado> {
   const resposta = await fetch('/api/estado', { headers: { accept: 'application/json' } });
   if (!resposta.ok) throw new Error(`O servidor respondeu ${resposta.status} ao pedir o estado.`);
   return (await resposta.json()) as Estado;
-}
-
-export interface PedidoGuardar {
-  /** Versão do estado sobre a qual as alterações foram feitas (informativa; os conflitos vêm do `de`). */
-  versaoBase: number;
-  operacoes: Operacao[];
-  comentario?: string;
-}
-
-export interface RespostaGuardar {
-  loteId: number;
-  versao: number;
-}
-
-/** Conflito devolvido pelo servidor, já com a frase pronta a mostrar. */
-export interface ConflitoServidor extends Conflito {
-  descricao: string;
 }
 
 /** O servidor recusou porque alguém mudou entretanto as mesmas pessoas (HTTP 409). Nada foi gravado. */
@@ -49,28 +40,6 @@ export async function guardarLote(pedido: PedidoGuardar): Promise<RespostaGuarda
     throw new Error(`${corpo.erro ?? `O servidor respondeu ${resposta.status}.`}${detalhe}`);
   }
   return { loteId: corpo.loteId as number, versao: corpo.versao as number };
-}
-
-export interface AlteracaoHistorico {
-  entidade: string;
-  entidadeId: string;
-  campo: string;
-  /** Valores em JSON, como estão na base de dados (null = não existia). */
-  antes: string | null;
-  depois: string | null;
-  /** Frase pronta a mostrar (ex.: "Rui Reis — casa: Casa 1 Puttelange → Steinsel"). */
-  descricao: string;
-}
-
-export interface EntradaHistorico {
-  loteId: number;
-  autor: string;
-  criadoEm: string;
-  efetivoEm: string;
-  tipo: string;
-  estado: string;
-  comentario: string | null;
-  alteracoes: AlteracaoHistorico[];
 }
 
 /** GET /api/historico — lotes mais recentes primeiro. */

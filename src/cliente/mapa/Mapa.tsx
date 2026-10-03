@@ -13,11 +13,12 @@ import { CartoesNoMapa } from './CartoesNoMapa';
 import { ControloCamadas } from './ControloCamadas';
 import { DocaCarrinhas } from './DocaCarrinhas';
 import { useArrastoNoMapa, useCaixaSelecao } from './interacoesEdicao';
-import { disporMapa } from './layout/disposicao';
+import { type Disposicao, disporMapa } from './layout/disposicao';
 import { centroParaIrPara, enquadrarTudo, type Margens } from './layout/enquadramento';
 import { LARGURA_ESTREITA } from './layout/escala';
 import { type GrupoNoMapa, montarModelo } from './layout/grupos';
 import { useVistaMapa } from './useVistaMapa';
+import { continuaAutomatica, type VistaAutomatica } from './vistaAutomatica';
 
 /** Só o Luxemburgo e arredores (França, Bélgica, Alemanha). */
 const LIMITES: L.LatLngBoundsLiteral = [
@@ -68,20 +69,6 @@ interface Instancia {
   camada: CamadaCartoes;
 }
 
-/** Vista posta pelo enquadramento automático (para saber se o utilizador já mexeu no mapa). */
-interface VistaAutomatica {
-  mapa: L.Map;
-  zoom: number;
-  centro: L.LatLng;
-}
-
-function continuaAutomatica(v: VistaAutomatica | null, mapa: L.Map): boolean {
-  if (!v || v.mapa !== mapa || v.zoom !== mapa.getZoom()) return false;
-  const p = mapa.latLngToContainerPoint(v.centro);
-  const t = mapa.getSize();
-  return Math.abs(p.x - t.x / 2) <= 2 && Math.abs(p.y - t.y / 2) <= 2;
-}
-
 export function Mapa() {
   const refElemento = useRef<HTMLDivElement>(null);
   const refCaixa = useRef<HTMLDivElement>(null);
@@ -104,13 +91,26 @@ export function Mapa() {
   const zoom = vista?.zoom ?? null;
   const largura = vista?.largura ?? 0;
   const altura = vista?.altura ?? 0;
-  const disposicao = useMemo(
-    () =>
-      modelo && zoom !== null
-        ? disporMapa(modelo.grupos, { zoom, larguraMapa: largura, alturaMapa: altura, expandidos })
-        : null,
-    [modelo, zoom, largura, altura, expandidos],
-  );
+  const modoEdicao = useLoja((s) => s.modoEdicao);
+  // A disposição que está no ecrã.
+  const noEcra = useRef<Disposicao | null>(null);
+  const disposicao = useMemo(() => {
+    if (!modelo || zoom === null) return null;
+    // No modo de edição, os blocos que não mudaram ficam onde estavam (no mesmo zoom): nem a barra da
+    // edição (o mapa fica mais baixo) nem largar alguém numa casa cheia (a casa cresce uma linha) fazem
+    // saltar o resto do mapa. Fora dele (e ao guardar ou cancelar), a disposição é a normal.
+    const anterior = modoEdicao ? noEcra.current : null;
+    return disporMapa(modelo.grupos, {
+      zoom,
+      larguraMapa: largura,
+      alturaMapa: altura,
+      expandidos,
+      anterior,
+    });
+  }, [modelo, zoom, largura, altura, expandidos, modoEdicao]);
+  useEffect(() => {
+    noEcra.current = disposicao;
+  }, [disposicao]);
 
   const enquadrar = (mapa: L.Map, grupos: readonly GrupoNoMapa[]): boolean => {
     if (!aplicarVistaInicial(mapa, grupos)) return false;
@@ -147,7 +147,8 @@ export function Mapa() {
     mapa.attributionControl.setPrefix('<a href="https://leafletjs.com">Leaflet</a>');
 
     const m = modeloAtual();
-    if (!m || !refEnquadrar.current(mapa, m.grupos)) mapa.setView(CENTRO_OMISSAO, ZOOM_OMISSAO, { animate: false });
+    if (!m || !refEnquadrar.current(mapa, m.grupos))
+      mapa.setView(CENTRO_OMISSAO, ZOOM_OMISSAO, { animate: false });
 
     const camada = new CamadaCartoes().addTo(mapa);
 
@@ -158,7 +159,8 @@ export function Mapa() {
     });
 
     // O <main> pode mudar de tamanho sem a janela mudar (painéis à volta). Se a vista ainda é a do
-    // enquadramento automático, volta a enquadrar para o novo tamanho.
+    // enquadramento automático (ou o mapa nasceu sem tamanho e nunca foi enquadrado), volta a enquadrar
+    // para o novo tamanho.
     let pedido = 0;
     const observador = new ResizeObserver(() => {
       cancelAnimationFrame(pedido);
@@ -188,10 +190,8 @@ export function Mapa() {
     if (!instancia || !temModelo) return;
     const m = modeloAtual();
     if (!m) return;
-    const v = vistaAutomatica.current;
-    if (v?.mapa !== instancia.mapa || continuaAutomatica(v, instancia.mapa)) {
+    if (continuaAutomatica(vistaAutomatica.current, instancia.mapa))
       refEnquadrar.current(instancia.mapa, m.grupos);
-    }
   }, [instancia, temModelo, camadas]);
 
   // Pedidos de "ir para" (pesquisa, painéis): voa até lá. Se o ponto for um local com cartões, centra
@@ -227,7 +227,10 @@ export function Mapa() {
         className="pointer-events-none absolute z-10 hidden rounded-sm border-2 border-blue-600 bg-blue-500/10"
       />
       {instancia &&
-        createPortal(<CartoesNoMapa camada={instancia.camada} disposicao={disposicao} />, instancia.camada.contentor)}
+        createPortal(
+          <CartoesNoMapa camada={instancia.camada} disposicao={disposicao} />,
+          instancia.camada.contentor,
+        )}
       <div className="pointer-events-none absolute top-2 right-2 bottom-24 z-10 flex max-w-[calc(100%-1rem)] flex-col items-end gap-2">
         <div className="pointer-events-auto">
           <ControloCamadas />

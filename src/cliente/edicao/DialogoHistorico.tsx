@@ -8,6 +8,7 @@ import { FOCO_VISIVEL } from '../paineis/classes';
 import { comPlural } from '../paineis/textos';
 import { BOTAO_SECUNDARIO } from './classes';
 import { Dialogo } from './Dialogo';
+import { textoDoErro } from './erros';
 import {
   DESCRICOES_VISIVEIS,
   formatarDataHora,
@@ -106,7 +107,7 @@ export function DialogoHistorico({ aoFechar }: { aoFechar: () => void }) {
         if (atual) setEntradas(lista);
       })
       .catch((e: unknown) => {
-        if (atual) setErro(e instanceof Error ? e.message : String(e));
+        if (atual) setErro(textoDoErro(e instanceof Error ? e.message : String(e)));
       })
       .finally(() => {
         if (atual) setACarregar(false);

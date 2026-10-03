@@ -59,10 +59,12 @@ export function Dialogo({
       : null,
   );
   const premidoFora = useRef(false);
+  const montado = useRef(false);
 
   useLayoutEffect(() => {
     const dialogo = ref.current;
     if (!dialogo) return;
+    montado.current = true;
     if (!dialogo.open) dialogo.showModal();
     const alvo =
       focoInicial?.current ??
@@ -70,6 +72,7 @@ export function Dialogo({
       dialogo.querySelector<HTMLElement>('[data-fechar]');
     alvo?.focus();
     return () => {
+      montado.current = false;
       if (dialogo.open) dialogo.close();
       if (quemAbriu?.isConnected) quemAbriu.focus();
     };
@@ -97,6 +100,15 @@ export function Dialogo({
         // Outros pedidos de fecho do browser (ex.: botão "voltar" no Android).
         e.preventDefault();
         pedirFecho();
+      }}
+      onClose={() => {
+        // O browser também pode fechá-lo sem dar hipótese de recusar (ex.: "voltar" duas vezes seguidas
+        // no Android). Montado mas fechado, ficava invisível e voltar a abri-lo não fazia nada: fecha-se
+        // a sério ou, enquanto grava, volta a abrir-se. (O close() do fim e o do StrictMode não contam.)
+        const dialogo = ref.current;
+        if (!montado.current || !dialogo || dialogo.open) return;
+        if (bloqueado) dialogo.showModal();
+        else aoFechar();
       }}
       onPointerDown={(e) => {
         premidoFora.current = e.target === e.currentTarget;

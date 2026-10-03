@@ -213,13 +213,23 @@ export const useLoja = create<Loja>()((set, get) => {
       const { passos, passosDesfeitos, modoEdicao } = get();
       const ultimo = passos.at(-1);
       if (!modoEdicao || !ultimo) return;
-      set({ passosDesfeitos: [...passosDesfeitos, ultimo], ...recalcular(passos.slice(0, -1)) });
+      set({
+        passosDesfeitos: [...passosDesfeitos, ultimo],
+        conflitos: null,
+        erroGuardar: null,
+        ...recalcular(passos.slice(0, -1)),
+      });
     },
     refazer: () => {
       const { passos, passosDesfeitos, modoEdicao } = get();
       const proximo = passosDesfeitos.at(-1);
       if (!modoEdicao || !proximo) return;
-      set({ passosDesfeitos: passosDesfeitos.slice(0, -1), ...recalcular([...passos, proximo]) });
+      set({
+        passosDesfeitos: passosDesfeitos.slice(0, -1),
+        conflitos: null,
+        erroGuardar: null,
+        ...recalcular([...passos, proximo]),
+      });
     },
     aGuardar: false,
     erroGuardar: null,
@@ -234,21 +244,29 @@ export const useLoja = create<Loja>()((set, get) => {
       set({ aGuardar: true, erroGuardar: null, conflitos: null });
       try {
         await guardarLote({ versaoBase: estadoServidor.versao, operacoes: pendentes, comentario });
+        // O servidor aplicou estas operações com a mesma função: o estado gravado passa já a ser o que se
+        // via, mesmo que o recarregar a seguir falhe (senão o próximo rascunho partia de um estado antigo).
+        const gravado = aplicarOperacoes(estadoServidor, pendentes);
         set({
           modoEdicao: false,
-          passos: [],
           passosDesfeitos: [],
-          pendentes: [],
           selecao: new Set(),
           ancoraSelecao: null,
+          estadoServidor: gravado,
+          contadoresServidor: calcularContadores(gravado),
+          ...recalcular([], gravado),
         });
         await get().carregar();
         set({ aGuardar: false });
         return true;
       } catch (e) {
-        if (e instanceof ErroConflito)
+        if (e instanceof ErroConflito) {
           set({ conflitos: e.conflitos, erroGuardar: e.message, aGuardar: false });
-        else set({ erroGuardar: e instanceof Error ? e.message : String(e), aGuardar: false });
+          // Traz o que os outros gravaram: o rascunho passa a ver-se por cima do estado atual.
+          await get().carregar();
+        } else {
+          set({ erroGuardar: e instanceof Error ? e.message : String(e), aGuardar: false });
+        }
         return false;
       }
     },

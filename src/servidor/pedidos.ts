@@ -70,8 +70,8 @@ export function lerPedidoGuardar(corpo: unknown): Lido<PedidoGuardarValido> {
 }
 
 /**
- * `?limite=` do histórico: inteiro maior do que zero; sem ele, 50. Acima de 200 fica 200 (o "Carregar
- * mais" do browser vai pedindo mais 20 sem saber o máximo). Qualquer outra coisa é null (inválido).
+ * `?limite=` do histórico: inteiro maior do que zero; sem ele, 50. Acima de 200 fica 200 (quem pede mais
+ * recebe os 200 mais recentes em vez de um erro). Qualquer outra coisa é null (inválido).
  */
 export function lerLimiteHistorico(texto: string | undefined): number | null {
   if (texto === undefined) return LIMITE_HISTORICO.omissao;

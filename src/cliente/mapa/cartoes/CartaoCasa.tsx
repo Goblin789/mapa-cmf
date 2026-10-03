@@ -3,8 +3,8 @@
 // Neutra: só a pastilha da lotação tem a cor do nível. Os nomes têm a cor do cliente.
 // Clicar na casa põe-na em foco; no modo de edição é um alvo onde se largam pessoas (data-alvo).
 
-import { chaveAlvo } from '../../../dominio/operacoes';
 import { ocupacaoCasa } from '../../../dominio/ocupacao';
+import { chaveAlvo } from '../../../dominio/operacoes';
 import type { Casa, Id } from '../../../dominio/tipos';
 import { ESTILO_AVISO_CONTRATO, ESTILO_NIVEL } from '../../comum/lotacao';
 import { useLoja } from '../../estado/loja';

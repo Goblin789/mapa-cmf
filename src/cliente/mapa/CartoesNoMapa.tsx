@@ -61,11 +61,18 @@ export function CartoesNoMapa({ camada, disposicao }: Props) {
                 ? 'relacionado'
                 : null;
             return (
-              <PastilhaResumo key={g.chave} disposto={g} esquerda={esquerda} topo={topo} destaque={destaque} />
+              <PastilhaResumo
+                key={g.chave}
+                disposto={g}
+                esquerda={esquerda}
+                topo={topo}
+                destaque={destaque}
+              />
             );
           }
+          // Aberto à mão no resumo (ou no compacto, com as carrinhas inteiras): leva o botão de fechar.
           const aberto =
-            disposicao.modo === 'resumo' && g.locais.some((l) => expandidos.has(chaveGrupo(l.localId)));
+            disposicao.modo !== 'completo' && g.locais.some((l) => expandidos.has(chaveGrupo(l.localId)));
           return (
             <BlocoLocal
               key={g.chave}

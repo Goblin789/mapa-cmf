@@ -26,7 +26,16 @@ export function Pinos({ linhas, origem }: { linhas: readonly LinhaChamada[]; ori
         const y2 = l.para.y - origem.y;
         return (
           <g key={l.chave}>
-            <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="#ffffff" strokeWidth={3.5} strokeLinecap="round" opacity={0.85} />
+            <line
+              x1={x1}
+              y1={y1}
+              x2={x2}
+              y2={y2}
+              stroke="#ffffff"
+              strokeWidth={3.5}
+              strokeLinecap="round"
+              opacity={0.85}
+            />
             <line
               x1={x1}
               y1={y1}

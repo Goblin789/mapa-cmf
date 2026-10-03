@@ -16,10 +16,10 @@ const ind = indexar(estado);
 
 describe('textoArrastados', () => {
   it('um nome, ou o nome e quantos mais', () => {
-    expect(textoArrastados('Rui Reis', 1)).toBe('Rui Reis');
-    expect(textoArrastados('Rui Reis', 3)).toBe('Rui Reis +2');
-    expect(partesArrastados('Rui Reis', 2)).toEqual({ nome: 'Rui Reis', mais: '+1' });
-    expect(partesArrastados('Rui Reis', 1)).toEqual({ nome: 'Rui Reis', mais: null });
+    expect(textoArrastados('Gil N.', 1)).toBe('Gil N.');
+    expect(textoArrastados('Gil N.', 3)).toBe('Gil N. +2');
+    expect(partesArrastados('Gil N.', 2)).toEqual({ nome: 'Gil N.', mais: '+1' });
+    expect(partesArrastados('Gil N.', 1)).toEqual({ nome: 'Gil N.', mais: null });
   });
 
   it('frase para os leitores de ecrã', () => {

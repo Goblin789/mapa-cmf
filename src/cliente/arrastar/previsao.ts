@@ -1,4 +1,4 @@
-// Textos do fantasma: quem se está a arrastar ("Rui Reis +2") e o que acontece se se largar no alvo
+// Textos do fantasma: quem se está a arrastar ("Gil N. +2") e o que acontece se se largar no alvo
 // debaixo do ponteiro ("Steinsel: 12 + 2 = 14/12 ▲"). Calculado sobre o estado VISÍVEL (com o rascunho).
 
 import type { Indices } from '../../dominio/indices';
@@ -19,13 +19,13 @@ export function partesArrastados(
   return { nome: nomePrincipal, mais: total > 1 ? `+${total - 1}` : null };
 }
 
-/** "Rui Reis" ou, levando mais pessoas, "Rui Reis +2". */
+/** "Gil N." ou, levando mais pessoas, "Gil N. +2". */
 export function textoArrastados(nomePrincipal: string, total: number): string {
   const { nome, mais } = partesArrastados(nomePrincipal, total);
   return mais ? `${nome} ${mais}` : nome;
 }
 
-/** Frase para os leitores de ecrã: "Rui Reis" / "Rui Reis e mais 2 pessoas". */
+/** Frase para os leitores de ecrã: "Gil N." / "Gil N. e mais 2 pessoas". */
 export function descricaoArrastados(nomePrincipal: string, total: number): string {
   if (total <= 1) return nomePrincipal;
   return `${nomePrincipal} e mais ${total - 1 === 1 ? '1 pessoa' : `${total - 1} pessoas`}`;

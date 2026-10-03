@@ -55,9 +55,12 @@ export function criarFantasma({ nome, mais, corFundo, corTexto, ponteiro }: Opco
   const medir = () => {
     tamanho = { largura: raiz.offsetWidth, altura: raiz.offsetHeight };
   };
+  /** Última posição do ponteiro: a previsão pode mudar sem ele se mexer (a lista ou o mapa deslizam). */
+  let ponteiroAtual: { x: number; y: number } | null = null;
 
   const fantasma: Fantasma = {
     posicionar(x, y) {
+      ponteiroAtual = { x, y };
       const p = posicaoFantasma(
         x,
         y,
@@ -88,6 +91,9 @@ export function criarFantasma({ nome, mais, corFundo, corTexto, ponteiro }: Opco
         }
       }
       medir();
+      // Com outro tamanho muda a posição (centrado por cima do dedo, ou do outro lado do rato junto à
+      // borda): sem isto o fantasma ficava descentrado ou por baixo do ponteiro até este se mexer.
+      if (ponteiroAtual) fantasma.posicionar(ponteiroAtual.x, ponteiroAtual.y);
     },
     remover() {
       raiz.remove();

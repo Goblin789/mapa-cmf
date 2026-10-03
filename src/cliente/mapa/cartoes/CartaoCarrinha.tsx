@@ -2,10 +2,12 @@
 // luxemburguesa no nariz, para-brisas escuro, espelhos, calhas do tejadilho e um nome por linha (um por
 // lugar). Atrás: "≈" quando o sítio onde dorme é só sugerido, e a pastilha "ocupados/lugares" (a única
 // coisa com a cor do nível). Clicar põe a carrinha em foco; no modo de edição é um alvo (data-alvo).
+// Compacta (modo compacto do mapa): mais curta e estreita, só a matrícula e a lotação; quem vai lá
+// dentro fica no tooltip e na ficha do foco.
 
 import type { ConfiancaDormida } from '../../../dominio/dormidas';
-import { chaveAlvo } from '../../../dominio/operacoes';
 import { ocupacaoCarrinha } from '../../../dominio/ocupacao';
+import { chaveAlvo } from '../../../dominio/operacoes';
 import type { Id } from '../../../dominio/tipos';
 import { ESTILO_NIVEL } from '../../comum/lotacao';
 import { Matricula } from '../../comum/Matricula';
@@ -49,7 +51,13 @@ function caminhoCarrocaria(r: Retangulo, raioFrente: number, raioTras: number): 
 
 function Silhueta({ g, destaque }: { g: GeometriaCarrinha; destaque: Destaque }) {
   const traco = tracoDestaque(destaque);
-  const corpo = { ...g.corpo, x: g.corpo.x + 0.5, y: g.corpo.y + 0.5, largura: g.corpo.largura - 1, altura: g.corpo.altura - 1 };
+  const corpo = {
+    ...g.corpo,
+    x: g.corpo.x + 0.5,
+    y: g.corpo.y + 0.5,
+    largura: g.corpo.largura - 1,
+    altura: g.corpo.altura - 1,
+  };
   const p = g.parabrisas;
   const calhaTopo = p.y + p.altura + 2;
   const calhaFundo = g.estado.y - 2;
@@ -108,6 +116,8 @@ export function CartaoCarrinha({ carrinhaId, geometria: g, x, y, confianca, dest
     estilo.rotulo,
     sugerida ? TEXTO_SUGERIDO : null,
     carrinha.nota,
+    // Compacta (sem os nomes à vista): quem vai lá dentro fica no tooltip.
+    g.compacta && passageiros.length > 0 ? `Vão: ${passageiros.map((p) => p.nomeCurto).join(', ')}` : null,
   ]
     .filter(Boolean)
     .join(' · ');
@@ -128,10 +138,13 @@ export function CartaoCarrinha({ carrinhaId, geometria: g, x, y, confianca, dest
         aria-pressed={emFoco}
         onClick={() => definirFoco(emFoco ? null : { tipo: 'carrinha', id: carrinhaId })}
       />
-      <span className="pointer-events-none absolute flex items-center justify-center" style={posicao(g.placa)}>
+      <span
+        className="pointer-events-none absolute flex items-center justify-center"
+        style={posicao(g.placa)}
+      >
         <Matricula matricula={carrinha.matricula} altura={g.placa.altura} />
       </span>
-      <Lugares pessoas={passageiros} lugares={g.lugares} capacidade={carrinha.lugares} />
+      {!g.compacta && <Lugares pessoas={passageiros} lugares={g.lugares} capacidade={carrinha.lugares} />}
       <div className="pointer-events-none absolute flex items-center gap-1" style={posicao(g.estado)}>
         {sugerida && (
           <span className="text-[11px] font-bold leading-3 text-slate-500" title={TEXTO_SUGERIDO}>

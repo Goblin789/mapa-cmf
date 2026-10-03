@@ -1,9 +1,15 @@
 // Medidas da vista inicial, para os testes e para afinar o layout: quanto do mapa os cartões tapam,
 // quão longe ficam do seu local e se há sobreposições. Puras (sem DOM).
 
-import { MARGEM_COLISAO, distanciaAoRetangulo } from './colisoes';
-import { chavesDoLocal, type Disposicao, disporMapa, retanguloDoLocal } from './disposicao';
-import { type Margens, enquadrarTudo } from './enquadramento';
+import { distanciaAoRetangulo, MARGEM_COLISAO } from './colisoes';
+import {
+  chavesDoLocal,
+  type Disposicao,
+  disporMapa,
+  retanguloDoLocal,
+  retangulosDesenhados,
+} from './disposicao';
+import { enquadrarTudo, type Margens } from './enquadramento';
 import { type Retangulo, sobrepoem } from './geometria';
 import type { GrupoNoMapa } from './grupos';
 import { projetar } from './projecao';
@@ -41,35 +47,6 @@ export function areaCoberta(rets: readonly Retangulo[], janela: Retangulo): numb
   let n = 0;
   for (const v of grelha) n += v;
   return n;
-}
-
-/** Retângulos que tapam o mapa: pastilhas e, nos blocos completos, cada cartão e cada rótulo. */
-export function retangulosDesenhados(d: Disposicao): Retangulo[] {
-  const rets: Retangulo[] = [];
-  for (const g of d.grupos) {
-    if (g.modo === 'resumo') {
-      rets.push({ x: g.x, y: g.y, largura: g.largura, altura: g.altura });
-      continue;
-    }
-    const s = g.escala;
-    for (const c of g.arrumacao.cartoes) {
-      rets.push({
-        x: g.x + c.x * s,
-        y: g.y + c.y * s,
-        largura: c.geometria.largura * s,
-        altura: c.geometria.altura * s,
-      });
-    }
-    for (const r of g.arrumacao.rotulos) {
-      rets.push({
-        x: g.x + r.retangulo.x * s,
-        y: g.y + r.retangulo.y * s,
-        largura: r.retangulo.largura * s,
-        altura: r.retangulo.altura * s,
-      });
-    }
-  }
-  return rets;
 }
 
 export interface OpcoesMetricas {

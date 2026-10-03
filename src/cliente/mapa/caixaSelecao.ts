@@ -26,7 +26,10 @@ export function intersectam(a: Retangulo, b: Retangulo): boolean {
 }
 
 /** Ids dos elementos cujo retângulo a caixa toca, sem repetir, pela ordem em que aparecem. */
-export function idsNaCaixa(caixa: Retangulo, elementos: readonly { id: string; retangulo: Retangulo }[]): string[] {
+export function idsNaCaixa(
+  caixa: Retangulo,
+  elementos: readonly { id: string; retangulo: Retangulo }[],
+): string[] {
   const ids: string[] = [];
   const vistos = new Set<string>();
   for (const e of elementos) {

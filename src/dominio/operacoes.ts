@@ -2,6 +2,7 @@
 // O browser aplica-as ao estado para mostrar a simulação; o servidor volta a validá-las e grava-as
 // num lote com histórico. Funções puras, iguais nos dois lados.
 
+import { formatarMatricula } from './matricula';
 import type { Estado, Id, Pessoa } from './tipos';
 
 export type CampoMovivel = 'casaId' | 'carrinhaId' | 'obraId';
@@ -170,14 +171,14 @@ export function nomeDoValor(estado: Estado, campo: CampoMovivel, valor: Id | nul
     return valor === null ? 'Fora das casas CMF' : (estado.casas.find((c) => c.id === valor)?.nome ?? valor);
   }
   if (campo === 'carrinhaId') {
-    return valor === null
-      ? 'Sem transporte da empresa'
-      : (estado.carrinhas.find((c) => c.id === valor)?.matricula ?? valor);
+    if (valor === null) return 'Sem transporte da empresa';
+    const carrinha = estado.carrinhas.find((c) => c.id === valor);
+    return carrinha ? formatarMatricula(carrinha.matricula) : valor;
   }
   return valor === null ? 'sem obra' : (estado.obras.find((o) => o.id === valor)?.nome ?? valor);
 }
 
-/** Ex.: "Rui Reis — casa: Casa 1 Puttelange → Steinsel". */
+/** Ex.: "Ana Exemplo — casa: Casa A → Casa B". */
 export function descreverOperacao(estado: Estado, op: Operacao): string {
   const nome = estado.pessoas.find((p) => p.id === op.pessoaId)?.nomeCurto ?? op.pessoaId;
   return `${nome} — ${NOME_CAMPO[op.campo]}: ${nomeDoValor(estado, op.campo, op.de)} → ${nomeDoValor(estado, op.campo, op.para)}`;

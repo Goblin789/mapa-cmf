@@ -34,9 +34,12 @@ export function BarraEdicao() {
   return (
     <section
       aria-label="Modo de edição"
+      // Recebe o foco ao entrar no modo de edição (o botão Editar desaparece; ver ganchos.ts).
+      data-barra-edicao
+      tabIndex={-1}
       // Pegajosa: no telemóvel a página rola e a barra (Cancelar, Guardar) tem de ficar à vista.
       // Acima do mapa e do contorno âmbar (1050), abaixo dos popovers do cabeçalho (1100).
-      className="sticky top-0 z-[1060] border-b border-amber-300 bg-amber-100 text-amber-950 shadow-sm"
+      className="sticky top-0 z-[1060] border-b border-amber-300 bg-amber-100 text-amber-950 shadow-sm outline-none"
     >
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-1.5">
         {/* No PC a largura parte do texto (flex-auto): se não couber tudo, os botões passam à linha seguinte

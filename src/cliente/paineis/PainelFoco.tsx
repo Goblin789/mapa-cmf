@@ -10,6 +10,7 @@ import type { Indices } from '../../dominio/indices';
 import { ocupacaoCarrinha, ocupacaoCasa } from '../../dominio/ocupacao';
 import type { Carrinha, Casa, Id, Pessoa } from '../../dominio/tipos';
 import { ESTILO_AVISO_CONTRATO } from '../comum/lotacao';
+import { formatarMatricula } from '../comum/Matricula';
 import {
   AcoesPessoa,
   MarcaAlterado,
@@ -162,7 +163,10 @@ function FichaPessoa({ pessoa, indices }: { pessoa: Pessoa; indices: Indices }) 
               </span>
               <span className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 leading-5">
                 {el.id && el.tipo !== 'obra' ? (
-                  <BotaoFoco foco={{ tipo: el.tipo, id: el.id }}>{el.rotulo}</BotaoFoco>
+                  <BotaoFoco foco={{ tipo: el.tipo, id: el.id }}>
+                    {/* Matrícula como no mapa e no "antes: …" logo abaixo ("ZZ 1001"). */}
+                    {el.tipo === 'carrinha' ? formatarMatricula(el.rotulo) : el.rotulo}
+                  </BotaoFoco>
                 ) : el.id ? (
                   <span>{el.rotulo}</span>
                 ) : (
@@ -297,7 +301,7 @@ function FichaCarrinha({
   return (
     <Moldura
       tipo={carrinha.temporaria ? 'Carrinha de substituição' : 'Carrinha'}
-      titulo={carrinha.matricula}
+      titulo={formatarMatricula(carrinha.matricula)}
       subtitulo={alternativas}
       alterado={alterada}
     >

@@ -5,7 +5,7 @@
 import { type KeyboardEvent, useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { Id, Pessoa } from '../../dominio/tipos';
 import { ESTILO_NIVEL } from '../comum/lotacao';
-import { Matricula } from '../comum/Matricula';
+import { formatarMatricula, Matricula } from '../comum/Matricula';
 import { useLoja } from '../estado/loja';
 import { FOCO_VISIVEL } from '../paineis/classes';
 import { cadeiaDaPessoa } from '../paineis/fichas';
@@ -51,7 +51,7 @@ function QuemMuda({ pessoas }: { pessoas: Pessoa[] }) {
       <p className="text-sm text-slate-700">
         <span className="text-slate-500">Agora: </span>
         {cadeiaDaPessoa(unica, indices)
-          .map((el) => el.rotulo)
+          .map((el) => (el.tipo === 'carrinha' && el.id ? formatarMatricula(el.rotulo) : el.rotulo))
           .join(' · ')}
       </p>
     );

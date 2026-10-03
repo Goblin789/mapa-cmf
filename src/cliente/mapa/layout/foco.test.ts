@@ -53,8 +53,9 @@ describe('relacoesFoco', () => {
 });
 
 describe('linhasFoco', () => {
-  it('no nível dos lugares, a linha da pessoa vai do lugar na casa ao lugar na carrinha', () => {
-    const d = disporMapa(modelo.grupos, { zoom: 12, nivel: 'lugares', expandidos: new Set() });
+  it('com os nomes, a linha da pessoa vai do lugar na casa ao lugar na carrinha', () => {
+    const d = disporMapa(modelo.grupos, { zoom: 12 });
+    expect(d.modo).toBe('completo');
     const linhas = linhasFoco(relacoesFoco({ tipo: 'pessoa', id: 'p4' }, indices), d, indices);
     // p4 mora na C1 (L1) e vai na V1 (dorme em L2): lugar 3 da casa, lugar 0 da carrinha.
     const casa = d.cartoes.get('casa:C1')?.lugares?.[3];
@@ -64,16 +65,27 @@ describe('linhasFoco', () => {
   });
 
   it('a linha até à obra acaba no local da obra', () => {
-    const d = disporMapa(modelo.grupos, { zoom: 12, nivel: 'lugares', expandidos: new Set() });
+    const d = disporMapa(modelo.grupos, { zoom: 12 });
     const linhas = linhasFoco(relacoesFoco({ tipo: 'pessoa', id: 'p1' }, indices), d, indices);
     expect(linhas).toHaveLength(2);
     expect(linhas[1]?.obraId).toBe('OB1');
     expect(linhas[0]?.obraId).toBeNull();
   });
 
-  it('entre cartões, a linha vai de borda a borda e fica certa depois de abrir um cartão', () => {
-    for (const expandidos of [new Set<string>(), new Set(['casa:C1', 'carrinha:V1'])]) {
-      const d = disporMapa(modelo.grupos, { zoom: 12, nivel: 'lugares', expandidos });
+  it('no modo compacto (carrinhas sem nomes), a linha chega à borda da carrinha', () => {
+    const d = disporMapa(modelo.grupos, { zoom: 10.25 });
+    expect(d.modo).toBe('compacto');
+    expect(d.cartoes.get('carrinha:V1')?.lugares).toEqual([]);
+    const [linha] = linhasFoco(relacoesFoco({ tipo: 'pessoa', id: 'p4' }, indices), d, indices);
+    const v1 = d.cartoes.get('carrinha:V1')?.retangulo;
+    const lugarCasa = d.cartoes.get('casa:C1')?.lugares?.[3];
+    expect(linha?.de).toEqual(centro(lugarCasa as never));
+    expect(contem(v1 as never, linha?.para as never)).toBe(true);
+  });
+
+  it('entre cartões, a linha vai de borda a borda e fica certa depois de abrir um local no resumo', () => {
+    for (const expandidos of [new Set<string>(), new Set(['grupo:L1', 'grupo:L2'])]) {
+      const d = disporMapa(modelo.grupos, { zoom: 9, expandidos });
       const [linha] = linhasFoco(relacoesFoco({ tipo: 'carrinha', id: 'V1' }, indices), d, indices);
       const v1 = d.cartoes.get('carrinha:V1')?.retangulo;
       const c1 = d.cartoes.get('casa:C1')?.retangulo;
@@ -84,8 +96,9 @@ describe('linhasFoco', () => {
   });
 
   it('no resumo, ligações dentro da mesma pastilha não desenham nada', () => {
-    const d = disporMapa(modelo.grupos, { zoom: 9, nivel: 'resumo', expandidos: new Set() });
-    // C2 e V2 estão ambas no grupo L1.
+    const d = disporMapa(modelo.grupos, { zoom: 9 });
+    expect(d.modo).toBe('resumo');
+    // C2 e V2 estão ambas no local L1.
     const linhas = linhasFoco(relacoesFoco({ tipo: 'pessoa', id: 'p6' }, indices), d, indices);
     expect(linhas).toEqual([]);
   });

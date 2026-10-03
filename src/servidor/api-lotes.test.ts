@@ -1,7 +1,7 @@
 // POST /api/lotes e GET /api/historico, de ponta a ponta na app (base de dados em memória, dados fictícios).
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { ConflitoServidor, EntradaHistorico } from '../cliente/estado/api';
+import type { ConflitoServidor, EntradaHistorico } from '../dominio/api';
 import type { Operacao } from '../dominio/operacoes';
 import { criarApp, TAMANHO_MAXIMO_LOTE } from './app';
 import { inserirDadosFicticios, inserirLotes } from './dados-de-teste';
@@ -283,7 +283,7 @@ describe('POST /api/lotes — conflitos (409)', () => {
           esperado: 'car-1',
           atual: 'car-2',
           descricao:
-            'Zé Teste — carrinha: esperavas ZZ0001, mas agora está em ZZ0002 (alguém mudou entretanto)',
+            'Zé Teste — carrinha: esperavas ZZ 0001, mas agora está em ZZ 0002 (alguém mudou entretanto)',
         },
         {
           pessoaId: 'p-alvaro',
@@ -555,7 +555,10 @@ describe('GET /api/historico', () => {
       [1, 'importacao', 'Importação de teste'],
     ]);
     expect(lista.map((h) => h.alteracoes.map((a) => a.descricao))).toStrictEqual([
-      ['Zé Teste — carrinha: ZZ0002 → Sem transporte da empresa', 'Zé Teste — obra: Obra do Vale → sem obra'],
+      [
+        'Zé Teste — carrinha: ZZ 0002 → Sem transporte da empresa',
+        'Zé Teste — obra: Obra do Vale → sem obra',
+      ],
       [
         'Álvaro Exemplo — casa: Fora das casas CMF → Casa Ribeira',
         'Álvaro Exemplo — casa a confirmar: sim → não',
@@ -568,7 +571,7 @@ describe('GET /api/historico', () => {
       campo: 'carrinhaId',
       antes: '"car-2"',
       depois: 'null',
-      descricao: 'Zé Teste — carrinha: ZZ0002 → Sem transporte da empresa',
+      descricao: 'Zé Teste — carrinha: ZZ 0002 → Sem transporte da empresa',
     });
   });
 
@@ -579,9 +582,8 @@ describe('GET /api/historico', () => {
     expect(await historico('?limite=200')).toHaveLength(61);
   });
 
-  // O "Carregar mais" do browser pede sempre mais 20 (20, 40, …, 200, 220): com mais de 200 lotes,
-  // um 400 deixava o histórico em erro. Acima do máximo devolve os 200 mais recentes e o browser,
-  // ao receber menos do que pediu, deixa de oferecer "Carregar mais".
+  // Acima do máximo devolve os 200 mais recentes em vez de um erro (o "Carregar mais" do browser também
+  // não passa de 200: ver cliente/edicao/historico.ts).
   it.each(['201', '220', '99999', '123456789012345678901234567890'])(
     'limite acima do máximo (%s) dá os 200 mais recentes',
     async (limite) => {
