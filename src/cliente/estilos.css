@@ -18,3 +18,64 @@ body {
 .mapa-fundo-cinzento .leaflet-tile-pane {
   filter: grayscale(1) contrast(0.9) brightness(1.05);
 }
+
+/* --- Cartões do mapa (mapa/cartoes) ------------------------------------------------------------ */
+/* Regras fora de @layer: ganham às classes do Tailwind (que estão em @layer utilities). */
+
+/* Sombra que acompanha a silhueta (o telhado, o nariz da carrinha), não um retângulo. */
+.forma-casa,
+.forma-carrinha {
+  filter: drop-shadow(0 1px 1.2px rgb(15 23 42 / 0.4));
+}
+
+/* Nomes nos cartões do mapa: mais justos do que na lista (cada linha tem 12 px). */
+.nomes-mapa [data-pessoa-id] {
+  padding: 0 3px;
+  gap: 3px;
+  line-height: 12px;
+  border-radius: 3px;
+}
+
+/* Lugar vazio: discreto, tracejado claro. */
+.lugar-vazio {
+  border-color: #cbd5e1;
+  background: rgb(248 250 252 / 0.85);
+}
+
+/* Rótulo de um local (ex.: "Himeling · Rue de la Grotte"): texto de mapa, com halo branco. */
+.rotulo-local {
+  text-shadow:
+    0 0 2px #fff,
+    0 0 2px #fff,
+    0 0 3px #fff,
+    0 0 4px #fff;
+}
+
+/* Alvo debaixo do ponteiro ao arrastar um nome: a própria forma acende (em vez do retângulo). */
+.cartao-mapa[data-alvo-estado="por-cima"] {
+  outline: none;
+}
+
+.cartao-mapa[data-alvo-estado="por-cima"] .forma-corpo {
+  fill: #eff6ff;
+  stroke: #2563eb;
+  stroke-width: 2.5px;
+  stroke-dasharray: none;
+}
+
+.cartao-mapa[data-alvo-estado="por-cima"] .forma-telhado {
+  stroke: #2563eb;
+  stroke-width: 2.5px;
+}
+
+.cartao-mapa[data-alvo-estado="por-cima"] .forma-casa,
+.cartao-mapa[data-alvo-estado="por-cima"] .forma-carrinha {
+  filter: drop-shadow(0 0 4px rgb(37 99 235 / 0.55));
+}
+
+/* A obra é um retângulo: acende o contorno. */
+.cartao-mapa.rounded-\[5px\][data-alvo-estado="por-cima"] {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 2px #2563eb;
+  background: #eff6ff;
+}

@@ -1,5 +1,7 @@
 // Ficha rápida do que está em foco (pessoa, casa ou carrinha), sobre o canto superior esquerdo do mapa.
 // Fecha com o botão ou com Esc. As casas, carrinhas e nomes da ficha mudam o foco.
+// No modo de edição: marca "alterado — por guardar", mostra o valor gravado ao lado do que mudou,
+// quem entra e sai, e os botões "Mudar casa/carrinha/obra" (abrem o "Mover para…").
 
 import { type ReactNode, useEffect, useId } from 'react';
 import { clienteEfetivoId } from '../../dominio/cores';
@@ -8,6 +10,14 @@ import type { Indices } from '../../dominio/indices';
 import { ocupacaoCarrinha, ocupacaoCasa } from '../../dominio/ocupacao';
 import type { Carrinha, Casa, Id, Pessoa } from '../../dominio/tipos';
 import { ESTILO_AVISO_CONTRATO } from '../comum/lotacao';
+import {
+  AcoesPessoa,
+  MarcaAlterado,
+  MovimentosPendentes,
+  usePessoaAlterada,
+  useSitioAlterado,
+  ValorGravado,
+} from '../edicao/PecasFoco';
 import { type Foco, useLoja } from '../estado/loja';
 import { alturaMaximaPainelFoco, FOCO_VISIVEL, Z_SOBRE_MAPA } from './classes';
 import { cadeiaDaPessoa, carrinhasDasPessoas, carrinhasQueDormemEm, casasDasPessoas } from './fichas';
@@ -28,16 +38,20 @@ import {
 } from './textos';
 
 const ROTULO_ELEMENTO = { casa: 'Casa', carrinha: 'Carrinha', obra: 'Obra' } as const;
+const CAMPO_ELEMENTO = { casa: 'casaId', carrinha: 'carrinhaId', obra: 'obraId' } as const;
 
 function Moldura({
   tipo,
   titulo,
   subtitulo,
+  alterado = false,
   children,
 }: {
   tipo: string;
   titulo: string;
   subtitulo?: ReactNode;
+  /** Tem alterações por guardar (modo de edição). */
+  alterado?: boolean;
   children: ReactNode;
 }) {
   const definirFoco = useLoja((s) => s.definirFoco);
@@ -48,11 +62,16 @@ function Moldura({
       aria-labelledby={idTitulo}
       // A ficha acaba por cima da legenda (canto inferior esquerdo) em vez de a tapar.
       style={{ maxHeight: alturaMaximaPainelFoco(alturaLegenda) }}
-      className={`absolute top-3 left-3 ${Z_SOBRE_MAPA} flex w-[min(22rem,calc(100%-4.5rem))] flex-col overflow-hidden rounded-lg border border-slate-300 bg-white text-sm shadow-lg`}
+      className={`absolute top-3 left-3 ${Z_SOBRE_MAPA} flex w-[min(22rem,calc(100%-4.5rem))] flex-col overflow-hidden rounded-lg border bg-white text-sm shadow-lg ${
+        alterado ? 'border-amber-400' : 'border-slate-300'
+      }`}
     >
       <header className="flex items-start gap-2 border-b border-slate-200 px-3 py-2">
         <div className="min-w-0 flex-1">
-          <p className="text-[11px] font-semibold tracking-wide text-slate-600 uppercase">{tipo}</p>
+          <p className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+            <span className="text-[11px] font-semibold tracking-wide text-slate-600 uppercase">{tipo}</span>
+            {alterado && <MarcaAlterado />}
+          </p>
           <h2 id={idTitulo} className="text-base leading-tight font-bold break-words text-slate-900">
             {titulo}
           </h2>
@@ -113,6 +132,7 @@ function FichaPessoa({ pessoa, indices }: { pessoa: Pessoa; indices: Indices }) 
   const cliente = indices.clientes.get(clienteEfetivoId(pessoa, indices.obras)) ?? null;
   const nome = nomeCompleto(pessoa);
   const hoje = hojeISO();
+  const alterada = usePessoaAlterada(pessoa.id);
   const subtitulo = [
     pessoa.numero ? `Nº ${pessoa.numero}` : 'Sem Nº',
     pessoa.nomeCurto !== nome ? `no mapa: ${pessoa.nomeCurto}` : null,
@@ -121,7 +141,7 @@ function FichaPessoa({ pessoa, indices }: { pessoa: Pessoa; indices: Indices }) 
     .join(' · ');
 
   return (
-    <Moldura tipo="Pessoa" titulo={nome} subtitulo={subtitulo}>
+    <Moldura tipo="Pessoa" titulo={nome} subtitulo={subtitulo} alterado={alterada}>
       <dl>
         <Linha rotulo="Cliente">
           <span className="inline-flex items-center gap-1.5">
@@ -149,6 +169,7 @@ function FichaPessoa({ pessoa, indices }: { pessoa: Pessoa; indices: Indices }) 
                   <Vazio>{el.rotulo}</Vazio>
                 )}
                 {el.aConfirmar && <MarcaAConfirmar />}
+                <ValorGravado pessoaId={pessoa.id} campo={CAMPO_ELEMENTO[el.tipo]} />
               </span>
             </li>
           ))}
@@ -162,6 +183,7 @@ function FichaPessoa({ pessoa, indices }: { pessoa: Pessoa; indices: Indices }) 
           {pessoa.temCarta === null ? <Vazio>{textoCarta(pessoa, hoje)}</Vazio> : textoCarta(pessoa, hoje)}
         </Linha>
       </dl>
+      <AcoesPessoa pessoa={pessoa} />
     </Moldura>
   );
 }
@@ -182,9 +204,15 @@ function FichaCasa({
   const { carrinhas, semCarrinha } = carrinhasDasPessoas(moradores, indices);
   const dormem = carrinhasQueDormemEm(casa.id, indices, dormidas);
   const apartamento = textoApartamento(casa, indices.casasPorLocal.get(casa.localId)?.length ?? 1);
+  const alterada = useSitioAlterado('casaId', casa.id);
 
   return (
-    <Moldura tipo="Casa" titulo={casa.nome} subtitulo={local?.morada ?? 'Morada desconhecida'}>
+    <Moldura
+      tipo="Casa"
+      titulo={casa.nome}
+      subtitulo={local?.morada ?? 'Morada desconhecida'}
+      alterado={alterada}
+    >
       <dl>
         {apartamento !== null && (
           <Linha rotulo="Apartamento">
@@ -205,6 +233,7 @@ function FichaCasa({
         </p>
       )}
       {casa.notaContrato && <p className="mt-1 text-xs text-slate-700 italic">{casa.notaContrato}</p>}
+      <MovimentosPendentes campo="casaId" id={casa.id} />
 
       <Secao titulo={`Moradores (${moradores.length})`}>
         <GrelhaNomes pessoas={moradores} />
@@ -263,12 +292,14 @@ function FichaCarrinha({
   const alternativas = carrinha.matriculasAlternativas.length
     ? `também ${carrinha.matriculasAlternativas.join(', ')}`
     : null;
+  const alterada = useSitioAlterado('carrinhaId', carrinha.id);
 
   return (
     <Moldura
       tipo={carrinha.temporaria ? 'Carrinha de substituição' : 'Carrinha'}
       titulo={carrinha.matricula}
       subtitulo={alternativas}
+      alterado={alterada}
     >
       <dl>
         <Linha rotulo="Modelo">{carrinha.modelo ?? <Vazio>desconhecido</Vazio>}</Linha>
@@ -287,6 +318,7 @@ function FichaCarrinha({
         </Linha>
       </dl>
       {carrinha.nota && <p className="mt-1 text-xs text-slate-700 italic">{carrinha.nota}</p>}
+      <MovimentosPendentes campo="carrinhaId" id={carrinha.id} />
 
       <Secao titulo={`Passageiros (${passageiros.length})`}>
         <GrelhaNomes pessoas={passageiros} vazio="Sem passageiros." />

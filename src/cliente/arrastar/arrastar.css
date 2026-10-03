@@ -1,0 +1,152 @@
+/* Motor de arrastar: nomes arrastáveis, fantasma e realce do alvo. Importado por MotorArrastar.tsx. */
+
+/* Os nomes só são arrastáveis no modo de edição: no toque longo, nada de menu nem de seleção de texto. */
+[data-arrastavel-pessoa] {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Durante o arrasto: mão fechada em todo o lado e nada de selecionar texto.
+   Fora de camadas, ganha às classes do Tailwind (que estão em @layer) sem precisar de !important. */
+html.arrastar-ativo,
+html.arrastar-ativo * {
+  cursor: grabbing;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Alvo debaixo do ponteiro: realce por omissão. Na camada "base" do Tailwind, para que as classes
+   do mapa e da lista (camada "utilities", ex.: data-[alvo-estado=por-cima]:…) lhe possam ganhar. */
+@layer base {
+  [data-alvo-estado="por-cima"] {
+    outline: 2px solid #2563eb;
+    outline-offset: 2px;
+  }
+}
+
+/* Região só para leitores de ecrã (o que se arrasta, onde se largou). */
+.arrasto-anuncio {
+  position: fixed;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.arrasto-fantasma {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 3000;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  max-width: min(20rem, calc(100vw - 8px));
+  font:
+    500 12px / 1.25 system-ui,
+    -apple-system,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
+  will-change: transform;
+}
+
+.arrasto-fantasma[data-ponteiro="toque"] {
+  align-items: center;
+}
+
+/* O nome levantado: o mesmo aspeto do NomeChip (cor do cliente), com sombra. */
+.arrasto-fantasma__nome {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 3px 8px;
+  border: 1px solid rgb(0 0 0 / 0.3);
+  border-radius: 4px;
+  box-shadow:
+    0 8px 20px rgb(15 23 42 / 0.25),
+    0 1px 3px rgb(15 23 42 / 0.25);
+  font-weight: 600;
+  transform: rotate(-1.5deg);
+}
+
+.arrasto-fantasma__texto {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.arrasto-fantasma__mais {
+  flex: none;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: #0f172a;
+  color: #fff;
+  font-size: 11px;
+  line-height: 16px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Previsão do alvo: neutra; só o resultado leva a cor do nível de lotação (com o símbolo). */
+.arrasto-fantasma__alvo {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  max-width: 100%;
+  padding: 3px 6px 3px 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #fff;
+  color: #0f172a;
+  box-shadow: 0 4px 12px rgb(15 23 42 / 0.18);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.arrasto-fantasma__alvo[data-vazio] {
+  color: #475569;
+  font-weight: 400;
+}
+
+.arrasto-fantasma__frase {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.arrasto-fantasma__resultado {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 3px;
+  padding: 0 5px;
+  border-radius: 4px;
+  background: #e2e8f0;
+  color: #0f172a;
+  font-weight: 700;
+}
+
+.arrasto-fantasma__alvo[data-nivel="livre"] .arrasto-fantasma__resultado {
+  background: #059669;
+  color: #fff;
+}
+
+.arrasto-fantasma__alvo[data-nivel="cheio"] .arrasto-fantasma__resultado {
+  background: #f59e0b;
+  color: #000;
+}
+
+.arrasto-fantasma__alvo[data-nivel="excesso"] .arrasto-fantasma__resultado {
+  background: #dc2626;
+  color: #fff;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .arrasto-fantasma__nome {
+    transform: none;
+  }
+}

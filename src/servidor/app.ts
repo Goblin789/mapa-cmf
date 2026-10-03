@@ -1,12 +1,16 @@
-// A aplicação Hono: API de leitura do M0 e, em produção, os ficheiros do browser (dist/cliente).
-// Em desenvolvimento o browser é servido pelo Vite (porta 5173), que encaminha /api para aqui.
+// A aplicação Hono: a API (estado, gravação de lotes, histórico) e, em produção, os ficheiros do
+// browser (dist/cliente). Em desenvolvimento o browser é servido pelo Vite (porta 5173), que
+// encaminha /api para aqui.
 
 import { serveStatic } from '@hono/node-server/serve-static';
 import { Hono } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
 import { HTTPException } from 'hono/http-exception';
 import { secureHeaders } from 'hono/secure-headers';
 import type { Bd } from './db/ligacao';
 import { carregarEstado, contarPessoas, lerVersao } from './estado';
+import { gravarLote, lerHistorico } from './lotes';
+import { eJson, lerLimiteHistorico, lerPedidoGuardar, origemLocal } from './pedidos';
 
 export interface OpcoesApp {
   bd: Bd;
@@ -18,7 +22,18 @@ export interface OpcoesApp {
    * nesse caso o Host é o domínio dele e o pedido é recusado. Sem esta opção não se verifica.
    */
   anfitrioes?: string[];
+  /** Relógio (os testes fixam a hora). */
+  agora?: () => Date;
 }
+
+/** Tamanho máximo do corpo de POST /api/lotes (500 operações cabem folgadamente). */
+export const TAMANHO_MAXIMO_LOTE = 100 * 1024;
+
+/** Autor dos lotes enquanto não há login. No M1 passa a ser o utilizador com sessão iniciada. */
+export const AUTOR_SEM_LOGIN = 'local';
+
+/** Métodos que não mudam nada: não precisam da verificação da origem. */
+const METODOS_SEGUROS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
 /**
  * Política de conteúdo das páginas HTML. Os mosaicos do mapa vêm do OpenStreetMap;
@@ -44,7 +59,7 @@ function pareceFicheiro(caminho: string): boolean {
   return /\.[^/]*$/.test(caminho);
 }
 
-export function criarApp({ bd, pastaCliente, anfitrioes }: OpcoesApp): Hono {
+export function criarApp({ bd, pastaCliente, anfitrioes, agora = () => new Date() }: OpcoesApp): Hono {
   const app = new Hono();
 
   app.use('*', secureHeaders({ referrerPolicy: POLITICA_REFERER }));
@@ -66,7 +81,70 @@ export function criarApp({ bd, pastaCliente, anfitrioes }: OpcoesApp): Hono {
     });
   }
 
+  // Proteção CSRF enquanto não há login: um site aberto no browser não pode gravar através do PC.
+  // O browser manda sempre Origin nos POST; sem ele (curl, testes) não há página nenhuma a abusar.
+  app.use('/api/*', async (c, next) => {
+    const origem = c.req.header('Origin');
+    if (!METODOS_SEGUROS.has(c.req.method) && origem !== undefined && !origemLocal(origem)) {
+      return c.json({ erro: 'Pedido recusado: a página não é deste computador.' }, 403);
+    }
+    await next();
+  });
+
   app.get('/api/estado', (c) => c.json(carregarEstado(bd)));
+
+  app.post(
+    '/api/lotes',
+    async (c, next) => {
+      if (!eJson(c.req.header('Content-Type'))) {
+        return c.json({ erro: 'O pedido tem de ser JSON (Content-Type: application/json).' }, 415);
+      }
+      await next();
+    },
+    bodyLimit({
+      maxSize: TAMANHO_MAXIMO_LOTE,
+      onError: (c) => c.json({ erro: 'Pedido demasiado grande: grava menos alterações de cada vez.' }, 413),
+    }),
+    async (c) => {
+      let corpo: unknown;
+      try {
+        corpo = await c.req.json();
+      } catch {
+        return c.json({ erro: 'O corpo do pedido não é JSON válido.' }, 400);
+      }
+      const pedido = lerPedidoGuardar(corpo);
+      if (!pedido.ok) return c.json({ erro: 'Pedido inválido.', erros: pedido.erros }, 400);
+
+      const { operacoes, comentario } = pedido.valor;
+      const r = gravarLote(bd, { operacoes, comentario, autor: AUTOR_SEM_LOGIN, agora: agora() });
+      switch (r.tipo) {
+        case 'gravado':
+          return c.json({ loteId: r.loteId, versao: r.versao }, 201);
+        case 'vazio':
+          return c.json({ erro: 'Não há nada para gravar: as mudanças anulam-se umas às outras.' }, 400);
+        case 'invalido':
+          return c.json(
+            { erro: 'Há mudanças que não se podem gravar. Nada foi gravado.', erros: r.erros },
+            400,
+          );
+        case 'conflito':
+          return c.json(
+            {
+              erro: 'Alguém mudou entretanto algumas destas pessoas. Nada foi gravado.',
+              conflitos: r.conflitos,
+            },
+            409,
+          );
+      }
+    },
+  );
+
+  app.get('/api/historico', (c) => {
+    const limite = lerLimiteHistorico(c.req.query('limite'));
+    if (limite === null)
+      return c.json({ erro: 'O limite tem de ser um número inteiro maior do que zero.' }, 400);
+    return c.json(lerHistorico(bd, limite, agora()));
+  });
 
   app.get('/api/saude', (c) => {
     try {

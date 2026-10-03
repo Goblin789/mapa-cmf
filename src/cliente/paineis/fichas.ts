@@ -172,16 +172,3 @@ export function destinoNoMapa(
   const casa = pessoa.casaId ? ind.casas.get(pessoa.casaId) : undefined;
   return coordenadasDoLocal(casa?.localId, ind) ?? coordenadasDaCarrinha(pessoa.carrinhaId, ind, dormidas);
 }
-
-export type AbaCaixas = 'fora' | 'sem';
-
-/**
- * Aba das caixas laterais (telemóvel) a mostrar quando uma pessoa entra em foco:
- * fica na atual se a pessoa lá estiver; senão passa para a caixa onde ela está.
- */
-export function abaParaPessoa(estaFora: boolean, estaSemTransporte: boolean, atual: AbaCaixas): AbaCaixas {
-  if ((atual === 'fora' && estaFora) || (atual === 'sem' && estaSemTransporte)) return atual;
-  if (estaFora) return 'fora';
-  if (estaSemTransporte) return 'sem';
-  return atual;
-}

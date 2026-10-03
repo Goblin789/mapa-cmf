@@ -1,18 +1,20 @@
-// Carrinha vista de cima: frente arredondada com a matrícula numa placa e a pastilha "ocupados/lugares",
-// para-brisas, espelhos e um lugar por lugar (filas de bancos). Neutra (sem cor de cliente):
-// a lotação vai no contorno e na pastilha. Atrás, a marca discreta "sugerido" quando o sítio onde
-// dorme foi deduzido dos passageiros.
-// Clicar na carrinha põe-na em foco; clicar na frente (placa) mostra/esconde os nomes.
+// Carrinha vista de cima, frente para cima: carroçaria clara e arredondada à frente, matrícula
+// luxemburguesa no nariz, para-brisas escuro, espelhos, calhas do tejadilho e um nome por linha (um por
+// lugar). Atrás: "≈" quando o sítio onde dorme é só sugerido, e a pastilha "ocupados/lugares" (a única
+// coisa com a cor do nível). Clicar põe a carrinha em foco; no modo de edição é um alvo (data-alvo).
 
 import type { ConfiancaDormida } from '../../../dominio/dormidas';
+import { chaveAlvo } from '../../../dominio/operacoes';
 import { ocupacaoCarrinha } from '../../../dominio/ocupacao';
 import type { Id } from '../../../dominio/tipos';
 import { ESTILO_NIVEL } from '../../comum/lotacao';
+import { Matricula } from '../../comum/Matricula';
 import { useLoja } from '../../estado/loja';
+import type { Retangulo } from '../layout/geometria';
 import { chaveCarrinha } from '../layout/grupos';
 import type { GeometriaCarrinha } from '../layout/medidas';
-import { classeDestaque, type Destaque, posicao, Seta } from './comum';
-import { Lugar } from './Lugar';
+import { CLASSE_FOCO_TECLADO, type Destaque, posicao, tracoDestaque } from './comum';
+import { Lugares } from './Lugar';
 import { PastilhaLotacao } from './PastilhaLotacao';
 
 export const TEXTO_SUGERIDO = 'Onde dorme: sugerido — a maioria dos passageiros mora aqui';
@@ -23,32 +25,80 @@ interface Props {
   x: number;
   y: number;
   confianca: ConfiancaDormida;
-  podeAlternar: boolean;
-  aberto: boolean;
   destaque: Destaque;
 }
 
-export function CartaoCarrinha({
-  carrinhaId,
-  geometria: g,
-  x,
-  y,
-  confianca,
-  podeAlternar,
-  aberto,
-  destaque,
-}: Props) {
+/** Retângulo com cantos de cima mais redondos (o nariz) do que os de baixo. */
+function caminhoCarrocaria(r: Retangulo, raioFrente: number, raioTras: number): string {
+  const { x, y, largura: w, altura: h } = r;
+  const a = raioFrente;
+  const b = raioTras;
+  return [
+    `M${x + a} ${y}`,
+    `H${x + w - a}`,
+    `A${a} ${a} 0 0 1 ${x + w} ${y + a}`,
+    `V${y + h - b}`,
+    `A${b} ${b} 0 0 1 ${x + w - b} ${y + h}`,
+    `H${x + b}`,
+    `A${b} ${b} 0 0 1 ${x} ${y + h - b}`,
+    `V${y + a}`,
+    `A${a} ${a} 0 0 1 ${x + a} ${y}`,
+    'Z',
+  ].join(' ');
+}
+
+function Silhueta({ g, destaque }: { g: GeometriaCarrinha; destaque: Destaque }) {
+  const traco = tracoDestaque(destaque);
+  const corpo = { ...g.corpo, x: g.corpo.x + 0.5, y: g.corpo.y + 0.5, largura: g.corpo.largura - 1, altura: g.corpo.altura - 1 };
+  const p = g.parabrisas;
+  const calhaTopo = p.y + p.altura + 2;
+  const calhaFundo = g.estado.y - 2;
+  return (
+    <svg
+      className="forma-carrinha pointer-events-none absolute left-0 top-0 overflow-visible"
+      // O CSS do Leaflet dá z-index 200 aos svg do mapa: ficava por cima dos nomes.
+      style={{ zIndex: 'auto' }}
+      width={g.largura}
+      height={g.altura}
+      viewBox={`0 0 ${g.largura} ${g.altura}`}
+      aria-hidden="true"
+    >
+      {g.espelhos.map((e) => (
+        <rect key={e.x} x={e.x} y={e.y} width={e.largura} height={e.altura} rx={1.5} fill="#475569" />
+      ))}
+      <path
+        className="forma-corpo"
+        d={caminhoCarrocaria(corpo, 11, 4)}
+        fill="#f8fafc"
+        stroke={traco.cor}
+        strokeWidth={traco.largura}
+        strokeDasharray={traco.tracejado}
+      />
+      <path
+        d={`M${p.x} ${p.y} H${p.x + p.largura} L${p.x + p.largura - 3} ${p.y + p.altura} H${p.x + 3} Z`}
+        fill="#334155"
+        stroke="#1e293b"
+        strokeWidth={0.5}
+        strokeLinejoin="round"
+      />
+      {/* Calhas do tejadilho. */}
+      {calhaFundo > calhaTopo &&
+        [g.corpo.x + 2.5, g.corpo.x + g.corpo.largura - 2.5].map((x) => (
+          <line key={x} x1={x} y1={calhaTopo} x2={x} y2={calhaFundo} stroke="#cbd5e1" strokeWidth={1} />
+        ))}
+    </svg>
+  );
+}
+
+export function CartaoCarrinha({ carrinhaId, geometria: g, x, y, confianca, destaque }: Props) {
   const indices = useLoja((s) => s.indices);
   const definirFoco = useLoja((s) => s.definirFoco);
-  const alternarExpandido = useLoja((s) => s.alternarExpandido);
   const carrinha = indices?.carrinhas.get(carrinhaId);
   if (!indices || !carrinha) return null;
 
   const passageiros = indices.passageiros.get(carrinhaId) ?? [];
   const oc = ocupacaoCarrinha(carrinha, passageiros.length);
   const estilo = ESTILO_NIVEL[oc.nivel];
-  const nomes = g.nivel === 'nomes';
-  const chave = chaveCarrinha(carrinhaId);
   const emFoco = destaque === 'foco';
   const sugerida = confianca === 'sugerida';
   const descricao = [
@@ -61,105 +111,37 @@ export function CartaoCarrinha({
   ]
     .filter(Boolean)
     .join(' · ');
-  const raio = nomes ? '22px 22px 8px 8px' : '16px 16px 6px 6px';
-
-  const conteudoFrente = (
-    <>
-      <span
-        className={[
-          'flex h-full min-w-0 flex-1 items-stretch overflow-hidden rounded-[3px] border border-slate-700 bg-white',
-          nomes ? 'max-w-[120px]' : '',
-        ].join(' ')}
-      >
-        {/* Faixa azul da matrícula europeia. */}
-        <span className="w-[4px] shrink-0 bg-blue-700" aria-hidden="true" />
-        <span
-          className={[
-            'min-w-0 flex-1 truncate px-0.5 text-center font-mono font-bold leading-none tracking-tight text-slate-900',
-            nomes ? 'self-center text-xs' : 'self-center text-[10px]',
-          ].join(' ')}
-        >
-          {carrinha.matricula}
-        </span>
-      </span>
-      {/* No nível dos lugares não há espaço para a seta (a placa tem de caber). */}
-      {podeAlternar && nomes && <Seta aberta={aberto} />}
-      <PastilhaLotacao ocupados={oc.ocupados} lugares={oc.lugares} nivel={oc.nivel} grande={nomes} />
-    </>
-  );
 
   return (
     <div
-      className={['absolute', classeDestaque(destaque)].join(' ')}
-      style={{ left: x, top: y, width: g.largura, height: g.altura, borderRadius: raio }}
-      data-cartao={chave}
+      className="cartao-mapa absolute"
+      style={{ left: x, top: y, width: g.largura, height: g.altura }}
+      data-cartao={chaveCarrinha(carrinhaId)}
+      data-alvo={chaveAlvo({ tipo: 'carrinha', id: carrinhaId })}
     >
-      {/* Espelhos. */}
-      <span
-        className="pointer-events-none absolute rounded-sm bg-slate-500"
-        style={{ left: -3, top: g.parabrisas.y, width: 4, height: 6 }}
-        aria-hidden="true"
-      />
-      <span
-        className="pointer-events-none absolute rounded-sm bg-slate-500"
-        style={{ right: -3, top: g.parabrisas.y, width: 4, height: 6 }}
-        aria-hidden="true"
-      />
+      <Silhueta g={g} destaque={destaque} />
       <button
         type="button"
-        className={['absolute inset-0 cursor-pointer border-2 bg-slate-50', estilo.contorno].join(' ')}
-        style={{ borderRadius: raio }}
+        className={`absolute inset-0 cursor-pointer rounded-t-xl rounded-b-sm ${CLASSE_FOCO_TECLADO}`}
         title={descricao}
         aria-label={`${descricao}. Mostrar as ligações desta carrinha.`}
         aria-pressed={emFoco}
         onClick={() => definirFoco(emFoco ? null : { tipo: 'carrinha', id: carrinhaId })}
       />
-      {podeAlternar ? (
-        <button
-          type="button"
-          className="absolute z-[1] flex cursor-pointer items-center justify-center gap-1 rounded-sm hover:bg-slate-200/70"
-          style={posicao(g.placa)}
-          title={`${carrinha.matricula} · ${aberto ? 'esconder' : 'mostrar'} os nomes`}
-          aria-expanded={aberto}
-          onClick={() => alternarExpandido(chave)}
-        >
-          {conteudoFrente}
-        </button>
-      ) : (
-        <div
-          className="pointer-events-none absolute z-[1] flex items-center justify-center gap-1"
-          style={posicao(g.placa)}
-        >
-          {conteudoFrente}
-        </div>
-      )}
-      {/* Para-brisas (mais largo à frente). */}
-      <span
-        className="pointer-events-none absolute z-[1] bg-slate-600/75"
-        style={{ ...posicao(g.parabrisas), clipPath: 'polygon(0 0, 100% 0, 92% 100%, 8% 100%)' }}
-        aria-hidden="true"
-      />
-      {g.lugares.map((r, i) => (
-        <Lugar
-          key={`${r.x}:${r.y}`}
-          pessoa={passageiros[i] ?? null}
-          retangulo={r}
-          nivel={g.nivel}
-          aMais={i >= carrinha.lugares}
-        />
-      ))}
-      {sugerida && (
-        <span
-          className={[
-            // Sem cliques: o clique e o tooltip (com o texto "sugerido") são os da carrinha.
-            'pointer-events-none absolute z-[1] flex items-center justify-center leading-none text-slate-500',
-            nomes ? 'text-[10px] italic' : 'text-[11px] font-bold',
-          ].join(' ')}
-          style={posicao(g.marca)}
-        >
-          {nomes ? '≈ sugerido' : '≈'}
+      <span className="pointer-events-none absolute flex items-center justify-center" style={posicao(g.placa)}>
+        <Matricula matricula={carrinha.matricula} altura={g.placa.altura} />
+      </span>
+      <Lugares pessoas={passageiros} lugares={g.lugares} capacidade={carrinha.lugares} />
+      <div className="pointer-events-none absolute flex items-center gap-1" style={posicao(g.estado)}>
+        {sugerida && (
+          <span className="text-[11px] font-bold leading-3 text-slate-500" title={TEXTO_SUGERIDO}>
+            ≈<span className="sr-only"> {TEXTO_SUGERIDO}</span>
+          </span>
+        )}
+        <span className="ml-auto">
+          <PastilhaLotacao ocupados={oc.ocupados} lugares={oc.lugares} nivel={oc.nivel} />
         </span>
-      )}
+      </div>
     </div>
   );
 }

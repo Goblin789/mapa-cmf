@@ -1,0 +1,164 @@
+// O mapa no modo de edição:
+// - enquanto se arrasta um nome (motor em arrastar/), o mapa não se desloca nem faz zoom com o dedo ou
+//   duplo clique, e desliza sozinho quando o ponteiro chega perto da borda;
+// - Shift+arrastar no fundo do mapa desenha uma caixa e seleciona os nomes que ela toca
+//   (o boxZoom do Leaflet está desligado). Fora do modo de edição não faz nada.
+
+import type * as L from 'leaflet';
+import { type RefObject, useEffect } from 'react';
+import { velocidadeBorda } from '../arrastar/deslizar';
+import { registarOuvintesArrasto } from '../arrastar/ouvintes';
+import { useLoja } from '../estado/loja';
+import type { CamadaCartoes } from './CamadaCartoes';
+import { eCaixa, idsNaCaixa, retanguloEntre } from './caixaSelecao';
+
+/** Faixa junto à borda do mapa (px) onde ele começa a deslizar durante um arrasto. */
+const MARGEM_BORDA = 40;
+/** Velocidade máxima do deslize (px por quadro). */
+const VELOCIDADE_BORDA = 14;
+
+interface Instancia {
+  mapa: L.Map;
+  camada: CamadaCartoes;
+}
+
+function dentro(x: number, y: number, r: DOMRect): boolean {
+  return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
+}
+
+/** Liga o mapa ao motor de arrastar: trava o deslocamento e desliza perto da borda. */
+export function useArrastoNoMapa(instancia: Instancia | null) {
+  useEffect(() => {
+    if (!instancia) return;
+    const { mapa } = instancia;
+    let ponteiro: { x: number; y: number } | null = null;
+    let quadro = 0;
+
+    const deslizar = () => {
+      quadro = 0;
+      if (!ponteiro) return;
+      const r = mapa.getContainer().getBoundingClientRect();
+      if (!dentro(ponteiro.x, ponteiro.y, r)) return;
+      const vx = velocidadeBorda(ponteiro.x, r.left, r.right, MARGEM_BORDA, VELOCIDADE_BORDA);
+      const vy = velocidadeBorda(ponteiro.y, r.top, r.bottom, MARGEM_BORDA, VELOCIDADE_BORDA);
+      if (vx === 0 && vy === 0) return;
+      mapa.panBy([vx, vy], { animate: false });
+      quadro = requestAnimationFrame(deslizar);
+    };
+
+    const travar = (travado: boolean) => {
+      for (const h of [mapa.dragging, mapa.touchZoom, mapa.doubleClickZoom]) {
+        if (travado) h.disable();
+        else h.enable();
+      }
+    };
+
+    const retirar = registarOuvintesArrasto({
+      aoComecar: () => travar(true),
+      aoMover: (x, y) => {
+        ponteiro = { x, y };
+        if (!quadro) quadro = requestAnimationFrame(deslizar);
+      },
+      aoTerminar: () => {
+        ponteiro = null;
+        cancelAnimationFrame(quadro);
+        quadro = 0;
+        travar(false);
+      },
+    });
+    return () => {
+      retirar();
+      cancelAnimationFrame(quadro);
+    };
+  }, [instancia]);
+}
+
+/** Shift+arrastar no fundo do mapa (modo de edição): caixa de seleção. */
+export function useCaixaSelecao(instancia: Instancia | null, refCaixa: RefObject<HTMLDivElement | null>) {
+  useEffect(() => {
+    if (!instancia) return;
+    const { mapa, camada } = instancia;
+    const contentor = mapa.getContainer();
+    let inicio: { x: number; y: number } | null = null;
+    let ponteiroId = -1;
+    let ignorarClique = false;
+
+    const desenhar = (fim: { x: number; y: number } | null) => {
+      const caixa = refCaixa.current;
+      if (!caixa) return;
+      if (!inicio || !fim) {
+        caixa.style.display = 'none';
+        return;
+      }
+      const base = contentor.getBoundingClientRect();
+      const r = retanguloEntre(inicio, fim);
+      caixa.style.display = 'block';
+      caixa.style.left = `${r.x - base.left}px`;
+      caixa.style.top = `${r.y - base.top}px`;
+      caixa.style.width = `${r.largura}px`;
+      caixa.style.height = `${r.altura}px`;
+    };
+
+    const aoMover = (e: PointerEvent) => {
+      if (e.pointerId !== ponteiroId) return;
+      desenhar({ x: e.clientX, y: e.clientY });
+    };
+
+    const terminar = (e: PointerEvent, selecionar: boolean) => {
+      if (e.pointerId !== ponteiroId || !inicio) return;
+      const r = retanguloEntre(inicio, { x: e.clientX, y: e.clientY });
+      inicio = null;
+      ponteiroId = -1;
+      desenhar(null);
+      window.removeEventListener('pointermove', aoMover, true);
+      window.removeEventListener('pointerup', aoLargar, true);
+      window.removeEventListener('pointercancel', aoCancelar, true);
+      if (!selecionar || !eCaixa(r)) return;
+      ignorarClique = true;
+      const elementos = [...camada.contentor.querySelectorAll<HTMLElement>('[data-pessoa-id]')].map((el) => {
+        const b = el.getBoundingClientRect();
+        return {
+          id: el.dataset.pessoaId as string,
+          retangulo: { x: b.left, y: b.top, largura: b.width, altura: b.height },
+        };
+      });
+      useLoja.getState().definirSelecao(idsNaCaixa(r, elementos));
+    };
+    const aoLargar = (e: PointerEvent) => terminar(e, true);
+    const aoCancelar = (e: PointerEvent) => terminar(e, false);
+
+    const aoPremir = (e: PointerEvent) => {
+      ignorarClique = false;
+      if (!e.shiftKey || e.button !== 0 || !useLoja.getState().modoEdicao) return;
+      const alvo = e.target as Element | null;
+      // Só no fundo do mapa: nem nos cartões nem nos controlos do Leaflet.
+      if (camada.contem(alvo) || alvo?.closest?.('.leaflet-control')) return;
+      // Cancelar o pointerdown impede o mousedown que faria o Leaflet deslocar o mapa.
+      e.preventDefault();
+      e.stopPropagation();
+      inicio = { x: e.clientX, y: e.clientY };
+      ponteiroId = e.pointerId;
+      desenhar(inicio);
+      window.addEventListener('pointermove', aoMover, true);
+      window.addEventListener('pointerup', aoLargar, true);
+      window.addEventListener('pointercancel', aoCancelar, true);
+    };
+
+    // O clique que fecha a caixa não é um clique no fundo do mapa (não tira o foco).
+    const aoClicar = (e: MouseEvent) => {
+      if (!ignorarClique) return;
+      ignorarClique = false;
+      e.stopPropagation();
+    };
+
+    contentor.addEventListener('pointerdown', aoPremir, true);
+    contentor.addEventListener('click', aoClicar, true);
+    return () => {
+      contentor.removeEventListener('pointerdown', aoPremir, true);
+      contentor.removeEventListener('click', aoClicar, true);
+      window.removeEventListener('pointermove', aoMover, true);
+      window.removeEventListener('pointerup', aoLargar, true);
+      window.removeEventListener('pointercancel', aoCancelar, true);
+    };
+  }, [instancia, refCaixa]);
+}

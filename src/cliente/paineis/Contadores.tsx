@@ -2,11 +2,13 @@
 // carrinhas paradas/oficina, carrinhas vazias e "a confirmar". Os que têm detalhe abrem um popover
 // (casas com lugares livres e acima do contrato; divisão por cliente; explicação).
 // No PC cabem numa linha; no telemóvel ficam em grelha de 3.
+// No modo de edição, um contador que a simulação mudou mostra o valor gravado e o novo ("6 → 4").
 
 import { type ReactNode, useCallback, useId, useRef, useState } from 'react';
 import type { ContagemPorCliente } from '../../dominio/contadores';
 import type { Cliente, Id } from '../../dominio/tipos';
 import { ESTILO_AVISO_CONTRATO } from '../comum/lotacao';
+import { valorAnterior } from '../edicao/resumo';
 import { useLoja } from '../estado/loja';
 import { divisaoPorCliente } from './agrupar';
 import { FOCO_VISIVEL, Z_POPOVER } from './classes';
@@ -21,11 +23,43 @@ const LARGURA_POPOVER_PX = 240;
 const CLASSE_PASTILHA =
   'flex h-full w-full items-start gap-1 rounded-md border px-2 py-1 text-left sm:items-center sm:px-1.5 sm:py-0.5';
 
-/** Número e rótulo: número por cima no telemóvel, rótulo antes do número no PC. */
-function NumeroERotulo({ valor, rotulo, extra }: { valor: number; rotulo: string; extra?: ReactNode }) {
+/** Classes de uma pastilha cujo valor a simulação mudou. */
+const CLASSE_MUDOU = 'border-amber-500 bg-amber-50';
+
+/** "6 → " antes do valor novo, com o gravado mais claro. */
+function Antes({ valor }: { valor: number }) {
+  return (
+    <>
+      <span className="font-medium text-slate-500">{valor}</span>
+      <span aria-hidden="true" className="px-0.5 font-normal text-amber-700">
+        →
+      </span>
+      <span className="sr-only"> passa a </span>
+    </>
+  );
+}
+
+/**
+ * Número e rótulo: número por cima no telemóvel, rótulo antes do número no PC.
+ * Com `antes` (modo de edição, o valor mudou): "6 → 4".
+ */
+function NumeroERotulo({
+  valor,
+  rotulo,
+  extra,
+  antes = null,
+}: {
+  valor: number;
+  rotulo: string;
+  extra?: ReactNode;
+  antes?: number | null;
+}) {
   return (
     <span className="flex min-w-0 flex-col sm:flex-row sm:items-baseline sm:gap-1 sm:whitespace-nowrap">
-      <strong className="text-base leading-tight font-bold tabular-nums sm:text-sm">{valor}</strong>
+      <strong className="text-base leading-tight font-bold tabular-nums sm:text-sm">
+        {antes !== null && <Antes valor={antes} />}
+        {valor}
+      </strong>
       <span className="text-[11px] leading-tight text-slate-700 sm:order-first sm:text-xs">{rotulo}</span>
       {extra}
     </span>
@@ -37,18 +71,20 @@ function Pastilha({
   rotulo,
   titulo,
   extra,
+  antes = null,
   classe = 'border-slate-300 bg-white',
 }: {
   valor: number;
   rotulo: string;
   titulo: string;
   extra?: ReactNode;
+  antes?: number | null;
   classe?: string;
 }) {
   return (
     <li className="min-w-0">
-      <div className={`${CLASSE_PASTILHA} ${classe}`} title={titulo}>
-        <NumeroERotulo valor={valor} rotulo={rotulo} extra={extra} />
+      <div className={`${CLASSE_PASTILHA} ${antes !== null ? CLASSE_MUDOU : classe}`} title={titulo}>
+        <NumeroERotulo valor={valor} rotulo={rotulo} extra={extra} antes={antes} />
       </div>
     </li>
   );
@@ -60,12 +96,14 @@ function PastilhaComDetalhe({
   rotulo,
   titulo,
   extra,
+  antes = null,
   children,
 }: {
   valor: number;
   rotulo: string;
   titulo: string;
   extra?: ReactNode;
+  antes?: number | null;
   children: ReactNode | ((fechar: () => void) => ReactNode);
 }) {
   const [aberto, setAberto] = useState(false);
@@ -97,10 +135,14 @@ function PastilhaComDetalhe({
           setAberto(!aberto);
         }}
         className={`${CLASSE_PASTILHA} ${FOCO_VISIVEL} ${
-          aberto ? 'border-slate-900 bg-slate-100' : 'border-slate-300 bg-white hover:bg-slate-50'
+          aberto
+            ? 'border-slate-900 bg-slate-100'
+            : antes !== null
+              ? `${CLASSE_MUDOU} hover:bg-amber-100`
+              : 'border-slate-300 bg-white hover:bg-slate-50'
         }`}
       >
-        <NumeroERotulo valor={valor} rotulo={rotulo} extra={extra} />
+        <NumeroERotulo valor={valor} rotulo={rotulo} extra={extra} antes={antes} />
         <span aria-hidden="true" className="ml-auto text-[10px] text-slate-500 sm:ml-0">
           {aberto ? '▴' : '▾'}
         </span>
@@ -227,11 +269,15 @@ function ResumoCasas({ total, fechar }: { total: number; fechar: () => void }) {
 
 export function Contadores() {
   const contadores = useLoja((s) => s.contadores);
+  const gravados = useLoja((s) => s.contadoresServidor);
+  const modoEdicao = useLoja((s) => s.modoEdicao);
   const indices = useLoja((s) => s.indices);
   if (!contadores || !indices) return null;
 
   const acima = contadores.casasAcimaContrato;
   const aConfirmar = contadores.aConfirmar;
+  const antes = (gravado: number | undefined, visivel: number) => valorAnterior(modoEdicao, gravado, visivel);
+  const acimaAntes = antes(gravados?.casasAcimaContrato, acima);
 
   return (
     <ul
@@ -240,16 +286,19 @@ export function Contadores() {
     >
       <PastilhaComDetalhe
         valor={contadores.lugaresLivresCasas}
+        antes={antes(gravados?.lugaresLivresCasas, contadores.lugaresLivresCasas)}
         rotulo="Livres nas casas"
         titulo="Casas com lugares livres e casas acima do contrato"
         extra={
-          acima > 0 && (
+          (acima > 0 || acimaAntes !== null) && (
             <span className="text-[11px] leading-tight font-semibold text-amber-800 sm:text-xs">
               {/* "N casas", não só "N": ao lado de "Livres nas casas" lia-se como lugares a mais.
-                  "do contrato" só se vê a partir de 1360 px (a 1280 px os contadores deixavam de caber numa linha). */}
+                  "do contrato" só se vê a partir de 1600 px (abaixo disso, com a pesquisa e os botões Histórico
+                  e Editar, o cabeçalho deixava de caber numa linha). */}
               <span aria-hidden="true">▲ </span>
+              {acimaAntes !== null && <Antes valor={acimaAntes} />}
               {comPlural(acima, 'casa', 'casas')} acima
-              <span className="sr-only min-[1360px]:not-sr-only"> do contrato</span>
+              <span className="sr-only min-[1600px]:not-sr-only"> do contrato</span>
             </span>
           )
         }
@@ -258,6 +307,7 @@ export function Contadores() {
       </PastilhaComDetalhe>
       <PastilhaComDetalhe
         valor={contadores.semTransporte.total}
+        antes={antes(gravados?.semTransporte.total, contadores.semTransporte.total)}
         rotulo="Sem transporte"
         titulo="Pessoas sem carrinha da empresa, por cliente"
       >
@@ -269,6 +319,7 @@ export function Contadores() {
       </PastilhaComDetalhe>
       <PastilhaComDetalhe
         valor={contadores.foraDasCasas.total}
+        antes={antes(gravados?.foraDasCasas.total, contadores.foraDasCasas.total)}
         rotulo="Fora das casas"
         titulo="Pessoas fora das casas CMF, por cliente"
       >
@@ -280,6 +331,7 @@ export function Contadores() {
       </PastilhaComDetalhe>
       <PastilhaComDetalhe
         valor={contadores.carrinhasParadas}
+        antes={antes(gravados?.carrinhasParadas, contadores.carrinhasParadas)}
         rotulo="Paradas/oficina"
         titulo="Carrinhas paradas ou na oficina"
       >
@@ -291,11 +343,13 @@ export function Contadores() {
       </PastilhaComDetalhe>
       <Pastilha
         valor={contadores.carrinhasSemPassageiros}
+        antes={antes(gravados?.carrinhasSemPassageiros, contadores.carrinhasSemPassageiros)}
         rotulo="Carrinhas vazias"
         titulo="Carrinhas sem ninguém atribuído"
       />
       <Pastilha
         valor={aConfirmar}
+        antes={antes(gravados?.aConfirmar, aConfirmar)}
         rotulo="A confirmar"
         titulo="Pessoas com a casa ou a carrinha por confirmar (assinaladas com ?)"
         classe={aConfirmar > 0 ? 'border-amber-500 bg-amber-100 text-amber-950' : 'border-slate-300 bg-white'}

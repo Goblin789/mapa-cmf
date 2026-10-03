@@ -3,7 +3,6 @@ import { dormidasDasCarrinhas } from '../../dominio/dormidas';
 import { indexar } from '../../dominio/indices';
 import { estadoFicticio } from './dadosFicticios';
 import {
-  abaParaPessoa,
   cadeiaDaPessoa,
   carrinhasDasPessoas,
   carrinhasQueDormemEm,
@@ -127,22 +126,6 @@ describe('destinoNoMapa', () => {
   it('casa: o seu local', () => {
     expect(destinoNoMapa({ tipo: 'casa', id: 'casa-b' }, ind, dormidas)).toEqual({ lat: 49.7, lng: 6.1 });
     expect(destinoNoMapa({ tipo: 'casa', id: 'casa-c' }, ind, dormidas)).toBeNull();
-  });
-});
-
-describe('abaParaPessoa', () => {
-  it('fica na aba atual se a pessoa lá estiver', () => {
-    expect(abaParaPessoa(true, true, 'sem')).toBe('sem');
-    expect(abaParaPessoa(true, true, 'fora')).toBe('fora');
-  });
-
-  it('muda para a caixa onde a pessoa está', () => {
-    expect(abaParaPessoa(true, false, 'sem')).toBe('fora');
-    expect(abaParaPessoa(false, true, 'fora')).toBe('sem');
-  });
-
-  it('não muda se a pessoa não estiver em nenhuma caixa', () => {
-    expect(abaParaPessoa(false, false, 'sem')).toBe('sem');
   });
 });
 

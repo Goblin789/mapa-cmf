@@ -1,6 +1,10 @@
-// Esqueleto do ecrã principal: topo (contadores + pesquisa), mapa ao centro, caixas laterais à direita.
+// Esqueleto do ecrã principal: topo (contadores, pesquisa, Histórico e Editar), barra do modo de
+// edição, mapa ao centro e caixas laterais à direita. No modo de edição a área de trabalho ganha um
+// contorno âmbar: o que se vê é uma simulação até se carregar em Guardar.
 
 import { useEffect } from 'react';
+import { BarraEdicao } from './edicao/BarraEdicao';
+import { BotoesCabecalho, ContornoEdicao, Edicao } from './edicao/Edicao';
 import { useLoja } from './estado/loja';
 import { Mapa } from './mapa/Mapa';
 import { CaixasLaterais } from './paineis/CaixasLaterais';
@@ -18,7 +22,9 @@ export function App() {
     void carregar();
   }, [carregar]);
 
-  if (erro) {
+  // Sem dados nenhuns, o erro ocupa o ecrã. Com dados (ex.: falhou recarregar depois de guardar),
+  // fica uma faixa por cima e o mapa continua à vista.
+  if (erro && !estado) {
     return (
       <div className="grid h-full place-items-center p-6 text-center">
         <div>
@@ -42,21 +48,41 @@ export function App() {
 
   return (
     <div className="flex min-h-full flex-col md:h-full">
+      {/* Telemóvel: título e botões na 1.ª linha, contadores, pesquisa. PC: título, contadores e, à direita,
+          a pesquisa com os botões (se não couberem, passam juntos para a linha de baixo). */}
       <header className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-slate-200 bg-white px-3 py-2">
-        <h1 className="text-base font-bold tracking-tight">Mapa CMF</h1>
-        <Contadores />
-        <div className="ml-auto w-full sm:w-72">
-          <Pesquisa />
+        <h1 className="order-1 text-base font-bold tracking-tight">Mapa CMF</h1>
+        <div className="order-3 w-full sm:order-2 sm:w-auto">
+          <Contadores />
+        </div>
+        <div className="contents sm:order-3 sm:ml-auto sm:flex sm:items-center sm:gap-2">
+          <div className="order-4 w-full sm:order-none sm:w-64 2xl:w-72">
+            <Pesquisa />
+          </div>
+          <div className="order-2 ml-auto sm:order-none sm:ml-0">
+            <BotoesCabecalho />
+          </div>
         </div>
       </header>
-      <div className="flex min-h-0 flex-1 flex-col md:flex-row">
+      {erro && (
+        <p role="alert" className="border-b border-red-200 bg-red-50 px-3 py-1.5 text-sm text-red-900">
+          Não foi possível atualizar os dados: {erro}{' '}
+          <button type="button" className="font-semibold underline" onClick={() => void carregar()}>
+            Tentar outra vez
+          </button>
+        </p>
+      )}
+      <BarraEdicao />
+      <div className="relative flex min-h-0 flex-1 flex-col md:flex-row">
         <main className="relative h-[70svh] min-h-[22rem] min-w-0 shrink-0 md:h-auto md:min-h-0 md:flex-1 md:shrink">
           <Mapa />
           <Legenda />
           <PainelFoco />
         </main>
         <CaixasLaterais />
+        <ContornoEdicao />
       </div>
+      <Edicao />
     </div>
   );
 }

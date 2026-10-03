@@ -149,7 +149,7 @@ export function montarEstado(linhas: LinhasBd, versao: number, geradoEm: string)
 }
 
 /** A base de dados ou uma transação aberta nela. */
-type Leitor = Pick<Bd, 'select'>;
+export type Leitor = Pick<Bd, 'select'>;
 
 /** Versão do estado: o maior id de lote (0 se ainda não houver lotes). */
 export function lerVersao(bd: Leitor): number {
@@ -172,29 +172,35 @@ function colunaLista(coluna: AnySQLiteColumn) {
   return sql`${coluna}`.mapWith(listaDeTextos);
 }
 
+/**
+ * Lê todas as tabelas sem abrir transação: para usar dentro de uma já aberta (a gravação de um lote
+ * lê e escreve na mesma transação).
+ */
+export function lerEstado(tx: Leitor, agora: Date): Estado {
+  const linhas: LinhasBd = {
+    clientes: tx.select().from(esquema.clientes).all(),
+    locais: tx.select().from(esquema.locais).all(),
+    casas: tx.select().from(esquema.casas).all(),
+    carrinhas: tx
+      .select({
+        ...getTableColumns(esquema.carrinhas),
+        matriculasAlternativas: colunaLista(esquema.carrinhas.matriculasAlternativas),
+      })
+      .from(esquema.carrinhas)
+      .all(),
+    obras: tx.select().from(esquema.obras).all(),
+    pessoas: tx
+      .select({
+        ...getTableColumns(esquema.pessoas),
+        nomesAlternativos: colunaLista(esquema.pessoas.nomesAlternativos),
+      })
+      .from(esquema.pessoas)
+      .all(),
+  };
+  return montarEstado(linhas, lerVersao(tx), agora.toISOString());
+}
+
 /** Lê todas as tabelas numa só transação (leitura coerente mesmo que a importação esteja a gravar). */
 export function carregarEstado(bd: Bd, agora: Date = new Date()): Estado {
-  return bd.transaction((tx) => {
-    const linhas: LinhasBd = {
-      clientes: tx.select().from(esquema.clientes).all(),
-      locais: tx.select().from(esquema.locais).all(),
-      casas: tx.select().from(esquema.casas).all(),
-      carrinhas: tx
-        .select({
-          ...getTableColumns(esquema.carrinhas),
-          matriculasAlternativas: colunaLista(esquema.carrinhas.matriculasAlternativas),
-        })
-        .from(esquema.carrinhas)
-        .all(),
-      obras: tx.select().from(esquema.obras).all(),
-      pessoas: tx
-        .select({
-          ...getTableColumns(esquema.pessoas),
-          nomesAlternativos: colunaLista(esquema.pessoas.nomesAlternativos),
-        })
-        .from(esquema.pessoas)
-        .all(),
-    };
-    return montarEstado(linhas, lerVersao(tx), agora.toISOString());
-  });
+  return bd.transaction((tx) => lerEstado(tx, agora));
 }

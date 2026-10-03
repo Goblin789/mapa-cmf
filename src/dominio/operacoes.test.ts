@@ -1,0 +1,453 @@
+import { describe, expect, it } from 'vitest';
+import {
+  type Alvo,
+  aplicarOperacoes,
+  campoDoAlvo,
+  chaveAlvo,
+  compactarOperacoes,
+  descreverOperacao,
+  encontrarConflitos,
+  lerChaveAlvo,
+  nomeDoValor,
+  type Operacao,
+  operacoesParaAlvo,
+  validarOperacoes,
+  valorDoAlvo,
+} from './operacoes';
+import { estadoAleatorio, estadoExemplo } from './teste-fabrica';
+import type { Estado } from './tipos';
+
+function mover(pessoaId: string, campo: Operacao['campo'], de: string | null, para: string | null): Operacao {
+  return { tipo: 'mover', pessoaId, campo, de, para };
+}
+
+/** Cópia profunda, para provar que uma função não mexe no que recebe. */
+function copia(estado: Estado): Estado {
+  return structuredClone(estado);
+}
+
+const TODOS_OS_ALVOS: Alvo[] = [
+  { tipo: 'casa', id: 'casa-1' },
+  { tipo: 'fora' },
+  { tipo: 'carrinha', id: 'zz1001' },
+  { tipo: 'sem-transporte' },
+  { tipo: 'obra', id: 'obra-a' },
+  { tipo: 'sem-obra' },
+];
+
+describe('campoDoAlvo e valorDoAlvo', () => {
+  it.each([
+    [{ tipo: 'casa', id: 'c' }, 'casaId', 'c'],
+    [{ tipo: 'fora' }, 'casaId', null],
+    [{ tipo: 'carrinha', id: 'v' }, 'carrinhaId', 'v'],
+    [{ tipo: 'sem-transporte' }, 'carrinhaId', null],
+    [{ tipo: 'obra', id: 'o' }, 'obraId', 'o'],
+    [{ tipo: 'sem-obra' }, 'obraId', null],
+  ] as const)('%o → %s = %s', (alvo, campo, valor) => {
+    expect(campoDoAlvo(alvo)).toBe(campo);
+    expect(valorDoAlvo(alvo)).toBe(valor);
+  });
+});
+
+describe('chaveAlvo e lerChaveAlvo', () => {
+  it('formato estável da chave', () => {
+    expect(TODOS_OS_ALVOS.map(chaveAlvo)).toStrictEqual([
+      'casa:casa-1',
+      'fora',
+      'carrinha:zz1001',
+      'sem-transporte',
+      'obra:obra-a',
+      'sem-obra',
+    ]);
+  });
+
+  it('ida e volta para todos os tipos de alvo', () => {
+    for (const alvo of TODOS_OS_ALVOS) expect(lerChaveAlvo(chaveAlvo(alvo))).toStrictEqual(alvo);
+  });
+
+  it('ids com ":" e caracteres especiais sobrevivem à ida e volta', () => {
+    for (const id of ['a:b', 'x:y:z', ':', 'com espaço', 'açúcar-ç', '"aspas"', '0']) {
+      for (const tipo of ['casa', 'carrinha', 'obra'] as const) {
+        const alvo: Alvo = { tipo, id };
+        expect(lerChaveAlvo(chaveAlvo(alvo)), `${tipo} ${id}`).toStrictEqual(alvo);
+      }
+    }
+  });
+
+  it.each([
+    '',
+    'casa',
+    'casa:',
+    ':casa-1',
+    ':',
+    'CASA:casa-1',
+    'pessoa:p-1',
+    'fora:x',
+    'sem-transporte:x',
+    'Fora',
+    ' fora',
+    'fora ',
+    'grupo:local-a',
+  ])('chave inválida %j → null', (chave) => {
+    expect(lerChaveAlvo(chave)).toBeNull();
+  });
+});
+
+describe('operacoesParaAlvo', () => {
+  it('cria uma operação por pessoa com o valor de partida', () => {
+    const estado = estadoExemplo();
+    expect(operacoesParaAlvo(estado, ['p-ana', 'p-gil'], { tipo: 'casa', id: 'casa-3' })).toStrictEqual([
+      mover('p-ana', 'casaId', 'casa-1', 'casa-3'),
+      mover('p-gil', 'casaId', null, 'casa-3'),
+    ]);
+  });
+
+  it('ignora quem já lá está, quem não existe e ids repetidos (mantém a ordem)', () => {
+    const estado = estadoExemplo();
+    const ops = operacoesParaAlvo(
+      estado,
+      ['p-helena', 'p-ana', 'nao-existe', 'p-ana', 'p-bruno', 'p-helena'],
+      { tipo: 'carrinha', id: 'zz1001' },
+    );
+    // p-ana e p-bruno já estão na zz1001.
+    expect(ops).toStrictEqual([mover('p-helena', 'carrinhaId', null, 'zz1001')]);
+  });
+
+  it('alvos "vazios" (fora, sem transporte, sem obra) levam a null', () => {
+    const estado = estadoExemplo();
+    expect(operacoesParaAlvo(estado, ['p-ana', 'p-helena'], { tipo: 'fora' })).toStrictEqual([
+      mover('p-ana', 'casaId', 'casa-1', null),
+    ]);
+    expect(operacoesParaAlvo(estado, ['p-celia'], { tipo: 'sem-transporte' })).toStrictEqual([
+      mover('p-celia', 'carrinhaId', 'zz1002', null),
+    ]);
+    expect(operacoesParaAlvo(estado, ['p-filipe', 'p-bruno'], { tipo: 'sem-obra' })).toStrictEqual([
+      mover('p-filipe', 'obraId', 'obra-a', null),
+    ]);
+  });
+
+  it('lista vazia ou só gente que já lá está não dá operações', () => {
+    const estado = estadoExemplo();
+    expect(operacoesParaAlvo(estado, [], { tipo: 'casa', id: 'casa-1' })).toStrictEqual([]);
+    expect(operacoesParaAlvo(estado, ['p-ana', 'p-bruno'], { tipo: 'casa', id: 'casa-1' })).toStrictEqual([]);
+  });
+
+  it('não verifica se o destino existe (isso é do validarOperacoes)', () => {
+    const estado = estadoExemplo();
+    expect(operacoesParaAlvo(estado, ['p-ana'], { tipo: 'obra', id: 'obra-x' })).toStrictEqual([
+      mover('p-ana', 'obraId', 'obra-b', 'obra-x'),
+    ]);
+  });
+
+  it('não altera o estado recebido', () => {
+    const estado = estadoExemplo();
+    const antes = copia(estado);
+    operacoesParaAlvo(estado, ['p-ana'], { tipo: 'fora' });
+    expect(estado).toStrictEqual(antes);
+  });
+});
+
+describe('aplicarOperacoes', () => {
+  it('muda o campo e não altera o estado recebido', () => {
+    const estado = estadoExemplo();
+    const antes = copia(estado);
+    const novo = aplicarOperacoes(estado, [mover('p-ana', 'casaId', 'casa-1', 'casa-3')]);
+    expect(estado).toStrictEqual(antes);
+    expect(novo).not.toBe(estado);
+    expect(novo.pessoas.find((p) => p.id === 'p-ana')?.casaId).toBe('casa-3');
+    // As outras pessoas e o resto do estado ficam iguais (e são as mesmas referências).
+    expect(novo.casas).toBe(estado.casas);
+    const bruno = estado.pessoas.find((p) => p.id === 'p-bruno');
+    expect(novo.pessoas.find((p) => p.id === 'p-bruno')).toBe(bruno);
+    expect(novo.pessoas.map((p) => p.id)).toStrictEqual(estado.pessoas.map((p) => p.id));
+  });
+
+  it('sem operações devolve o próprio estado', () => {
+    const estado = estadoExemplo();
+    expect(aplicarOperacoes(estado, [])).toBe(estado);
+  });
+
+  it('mudar a casa limpa a marca "casa a confirmar" (e só essa)', () => {
+    const estado = estadoExemplo();
+    const gil = aplicarOperacoes(estado, [mover('p-gil', 'casaId', null, 'casa-3')]).pessoas.find(
+      (p) => p.id === 'p-gil',
+    );
+    expect(gil).toMatchObject({ casaId: 'casa-3', casaAConfirmar: false });
+    expect(estado.pessoas.find((p) => p.id === 'p-gil')?.casaAConfirmar).toBe(true);
+
+    // Mudar a carrinha ou a obra não mexe na marca da casa.
+    const gil2 = aplicarOperacoes(estado, [
+      mover('p-gil', 'carrinhaId', 'zz1001', null),
+      mover('p-gil', 'obraId', 'obra-b', 'obra-a'),
+    ]).pessoas.find((p) => p.id === 'p-gil');
+    expect(gil2).toMatchObject({ casaAConfirmar: true, carrinhaId: null, obraId: 'obra-a' });
+  });
+
+  it('mudar a carrinha limpa a marca "carrinha a confirmar" (também para "sem transporte")', () => {
+    const estado = estadoExemplo();
+    const duarte = aplicarOperacoes(estado, [mover('p-duarte', 'carrinhaId', 'zz1002', null)]).pessoas.find(
+      (p) => p.id === 'p-duarte',
+    );
+    expect(duarte).toMatchObject({ carrinhaId: null, carrinhaAConfirmar: false });
+  });
+
+  it('aplica por ordem: a última operação da mesma pessoa e campo ganha', () => {
+    const estado = estadoExemplo();
+    const novo = aplicarOperacoes(estado, [
+      mover('p-ana', 'casaId', 'casa-1', 'casa-2'),
+      mover('p-ana', 'casaId', 'casa-2', 'casa-3'),
+      mover('p-ana', 'carrinhaId', 'zz1001', 'zz1003'),
+    ]);
+    expect(novo.pessoas.find((p) => p.id === 'p-ana')).toMatchObject({
+      casaId: 'casa-3',
+      carrinhaId: 'zz1003',
+    });
+  });
+
+  it('aplica sem olhar para o "de" e ignora pessoas que não existem', () => {
+    const estado = estadoExemplo();
+    const novo = aplicarOperacoes(estado, [
+      mover('p-ana', 'casaId', 'outra-coisa', 'casa-2'),
+      mover('nao-existe', 'casaId', null, 'casa-2'),
+    ]);
+    expect(novo.pessoas.find((p) => p.id === 'p-ana')?.casaId).toBe('casa-2');
+    expect(novo.pessoas).toHaveLength(estado.pessoas.length);
+  });
+
+  it('em estados aleatórios: só mudam as pessoas e os campos das operações', () => {
+    for (let semente = 1; semente <= 40; semente++) {
+      const estado = estadoAleatorio(semente);
+      const antes = copia(estado);
+      const ops = estado.pessoas
+        .filter((_, i) => i % 3 === 0)
+        .map((p) => mover(p.id, 'carrinhaId', p.carrinhaId, null));
+      const novo = aplicarOperacoes(estado, ops);
+      expect(estado, `semente ${semente}`).toStrictEqual(antes);
+      novo.pessoas.forEach((p, i) => {
+        const original = estado.pessoas[i];
+        if (i % 3 === 0)
+          expect(p).toStrictEqual({ ...original, carrinhaId: null, carrinhaAConfirmar: false });
+        else expect(p).toBe(original);
+      });
+    }
+  });
+});
+
+describe('compactarOperacoes', () => {
+  it('A → B → C fica A → C', () => {
+    expect(
+      compactarOperacoes([mover('p1', 'casaId', 'a', 'b'), mover('p1', 'casaId', 'b', 'c')]),
+    ).toStrictEqual([mover('p1', 'casaId', 'a', 'c')]);
+  });
+
+  it('A → B → A desaparece (também com null)', () => {
+    expect(
+      compactarOperacoes([mover('p1', 'casaId', 'a', 'b'), mover('p1', 'casaId', 'b', 'a')]),
+    ).toStrictEqual([]);
+    expect(
+      compactarOperacoes([mover('p1', 'carrinhaId', null, 'v'), mover('p1', 'carrinhaId', 'v', null)]),
+    ).toStrictEqual([]);
+  });
+
+  it('A → A (sem mudança) desaparece', () => {
+    expect(compactarOperacoes([mover('p1', 'obraId', 'o', 'o')])).toStrictEqual([]);
+  });
+
+  it('mantém separados campos e pessoas diferentes, pela ordem da primeira ocorrência', () => {
+    const ops = [
+      mover('p1', 'casaId', 'a', 'b'),
+      mover('p2', 'casaId', 'a', 'b'),
+      mover('p1', 'carrinhaId', null, 'v'),
+      mover('p1', 'casaId', 'b', 'c'),
+      mover('p2', 'casaId', 'b', 'a'),
+    ];
+    expect(compactarOperacoes(ops)).toStrictEqual([
+      mover('p1', 'casaId', 'a', 'c'),
+      mover('p1', 'carrinhaId', null, 'v'),
+    ]);
+  });
+
+  it('A → B → A → C fica A → C (no sítio da primeira ocorrência)', () => {
+    const ops = [
+      mover('p1', 'casaId', 'a', 'b'),
+      mover('p2', 'obraId', null, 'o'),
+      mover('p1', 'casaId', 'b', 'a'),
+      mover('p1', 'casaId', 'a', 'c'),
+    ];
+    expect(compactarOperacoes(ops)).toStrictEqual([
+      mover('p1', 'casaId', 'a', 'c'),
+      mover('p2', 'obraId', null, 'o'),
+    ]);
+  });
+
+  it('não altera as operações recebidas', () => {
+    const ops = [mover('p1', 'casaId', 'a', 'b'), mover('p1', 'casaId', 'b', 'c')];
+    const antes = structuredClone(ops);
+    const compactas = compactarOperacoes(ops);
+    expect(ops).toStrictEqual(antes);
+    expect(compactas[0]).not.toBe(ops[0]);
+  });
+
+  it('lista vazia → lista vazia', () => {
+    expect(compactarOperacoes([])).toStrictEqual([]);
+  });
+
+  it('aplicar as compactadas dá o mesmo estado que aplicar todas (exceto marcas de quem volta ao início)', () => {
+    for (let semente = 1; semente <= 40; semente++) {
+      const estado = estadoAleatorio(semente);
+      const destinos = [null, ...estado.casas.map((c) => c.id)];
+      const ops: Operacao[] = [];
+      const atual = new Map(estado.pessoas.map((p) => [p.id, p.casaId]));
+      estado.pessoas.forEach((p, i) => {
+        for (let k = 0; k < i % 4; k++) {
+          const para = destinos[(i + k) % destinos.length] ?? null;
+          ops.push(mover(p.id, 'casaId', atual.get(p.id) ?? null, para));
+          atual.set(p.id, para);
+        }
+      });
+      const todas = aplicarOperacoes(estado, ops);
+      const compactas = aplicarOperacoes(estado, compactarOperacoes(ops));
+      expect(
+        compactas.pessoas.map((p) => p.casaId),
+        `semente ${semente}`,
+      ).toStrictEqual(todas.pessoas.map((p) => p.casaId));
+    }
+  });
+});
+
+describe('encontrarConflitos', () => {
+  it('sem conflitos quando o "de" corresponde ao estado', () => {
+    const estado = estadoExemplo();
+    expect(
+      encontrarConflitos(estado, [
+        mover('p-ana', 'casaId', 'casa-1', 'casa-2'),
+        mover('p-helena', 'carrinhaId', null, 'zz1001'),
+        mover('p-filipe', 'obraId', 'obra-a', null),
+      ]),
+    ).toStrictEqual([]);
+  });
+
+  it('o "de" diferente do atual é conflito, com o esperado e o atual', () => {
+    const estado = estadoExemplo();
+    expect(
+      encontrarConflitos(estado, [
+        mover('p-ana', 'carrinhaId', 'zz1002', 'zz1003'),
+        mover('p-bruno', 'casaId', 'casa-1', 'casa-2'),
+        mover('p-helena', 'casaId', 'casa-2', null),
+        mover('p-gil', 'obraId', null, 'obra-a'),
+      ]),
+    ).toStrictEqual([
+      { pessoaId: 'p-ana', campo: 'carrinhaId', esperado: 'zz1002', atual: 'zz1001' },
+      { pessoaId: 'p-helena', campo: 'casaId', esperado: 'casa-2', atual: null },
+      { pessoaId: 'p-gil', campo: 'obraId', esperado: null, atual: 'obra-b' },
+    ]);
+  });
+
+  it('é conflito mesmo que a pessoa já esteja no destino (alguém fez a mesma mudança)', () => {
+    const estado = estadoExemplo();
+    expect(encontrarConflitos(estado, [mover('p-ana', 'casaId', 'casa-2', 'casa-1')])).toStrictEqual([
+      { pessoaId: 'p-ana', campo: 'casaId', esperado: 'casa-2', atual: 'casa-1' },
+    ]);
+  });
+
+  it('pessoas que não existem não são conflito (são erro de validação)', () => {
+    expect(encontrarConflitos(estadoExemplo(), [mover('nao-existe', 'casaId', 'x', 'y')])).toStrictEqual([]);
+  });
+});
+
+describe('validarOperacoes', () => {
+  it('operações válidas (incluindo para null) não dão erros', () => {
+    const estado = estadoExemplo();
+    expect(
+      validarOperacoes(estado, [
+        mover('p-ana', 'casaId', 'casa-1', 'casa-3'),
+        mover('p-ana', 'carrinhaId', 'zz1001', null),
+        mover('p-helena', 'obraId', null, 'obra-a'),
+        mover('p-gil', 'casaId', null, null),
+      ]),
+    ).toStrictEqual([]);
+  });
+
+  it('pessoa inexistente, pessoa inativa e destino inexistente', () => {
+    const estado = estadoExemplo();
+    expect(
+      validarOperacoes(estado, [
+        mover('nao-existe', 'casaId', null, 'casa-1'),
+        mover('p-ivo', 'casaId', 'casa-3', 'casa-1'),
+        mover('p-ana', 'casaId', 'casa-1', 'casa-x'),
+        mover('p-ana', 'carrinhaId', 'zz1001', 'zz9999'),
+        mover('p-ana', 'obraId', 'obra-b', 'obra-x'),
+      ]),
+    ).toStrictEqual([
+      'A pessoa nao-existe não existe.',
+      'Ivo X. não está ativa.',
+      'Ana T.: o destino casa-x não existe.',
+      'Ana T.: o destino zz9999 não existe.',
+      'Ana T.: o destino obra-x não existe.',
+    ]);
+  });
+
+  it('pessoa inativa com destino inexistente dá os dois erros', () => {
+    expect(validarOperacoes(estadoExemplo(), [mover('p-ivo', 'obraId', null, 'obra-x')])).toStrictEqual([
+      'Ivo X. não está ativa.',
+      'Ivo X.: o destino obra-x não existe.',
+    ]);
+  });
+
+  it('o destino tem de existir no tipo certo (um id de casa não serve como carrinha)', () => {
+    expect(
+      validarOperacoes(estadoExemplo(), [mover('p-ana', 'carrinhaId', 'zz1001', 'casa-1')]),
+    ).toStrictEqual(['Ana T.: o destino casa-1 não existe.']);
+  });
+
+  it('sem operações não há erros', () => {
+    expect(validarOperacoes(estadoExemplo(), [])).toStrictEqual([]);
+  });
+});
+
+describe('nomeDoValor', () => {
+  it('nomes de casa, carrinha (matrícula) e obra', () => {
+    const estado = estadoExemplo();
+    expect(nomeDoValor(estado, 'casaId', 'casa-2')).toBe('Casa Dois');
+    expect(nomeDoValor(estado, 'carrinhaId', 'zz1003')).toBe('ZZ1003');
+    expect(nomeDoValor(estado, 'obraId', 'obra-a')).toBe('Obra Alfa');
+  });
+
+  it('null tem o nome da caixa correspondente', () => {
+    const estado = estadoExemplo();
+    expect(nomeDoValor(estado, 'casaId', null)).toBe('Fora das casas CMF');
+    expect(nomeDoValor(estado, 'carrinhaId', null)).toBe('Sem transporte da empresa');
+    expect(nomeDoValor(estado, 'obraId', null)).toBe('sem obra');
+  });
+
+  it('ids que não existem aparecem tal como estão', () => {
+    const estado = estadoExemplo();
+    expect(nomeDoValor(estado, 'casaId', 'casa-x')).toBe('casa-x');
+    expect(nomeDoValor(estado, 'carrinhaId', 'zz9999')).toBe('zz9999');
+    expect(nomeDoValor(estado, 'obraId', 'obra-x')).toBe('obra-x');
+  });
+});
+
+describe('descreverOperacao', () => {
+  it('frase com o nome curto e os nomes de partida e de chegada', () => {
+    const estado = estadoExemplo();
+    expect(descreverOperacao(estado, mover('p-ana', 'casaId', 'casa-1', 'casa-3'))).toBe(
+      'Ana T. — casa: Casa Um → Casa Três',
+    );
+    expect(descreverOperacao(estado, mover('p-helena', 'carrinhaId', null, 'zz1001'))).toBe(
+      'Helena Z. — carrinha: Sem transporte da empresa → ZZ1001',
+    );
+    expect(descreverOperacao(estado, mover('p-filipe', 'obraId', 'obra-a', null))).toBe(
+      'Filipe Q. — obra: Obra Alfa → sem obra',
+    );
+    expect(descreverOperacao(estado, mover('p-gil', 'casaId', null, 'casa-2'))).toBe(
+      'Gil N. — casa: Fora das casas CMF → Casa Dois',
+    );
+  });
+
+  it('pessoa ou valores que não existem aparecem pelo id', () => {
+    expect(descreverOperacao(estadoExemplo(), mover('nao-existe', 'obraId', 'obra-x', 'obra-a'))).toBe(
+      'nao-existe — obra: obra-x → Obra Alfa',
+    );
+  });
+});

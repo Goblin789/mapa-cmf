@@ -1,231 +1,117 @@
 import { describe, expect, it } from 'vitest';
-import { type Retangulo, sobrepoem } from './geometria';
+import { contem, type Retangulo, sobrepoem } from './geometria';
 import {
-  CHIP,
-  type ElementoGrupo,
-  filasCarrinha,
-  GRUPO,
+  type GeometriaCartao,
   geometriaCarrinha,
   geometriaCasa,
-  geometriaGrupo,
+  geometriaObra,
   geometriaResumo,
   lugaresADesenhar,
-  prateleiras,
-  QUADRADO,
+  NOME,
+  OBRA_MAX_UMA_COLUNA,
 } from './medidas';
-import type { NivelCartao } from './niveis';
 
-const NIVEIS: NivelCartao[] = ['lugares', 'nomes'];
+const caixa = (g: { largura: number; altura: number }): Retangulo => ({
+  x: 0,
+  y: 0,
+  largura: g.largura,
+  altura: g.altura,
+});
 
-function dentro(interior: Retangulo, exterior: { largura: number; altura: number }) {
-  return (
-    interior.x >= 0 &&
-    interior.y >= 0 &&
-    interior.x + interior.largura <= exterior.largura &&
-    interior.y + interior.altura <= exterior.altura
-  );
-}
-
-function semSobreposicoes(lista: readonly Retangulo[]) {
-  for (let i = 0; i < lista.length; i++) {
-    for (let j = i + 1; j < lista.length; j++) {
-      if (sobrepoem(lista[i] as Retangulo, lista[j] as Retangulo)) return false;
+/** Os lugares cabem no cartão e não se sobrepõem. */
+function lugaresArrumados(g: GeometriaCartao) {
+  for (const l of g.lugares) {
+    expect(contem(caixa(g), { x: l.x, y: l.y })).toBe(true);
+    expect(contem(caixa(g), { x: l.x + l.largura, y: l.y + l.altura })).toBe(true);
+  }
+  for (let i = 0; i < g.lugares.length; i++) {
+    for (let j = i + 1; j < g.lugares.length; j++) {
+      expect(sobrepoem(g.lugares[i] as Retangulo, g.lugares[j] as Retangulo)).toBe(false);
     }
   }
-  return true;
 }
 
-describe('filasCarrinha', () => {
-  it('distribui os lugares em filas de até 3, sem perder nenhum', () => {
-    for (let n = 0; n <= 20; n++) {
-      const filas = filasCarrinha(n);
-      expect(filas.reduce((a, b) => a + b, 0)).toBe(n);
-      for (const k of filas) {
-        expect(k).toBeGreaterThanOrEqual(1);
-        expect(k).toBeLessThanOrEqual(3);
-      }
-    }
-  });
-
-  it('carrinhas habituais', () => {
-    expect(filasCarrinha(5)).toEqual([2, 3]);
-    expect(filasCarrinha(7)).toEqual([2, 2, 3]);
-    expect(filasCarrinha(9)).toEqual([3, 3, 3]);
-  });
-});
-
 describe('lugaresADesenhar', () => {
-  it('a lotação, ou os ocupados quando há gente a mais', () => {
-    expect(lugaresADesenhar(8, 3)).toBe(8);
-    expect(lugaresADesenhar(8, 8)).toBe(8);
-    expect(lugaresADesenhar(8, 10)).toBe(10);
+  it('a lotação, ou mais se houver gente a mais', () => {
+    expect(lugaresADesenhar(9, 7)).toBe(9);
+    expect(lugaresADesenhar(4, 5)).toBe(5);
+    expect(lugaresADesenhar(0, 0)).toBe(0);
   });
 });
 
-describe('geometria das casas', () => {
-  it('lugares dentro do cartão, sem se sobreporem, pela ordem', () => {
-    for (const nivel of NIVEIS) {
-      for (let n = 0; n <= 14; n++) {
-        for (const comAviso of [false, true]) {
-          const g = geometriaCasa(nivel, n, comAviso);
-          expect(g.lugares).toHaveLength(n);
-          for (const l of g.lugares) expect(dentro(l, g)).toBe(true);
-          expect(semSobreposicoes(g.lugares)).toBe(true);
-          expect(dentro(g.cabecalho, g)).toBe(true);
-          if (g.aviso) {
-            expect(dentro(g.aviso, g)).toBe(true);
-            expect(sobrepoem(g.aviso, g.cabecalho)).toBe(false);
-          }
-          for (const l of g.lugares) {
-            expect(sobrepoem(l, g.cabecalho)).toBe(false);
-            if (g.aviso) expect(sobrepoem(l, g.aviso)).toBe(false);
-            expect(l.y).toBeGreaterThanOrEqual(g.corpo.y);
-          }
-        }
-      }
+describe('casa', () => {
+  it('nomes em duas colunas, uma linha por cada dois lugares, dentro do corpo', () => {
+    for (const n of [1, 2, 7, 12]) {
+      const g = geometriaCasa(n);
+      expect(g.lugares).toHaveLength(n);
+      expect(new Set(g.lugares.map((l) => l.x)).size).toBe(Math.min(2, n));
+      expect(new Set(g.lugares.map((l) => l.y)).size).toBe(Math.ceil(n / 2));
+      lugaresArrumados(g);
+      for (const l of g.lugares) expect(l.y).toBeGreaterThan(g.estado.y + g.estado.altura - 1);
     }
   });
 
-  it('o tamanho depende só do nível, dos lugares e do aviso, e é inteiro', () => {
-    const a = geometriaCasa('lugares', 10, false);
-    expect(geometriaCasa('lugares', 10, false)).toEqual(a);
-    for (const v of [a.largura, a.altura, ...a.lugares.flatMap((l) => [l.x, l.y])]) {
-      expect(Number.isInteger(v)).toBe(true);
-    }
-    expect(geometriaCasa('lugares', 10, true).altura).toBeGreaterThan(a.altura);
-    expect(geometriaCasa('nomes', 10, false).largura).toBeGreaterThan(a.largura);
+  it('o telhado fica por cima do corpo e o nome dentro do frontão', () => {
+    const g = geometriaCasa(6);
+    expect(g.telhado.y + g.telhado.altura).toBe(g.corpo.y);
+    expect(g.telhado.largura).toBeGreaterThan(g.corpo.largura);
+    expect(contem(g.telhado, { x: g.frontao.x, y: g.frontao.y })).toBe(true);
+    expect(g.frontao.y + g.frontao.altura).toBeLessThanOrEqual(g.telhado.altura);
   });
 
-  it('todas as casas do mesmo nível têm a mesma largura', () => {
-    for (const nivel of NIVEIS) {
-      const larguras = new Set([2, 4, 8, 12].map((n) => geometriaCasa(nivel, n, false).largura));
-      expect(larguras.size).toBe(1);
-    }
-  });
-
-  it('nos lugares desenha quadradinhos; nos nomes, espaço para um nome', () => {
-    expect(geometriaCasa('lugares', 3, false).lugares[0]?.largura).toBe(QUADRADO);
-    expect(geometriaCasa('nomes', 3, false).lugares[0]?.largura).toBe(CHIP.largura);
+  it('o tamanho só depende dos lugares (cresce uma linha por cada dois lugares)', () => {
+    expect(geometriaCasa(6).largura).toBe(geometriaCasa(12).largura);
+    expect(geometriaCasa(8).altura - geometriaCasa(6).altura).toBe(NOME.passo);
+    expect(geometriaCasa(7)).toEqual(geometriaCasa(7));
+    // Sem lugares, a casa continua a ter corpo.
+    expect(geometriaCasa(0).altura).toBe(geometriaCasa(1).altura);
   });
 });
 
-describe('geometria das carrinhas', () => {
-  it('lugares dentro do cartão, por baixo do para-brisas, sem se sobreporem nem à marca', () => {
-    for (const nivel of NIVEIS) {
-      for (let n = 0; n <= 15; n++) {
-        const g = geometriaCarrinha(nivel, n);
-        expect(g.lugares).toHaveLength(n);
-        expect(semSobreposicoes([...g.lugares, g.marca])).toBe(true);
-        for (const l of [...g.lugares, g.placa, g.parabrisas, g.marca]) expect(dentro(l, g)).toBe(true);
-        for (const l of g.lugares) expect(l.y).toBeGreaterThanOrEqual(g.parabrisas.y + g.parabrisas.altura);
-        // A marca fica atrás: ao nível da última fila (lugares) ou depois dela (nomes).
-        const fim = Math.max(...g.lugares.map((l) => l.y + l.altura), 0);
-        expect(g.marca.y + g.marca.altura).toBeGreaterThanOrEqual(fim);
-      }
+describe('carrinha', () => {
+  it('um nome por linha (um por lugar), por baixo do para-brisas e por cima da traseira', () => {
+    for (const n of [5, 7, 9]) {
+      const g = geometriaCarrinha(n);
+      expect(g.lugares).toHaveLength(n);
+      expect(new Set(g.lugares.map((l) => l.x)).size).toBe(1);
+      expect(new Set(g.lugares.map((l) => l.y)).size).toBe(n);
+      lugaresArrumados(g);
+      const [primeiro] = g.lugares;
+      expect(primeiro?.y).toBeGreaterThan(g.parabrisas.y + g.parabrisas.altura);
+      expect(g.estado.y).toBeGreaterThan((g.lugares.at(-1)?.y ?? 0) + NOME.altura - 1);
     }
   });
 
-  it('a placa (matrícula) fica à frente, por cima de tudo', () => {
-    const g = geometriaCarrinha('lugares', 9);
+  it('é estreita e comprida: a matrícula à frente, os espelhos de fora da carroçaria', () => {
+    const g = geometriaCarrinha(9);
+    expect(g.altura).toBeGreaterThan(g.largura);
     expect(g.placa.y).toBeLessThan(g.parabrisas.y);
-    expect(Math.min(...g.lugares.map((l) => l.y))).toBeGreaterThan(g.placa.y);
-  });
-
-  it('mais lugares nunca encolhem o cartão', () => {
-    for (const nivel of NIVEIS) {
-      for (let n = 1; n <= 15; n++) {
-        expect(geometriaCarrinha(nivel, n).altura).toBeGreaterThanOrEqual(
-          geometriaCarrinha(nivel, n - 1).altura,
-        );
-      }
-    }
+    const [esq, dir] = g.espelhos;
+    expect(esq.x).toBeLessThan(g.corpo.x);
+    expect(dir.x + dir.largura).toBeGreaterThan(g.corpo.x + g.corpo.largura);
+    expect(geometriaCarrinha(9).altura - geometriaCarrinha(5).altura).toBe(4 * NOME.passo);
   });
 });
 
-describe('pastilha de resumo', () => {
-  it('uma linha por tipo presente', () => {
-    const ambos = geometriaResumo(true, true);
-    const soCasas = geometriaResumo(true, false);
-    expect(ambos.linhaCasas && ambos.linhaCarrinhas).toBeTruthy();
-    expect(soCasas.linhaCarrinhas).toBeNull();
-    expect(soCasas.altura).toBeLessThan(ambos.altura);
-    for (const l of [ambos.nome, ambos.linhaCasas, ambos.linhaCarrinhas])
-      expect(dentro(l as Retangulo, ambos)).toBe(true);
+describe('obra', () => {
+  it('uma coluna até OBRA_MAX_UMA_COLUNA pessoas, depois duas', () => {
+    const uma = geometriaObra(OBRA_MAX_UMA_COLUNA);
+    const duas = geometriaObra(OBRA_MAX_UMA_COLUNA + 1);
+    expect(new Set(uma.lugares.map((l) => l.x)).size).toBe(1);
+    expect(new Set(duas.lugares.map((l) => l.x)).size).toBe(2);
+    expect(duas.largura).toBeGreaterThan(uma.largura);
+    lugaresArrumados(uma);
+    lugaresArrumados(duas);
+    expect(uma.faixa.y).toBe(0);
   });
 });
 
-describe('prateleiras', () => {
-  it('muda de fila quando passa a largura máxima e mantém a ordem', () => {
-    const p = prateleiras(
-      [
-        { largura: 100, altura: 10 },
-        { largura: 100, altura: 30 },
-        { largura: 100, altura: 20 },
-      ],
-      210,
-      5,
-    );
-    expect(p.posicoes).toEqual([
-      { x: 0, y: 0 },
-      { x: 105, y: 0 },
-      { x: 0, y: 35 },
-    ]);
-    expect(p.largura).toBe(205);
-    expect(p.altura).toBe(55);
-  });
-
-  it('um item mais largo do que o máximo fica sozinho na fila', () => {
-    const p = prateleiras(
-      [
-        { largura: 300, altura: 10 },
-        { largura: 50, altura: 10 },
-      ],
-      200,
-      5,
-    );
-    expect(p.posicoes[1]).toEqual({ x: 0, y: 15 });
-  });
-});
-
-describe('geometria do grupo', () => {
-  const casas = (nivel: NivelCartao): ElementoGrupo[] =>
-    [10, 8, 8, 6].map((n, i) => ({ chave: `casa:${i}`, geometria: geometriaCasa(nivel, n, i > 1) }));
-  const carrinhas = (nivel: NivelCartao, k: number): ElementoGrupo[] =>
-    Array.from({ length: k }, (_, i) => ({
-      chave: `carrinha:${i}`,
-      geometria: geometriaCarrinha(nivel, i % 2 ? 5 : 9),
-    }));
-
-  it('casas em cima, carrinhas por baixo, tudo dentro e sem sobreposições', () => {
-    for (const nivel of NIVEIS) {
-      for (const k of [0, 1, 7, 13]) {
-        const g = geometriaGrupo(casas(nivel), carrinhas(nivel, k));
-        const rets = g.filhos.map((f) => ({
-          x: f.x,
-          y: f.y,
-          largura: f.geometria.largura,
-          altura: f.geometria.altura,
-        }));
-        expect(semSobreposicoes(rets)).toBe(true);
-        for (const ret of rets) expect(dentro(ret, g)).toBe(true);
-        for (const ret of rets) expect(sobrepoem(ret, g.cabecalho)).toBe(false);
-        const fimCasas = Math.max(...rets.slice(0, 4).map((x) => x.y + x.altura));
-        for (const ret of rets.slice(4)) expect(ret.y).toBeGreaterThan(fimCasas);
-        if (k > 0 && g.rotuloCarrinhas) {
-          expect(g.rotuloCarrinhas.y).toBeGreaterThanOrEqual(fimCasas);
-          for (const ret of rets.slice(4)) expect(sobrepoem(ret, g.rotuloCarrinhas)).toBe(false);
-        } else {
-          expect(g.rotuloCarrinhas).toBeNull();
-        }
-        expect(g.largura).toBeLessThanOrEqual(GRUPO.larguraMaxima[nivel] + 2 * GRUPO.margem);
-      }
-    }
-  });
-
-  it('um grupo só com carrinhas (ex.: estacionamento)', () => {
-    const g = geometriaGrupo([], carrinhas('lugares', 3));
-    expect(g.filhos).toHaveLength(3);
-    expect(g.rotuloCarrinhas).not.toBeNull();
-    expect(g.largura).toBeGreaterThanOrEqual(GRUPO.larguraMinima);
+describe('resumo', () => {
+  it('uma parte por tipo presente, com o nome por cima', () => {
+    const um = geometriaResumo(1);
+    const tres = geometriaResumo(3);
+    expect(tres.largura).toBeGreaterThan(um.largura);
+    expect(um.altura).toBe(tres.altura);
+    expect(um.nome.y + um.nome.altura).toBeLessThanOrEqual(um.linha.y);
   });
 });

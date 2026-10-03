@@ -1,65 +1,89 @@
-// Casa: telhado por cima, nome, pastilha "ocupados/lotação", aviso de contrato e um lugar por lugar.
-// Neutra (sem cor de cliente): a lotação vai no contorno e na pastilha.
-// Clicar no cartão põe a casa em foco; clicar no cabeçalho mostra/esconde os nomes.
+// Casa vista de frente: telhado de duas águas com beirais e chaminé, o nome no frontão, uma linha de
+// estado (aviso de contrato à esquerda, "ocupados/lotação" à direita) e os nomes em duas colunas.
+// Neutra: só a pastilha da lotação tem a cor do nível. Os nomes têm a cor do cliente.
+// Clicar na casa põe-na em foco; no modo de edição é um alvo onde se largam pessoas (data-alvo).
 
+import { chaveAlvo } from '../../../dominio/operacoes';
 import { ocupacaoCasa } from '../../../dominio/ocupacao';
 import type { Casa, Id } from '../../../dominio/tipos';
 import { ESTILO_AVISO_CONTRATO, ESTILO_NIVEL } from '../../comum/lotacao';
 import { useLoja } from '../../estado/loja';
-import type { Retangulo } from '../layout/geometria';
 import { chaveCasa } from '../layout/grupos';
 import type { GeometriaCasa } from '../layout/medidas';
 import { nomeCurtoCasa } from '../layout/textos';
-import { classeDestaque, type Destaque, posicao, Seta } from './comum';
-import { Lugar } from './Lugar';
+import { CLASSE_FOCO_TECLADO, type Destaque, posicao, tracoDestaque } from './comum';
+import { Lugares } from './Lugar';
 import { PastilhaLotacao } from './PastilhaLotacao';
 
 interface Props {
   casaId: Id;
   geometria: GeometriaCasa;
-  /** Posição dentro do contentor (grupo ou doca). */
+  /** Posição dentro do bloco (píxeis base). */
   x: number;
   y: number;
-  /** Mostrar/esconder os nomes faz sentido (o zoom e o grupo ainda não os mostram). */
-  podeAlternar: boolean;
-  aberto: boolean;
   destaque: Destaque;
 }
 
-function Telhado({ retangulo, cor }: { retangulo: Retangulo; cor: string }) {
-  const { largura: l, altura: a } = retangulo;
+/** Silhueta: chaminé, telhado (por cima da chaminé) e paredes. */
+function Silhueta({ g, destaque }: { g: GeometriaCasa; destaque: Destaque }) {
+  const { largura: L, altura: A } = g;
+  const R = g.telhado.altura;
+  const traco = tracoDestaque(destaque);
+  // Chaminé na água da direita: começa acima do telhado e desaparece por baixo dele.
+  const xChamine = Math.round(L * 0.7);
+  const yTelhado = (x: number) => (R * (x - L / 2)) / (L / 2);
   return (
     <svg
-      className="pointer-events-none absolute left-0 top-0"
-      // O CSS do Leaflet dá z-index 200 aos svg do mapa.
+      className="forma-casa pointer-events-none absolute left-0 top-0 overflow-visible"
+      // O CSS do Leaflet dá z-index 200 aos svg do mapa: ficava por cima dos nomes.
       style={{ zIndex: 'auto' }}
-      width={l}
-      height={a}
-      viewBox={`0 0 ${l} ${a}`}
+      width={L}
+      height={A}
+      viewBox={`0 0 ${L} ${A}`}
       aria-hidden="true"
     >
-      <polygon
-        points={`1,${a} ${l / 2},1 ${l - 1},${a}`}
-        fill="#cbd5e1"
-        stroke={cor}
-        strokeWidth={2}
+      <rect
+        x={xChamine}
+        y={1}
+        width={8}
+        height={yTelhado(xChamine + 8) + 1}
+        fill="#475569"
+        stroke="#1e293b"
+        strokeWidth={0.75}
+      />
+      <rect
+        className="forma-corpo"
+        x={g.corpo.x + 0.5}
+        y={g.corpo.y - 1}
+        width={g.corpo.largura - 1}
+        height={g.corpo.altura + 0.5}
+        rx={1.5}
+        fill="#ffffff"
+        stroke={traco.cor}
+        strokeWidth={traco.largura}
+        strokeDasharray={traco.tracejado}
+      />
+      <path
+        className="forma-telhado"
+        d={`M0.5 ${R} L${L / 2} 0.75 L${L - 0.5} ${R} Z`}
+        fill="#334155"
+        stroke={destaque ? traco.cor : '#1e293b'}
+        strokeWidth={destaque ? traco.largura : 1}
         strokeLinejoin="round"
       />
     </svg>
   );
 }
 
-function textoAviso(casa: Casa, usados: number, curto: boolean, forte: boolean): string {
-  const simbolo = forte ? '!!' : '!';
-  if (curto) return `${simbolo} contrato ${casa.maxContrato}`;
-  const tolerado = casa.tolerado !== null ? ` (tolerado ${casa.tolerado})` : '';
-  return `${simbolo} ${usados} para contrato ${casa.maxContrato}${tolerado}`;
+function textoAviso(casa: Casa, forte: boolean): string {
+  return forte && casa.tolerado !== null
+    ? `contrato ${casa.maxContrato} (tol. ${casa.tolerado})`
+    : `contrato ${casa.maxContrato}`;
 }
 
-export function CartaoCasa({ casaId, geometria: g, x, y, podeAlternar, aberto, destaque }: Props) {
+export function CartaoCasa({ casaId, geometria: g, x, y, destaque }: Props) {
   const indices = useLoja((s) => s.indices);
   const definirFoco = useLoja((s) => s.definirFoco);
-  const alternarExpandido = useLoja((s) => s.alternarExpandido);
   const casa = indices?.casas.get(casaId);
   if (!indices || !casa) return null;
 
@@ -67,95 +91,60 @@ export function CartaoCasa({ casaId, geometria: g, x, y, podeAlternar, aberto, d
   const oc = ocupacaoCasa(casa, moradores.length);
   const estilo = ESTILO_NIVEL[oc.nivel];
   const aviso = ESTILO_AVISO_CONTRATO[oc.aviso];
-  const nomes = g.nivel === 'nomes';
-  const chave = chaveCasa(casaId);
+  const forte = oc.aviso === 'acima_tolerado';
   const emFoco = destaque === 'foco';
-  const descricao = `${casa.nome} · ${oc.ocupados}/${oc.lotacao} lugares · ${estilo.rotulo}`;
-  // No cartão pequeno, o nome sem o que já se lê no grupo ("Casa 2 Rue de la Forêt" → "Casa 2").
   const local = indices.locais.get(casa.localId);
-  const nomeMostrado = nomes
-    ? casa.nome
-    : nomeCurtoCasa(casa.nome, local ? `${local.nome} ${local.morada}` : '');
+  // No mapa, o nome sem o que já se lê no rótulo do local ("Casa 2 Rue de la Forêt" → "Casa 2").
+  const nomeMostrado = nomeCurtoCasa(casa.nome, local ? `${local.nome} ${local.morada}` : '');
   const descricaoAviso = aviso
     ? `${aviso.rotulo}: ${oc.usados} lugares para um máximo de ${casa.maxContrato}` +
       `${casa.tolerado !== null ? ` (tolerado ${casa.tolerado})` : ''}.${casa.notaContrato ? ` ${casa.notaContrato}` : ''}`
     : '';
-
-  const conteudoCabecalho = (
-    <>
-      <span
-        className={['min-w-0 flex-1 truncate font-semibold', nomes ? 'text-xs' : 'text-[10px]'].join(' ')}
-      >
-        {nomeMostrado}
-      </span>
-      {/* No nível dos lugares não há espaço para a seta (o nome tem de caber). */}
-      {podeAlternar && nomes && <Seta aberta={aberto} />}
-      <PastilhaLotacao ocupados={oc.ocupados} lugares={oc.lotacao} nivel={oc.nivel} grande={nomes} />
-    </>
-  );
+  const descricao = `${casa.nome} · ${oc.ocupados}/${oc.lotacao} lugares · ${estilo.rotulo}`;
 
   return (
     <div
-      className={['absolute rounded-md', classeDestaque(destaque)].join(' ')}
+      className="cartao-mapa absolute"
       style={{ left: x, top: y, width: g.largura, height: g.altura }}
-      data-cartao={chave}
+      data-cartao={chaveCasa(casaId)}
+      data-alvo={chaveAlvo({ tipo: 'casa', id: casaId })}
     >
-      {/* O cartão inteiro (telhado incluído) põe a casa em foco; a caixa desenha-se por cima sem apanhar cliques. */}
+      <Silhueta g={g} destaque={destaque} />
+      {/* A casa inteira (telhado incluído) põe a casa em foco; os nomes ficam por cima. */}
       <button
         type="button"
-        className="absolute inset-0 cursor-pointer rounded-md"
+        className={`absolute inset-0 cursor-pointer rounded-sm ${CLASSE_FOCO_TECLADO}`}
         title={`${descricao}${descricaoAviso ? ` · ${descricaoAviso}` : ''}`}
-        aria-label={`${descricao}. Mostrar as ligações desta casa.`}
+        aria-label={`${descricao}${descricaoAviso ? `. ${descricaoAviso}` : ''}. Mostrar as ligações desta casa.`}
         aria-pressed={emFoco}
         onClick={() => definirFoco(emFoco ? null : { tipo: 'casa', id: casaId })}
       />
-      <Telhado retangulo={g.telhado} cor={estilo.corHex} />
+      <span
+        className="pointer-events-none absolute truncate text-center text-[10px] font-bold leading-3 tracking-tight text-white"
+        style={posicao(g.frontao)}
+      >
+        {nomeMostrado}
+      </span>
       <div
-        className={[
-          'pointer-events-none absolute rounded-t-[3px] rounded-b-md border-2 bg-white',
-          estilo.contorno,
-        ].join(' ')}
-        style={posicao(g.corpo)}
-      />
-      {podeAlternar ? (
-        <button
-          type="button"
-          className="absolute z-[1] flex cursor-pointer items-center gap-1 rounded-sm text-left hover:bg-slate-100"
-          style={posicao(g.cabecalho)}
-          title={`${casa.nome} · ${aberto ? 'esconder' : 'mostrar'} os nomes`}
-          aria-expanded={aberto}
-          onClick={() => alternarExpandido(chave)}
-        >
-          {conteudoCabecalho}
-        </button>
-      ) : (
-        <div
-          className="pointer-events-none absolute z-[1] flex items-center gap-1"
-          style={posicao(g.cabecalho)}
-        >
-          {conteudoCabecalho}
-        </div>
-      )}
-      {aviso && g.aviso && (
-        <div
-          className={[
-            'pointer-events-none absolute z-[1] flex items-center truncate rounded-sm border px-1 text-[10px] font-semibold leading-none',
-            aviso.classe,
-          ].join(' ')}
-          style={posicao(g.aviso)}
-        >
-          {textoAviso(casa, oc.usados, !nomes, oc.aviso === 'acima_tolerado')}
-        </div>
-      )}
-      {g.lugares.map((r, i) => (
-        <Lugar
-          key={`${r.x}:${r.y}`}
-          pessoa={moradores[i] ?? null}
-          retangulo={r}
-          nivel={g.nivel}
-          aMais={i >= casa.lotacao}
-        />
-      ))}
+        className="pointer-events-none absolute flex items-center justify-end gap-1"
+        style={posicao(g.estado)}
+      >
+        {aviso && (
+          <span
+            className={[
+              'mr-auto flex min-w-0 items-center gap-0.5 truncate text-[10px] font-semibold leading-3',
+              forte ? 'text-red-700' : 'text-amber-700',
+            ].join(' ')}
+          >
+            <span aria-hidden="true" className="text-[8px]">
+              ▲
+            </span>
+            <span className="truncate">{textoAviso(casa, forte)}</span>
+          </span>
+        )}
+        <PastilhaLotacao ocupados={oc.ocupados} lugares={oc.lotacao} nivel={oc.nivel} />
+      </div>
+      <Lugares pessoas={moradores} lugares={g.lugares} capacidade={casa.lotacao} />
     </div>
   );
 }

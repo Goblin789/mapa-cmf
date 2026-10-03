@@ -22,6 +22,27 @@ export function nomeCurtoCasa(nomeCasa: string, textoLocal: string): string {
   return partes.join(' ').replace(/^Apartamento\b/i, 'Ap.');
 }
 
+/** Nome de um local para o rótulo no mapa: "Himeling, Rue de la Grotte" → "Himeling · Rue de la Grotte". */
+export function nomeRotulo(nomeLocal: string): string {
+  return nomeLocal
+    .split(',')
+    .map((p) => p.trim())
+    .filter(Boolean)
+    .join(' · ');
+}
+
+/**
+ * Nome de vários locais juntos (pastilha de resumo): a parte comum antes da vírgula, se houver
+ * ("Himeling, Rue de la Grotte" + "Himeling, Rue de la Forêt" → "Himeling"); senão, todos com "·".
+ */
+export function nomeJunto(nomes: readonly string[]): string {
+  if (nomes.length === 1) return nomeRotulo(nomes[0] as string);
+  const primeiras = nomes.map((n) => (n.split(',')[0] ?? n).trim());
+  const [primeira] = primeiras;
+  if (primeira && primeiras.every((p) => p === primeira)) return primeira;
+  return primeiras.join(' · ');
+}
+
 /** "1 casa" / "4 casas". */
 export function contar(n: number, singular: string, plural: string): string {
   return `${n} ${n === 1 ? singular : plural}`;

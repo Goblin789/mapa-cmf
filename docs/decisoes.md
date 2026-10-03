@@ -2,6 +2,18 @@
 
 Registo das decisões do Rafael e das escolhas por omissão. Mais recentes primeiro.
 
+## 03/10/2026 — feedback do Rafael sobre o M0
+
+- **Mapa**: cartões muito mais pequenos e no sítio real; o mapa tem de se ver; nomes sempre visíveis nas casas e nas carrinhas.
+- **Aspeto**: a casa e a carrinha seguem o formato das imagens que o Rafael mandou (casa com telhado e chaminé e os nomes em duas colunas; carrinha vista de cima com um nome por linha; matrícula ao estilo luxemburguês), mas com cores sóbrias e ar profissional.
+- **Lotação**: só a pastilha "9/10" tem cor (verde/âmbar/vermelho); o cartão fica neutro.
+- **Camadas**: ligar/desligar Casas, Carrinhas e Obras no mapa.
+- **Lista lateral**: organizar por Casas, Carrinhas, Obras ou Clientes, com filtros, como as folhas do Michael.
+- **Modo de edição**: nada se muda fora dele. Lá dentro as mudanças são uma simulação até se carregar em Guardar; Cancelar volta tudo ao que estava. Mudar pessoas a arrastar (e "Mover para…" como alternativa).
+- **Ordem das etapas**: a edição (previsto no M2) passa à frente da publicação online (M1), a pedido do Rafael.
+- Não há outro Excel além da lista mestra e do ficheiro do Michael.
+- *Por responder*: qual é a matrícula atual da carrinha VD6376/YT7579 (a mensagem ficou cortada).
+
 ## 03/10/2026 — M0 entregue (só leitura, no PC)
 
 - O servidor só aceita ligações do próprio PC (127.0.0.1 e verificação do Host) até haver login no M1.
