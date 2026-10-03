@@ -7,7 +7,8 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
     port: 5173,
-    proxy: { '/api': 'http://localhost:8787' },
+    // API_PORTA permite apontar para outro servidor (ex.: uma cópia da BD para testes).
+    proxy: { '/api': `http://localhost:${process.env.API_PORTA ?? 8787}` },
   },
   build: { outDir: '../../dist/cliente', emptyOutDir: true },
 });
