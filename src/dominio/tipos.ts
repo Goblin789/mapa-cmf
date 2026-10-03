@@ -56,6 +56,11 @@ export interface Casa {
   notaContrato: string | null;
   senhorio: string | null;
   equipamento: string | null;
+  /**
+   * Casa que conta sempre como cheia (ex.: casas do enquadramento): os lugares são os moradores,
+   * sem vagas, e não entra nos lugares livres.
+   */
+  sempreCheia: boolean;
   ordem: number;
 }
 
@@ -73,6 +78,8 @@ export interface Carrinha {
   dormeLocalId: Id | null;
   /** Carro de substituição. */
   temporaria: boolean;
+  /** Condutor (tem de ir nesta carrinha). Aparece sempre em primeiro na lista da carrinha. */
+  condutorId: Id | null;
   nota: string | null;
   ordem: number;
 }

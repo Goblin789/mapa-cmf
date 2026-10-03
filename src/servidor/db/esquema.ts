@@ -3,7 +3,7 @@
 // Nunca editar uma migração já aplicada; criar sempre uma nova.
 
 import { sql } from 'drizzle-orm';
-import { integer, real, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import { type AnySQLiteColumn, integer, real, sqliteTable, text } from 'drizzle-orm/sqlite-core';
 import { PAISES, TIPOS_LOCAL } from '../../dominio/tipos';
 
 export const clientes = sqliteTable('clientes', {
@@ -39,6 +39,7 @@ export const casas = sqliteTable('casas', {
   notaContrato: text('nota_contrato'),
   senhorio: text('senhorio'),
   equipamento: text('equipamento'),
+  sempreCheia: integer('sempre_cheia', { mode: 'boolean' }).notNull().default(false),
   ordem: integer('ordem').notNull().default(0),
 });
 
@@ -54,6 +55,8 @@ export const carrinhas = sqliteTable('carrinhas', {
   dormeCasaId: text('dorme_casa_id').references(() => casas.id),
   dormeLocalId: text('dorme_local_id').references(() => locais.id),
   temporaria: integer('temporaria', { mode: 'boolean' }).notNull().default(false),
+  /** Condutor atual (o histórico de quem conduziu fica nas alterações dos lotes). */
+  condutorId: text('condutor_id').references((): AnySQLiteColumn => pessoas.id),
   nota: text('nota'),
   ordem: integer('ordem').notNull().default(0),
 });

@@ -12,7 +12,7 @@ export interface Indices {
   pessoas: Map<Id, Pessoa>;
   /** Pessoas ativas por casa. Todas as casas têm entrada (lista vazia se não tiver ninguém). */
   moradores: Map<Id, Pessoa[]>;
-  /** Pessoas ativas por carrinha. Todas as carrinhas têm entrada. */
+  /** Pessoas ativas por carrinha, com o condutor em primeiro. Todas as carrinhas têm entrada. */
   passageiros: Map<Id, Pessoa[]>;
   /** Pessoas ativas por obra. Todas as obras têm entrada. */
   trabalhadores: Map<Id, Pessoa[]>;
@@ -60,6 +60,11 @@ export function indexar(estado: Estado): Indices {
   }
   foraDasCasas.sort(compararPessoas);
   semTransporte.sort(compararPessoas);
+  for (const carrinha of estado.carrinhas) {
+    const lista = passageiros.get(carrinha.id);
+    const i = carrinha.condutorId && lista ? lista.findIndex((p) => p.id === carrinha.condutorId) : -1;
+    if (lista && i > 0) lista.unshift(...lista.splice(i, 1));
+  }
 
   const casasPorLocal = new Map<Id, Casa[]>();
   for (const casa of [...estado.casas].sort((a, b) => a.ordem - b.ordem)) {

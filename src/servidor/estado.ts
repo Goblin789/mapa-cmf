@@ -82,6 +82,7 @@ function paraCasa(l: LinhasBd['casas'][number]): Casa {
     notaContrato: l.notaContrato ?? null,
     senhorio: l.senhorio ?? null,
     equipamento: l.equipamento ?? null,
+    sempreCheia: booleano(l.sempreCheia),
     ordem: l.ordem,
   };
 }
@@ -96,6 +97,7 @@ function paraCarrinha(l: LinhasBd['carrinhas'][number]): Carrinha {
     dormeCasaId: l.dormeCasaId ?? null,
     dormeLocalId: l.dormeLocalId ?? null,
     temporaria: booleano(l.temporaria),
+    condutorId: l.condutorId ?? null,
     nota: l.nota ?? null,
     ordem: l.ordem,
   };

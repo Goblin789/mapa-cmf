@@ -17,9 +17,14 @@ export function nivelLotacao(ocupados: number, lugares: number): NivelLotacao {
  */
 export type AvisoContrato = 'sem_limite' | 'dentro' | 'acima_maximo' | 'acima_tolerado';
 
+/** Lugares da casa: a lotação, ou os moradores numa casa que conta sempre como cheia. */
+export function lotacaoEfetiva(casa: Casa, ocupados: number): number {
+  return casa.sempreCheia ? ocupados : casa.lotacao;
+}
+
 export function avisoContrato(casa: Casa, ocupados: number): AvisoContrato {
   if (casa.maxContrato === null) return 'sem_limite';
-  const usados = Math.max(casa.lotacao, ocupados);
+  const usados = Math.max(lotacaoEfetiva(casa, ocupados), ocupados);
   if (usados <= casa.maxContrato) return 'dentro';
   if (casa.tolerado !== null && usados > casa.tolerado) return 'acima_tolerado';
   return 'acima_maximo';
@@ -36,13 +41,14 @@ export interface OcupacaoCasa {
 }
 
 export function ocupacaoCasa(casa: Casa, ocupados: number): OcupacaoCasa {
+  const lotacao = lotacaoEfetiva(casa, ocupados);
   return {
     ocupados,
-    lotacao: casa.lotacao,
-    livres: Math.max(0, casa.lotacao - ocupados),
-    nivel: nivelLotacao(ocupados, casa.lotacao),
+    lotacao,
+    livres: Math.max(0, lotacao - ocupados),
+    nivel: nivelLotacao(ocupados, lotacao),
     aviso: avisoContrato(casa, ocupados),
-    usados: Math.max(casa.lotacao, ocupados),
+    usados: Math.max(lotacao, ocupados),
   };
 }
 

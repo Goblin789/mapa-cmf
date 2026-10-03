@@ -10,6 +10,7 @@ import { clienteEfetivoId, corTexto } from '../../dominio/cores';
 import type { Pessoa } from '../../dominio/tipos';
 import { modoDoClique } from '../arrastar/selecao';
 import { useLoja } from '../estado/loja';
+import { IconeVolante } from './IconeVolante';
 import { ContextoOrdemPessoas } from './ordemPessoas';
 
 interface Props {
@@ -18,16 +19,24 @@ interface Props {
   compacto?: boolean;
   /** Classes extra, juntadas às do nome. */
   className?: string;
+  /** É o condutor da carrinha onde aparece: leva um volante antes do nome. */
+  condutor?: boolean;
 }
 
-export function NomeChip({ pessoa, compacto = false, className = '' }: Props) {
+export function NomeChip({ pessoa, compacto = false, className = '', condutor = false }: Props) {
   const indices = useLoja((s) => s.indices);
   const clienteDestacado = useLoja((s) => s.clienteDestacado);
   const emFoco = useLoja((s) => s.foco?.tipo === 'pessoa' && s.foco.id === pessoa.id);
   const definirFoco = useLoja((s) => s.definirFoco);
   const modoEdicao = useLoja((s) => s.modoEdicao);
   const selecionado = useLoja((s) => s.modoEdicao && s.selecao.has(pessoa.id));
-  const alterado = useLoja((s) => s.modoEdicao && s.pendentes.some((op) => op.pessoaId === pessoa.id));
+  const alterado = useLoja(
+    (s) =>
+      s.modoEdicao &&
+      s.pendentes.some((op) =>
+        op.tipo === 'condutor' ? op.de === pessoa.id || op.para === pessoa.id : op.pessoaId === pessoa.id,
+      ),
+  );
   const selecionar = useLoja((s) => s.selecionar);
   const ordem = useContext(ContextoOrdemPessoas);
   if (!indices) return null;
@@ -40,6 +49,7 @@ export function NomeChip({ pessoa, compacto = false, className = '' }: Props) {
   const aConfirmar = pessoa.casaAConfirmar || pessoa.carrinhaAConfirmar;
   const titulo = [
     `${pessoa.nome} ${pessoa.apelidos}`,
+    condutor ? 'condutor' : null,
     cliente?.nome,
     aConfirmar ? 'a confirmar' : null,
     alterado ? 'alterado, por guardar' : null,
@@ -78,6 +88,7 @@ export function NomeChip({ pessoa, compacto = false, className = '' }: Props) {
       ].join(' ')}
       style={{ backgroundColor: fundo, color: corTexto(fundo) }}
     >
+      {condutor && <IconeVolante tamanho={compacto ? 9 : 11} rotulo="condutor" />}
       <span className="min-w-0 flex-1 truncate">{pessoa.nomeCurto}</span>
       {aConfirmar && (
         <span className="shrink-0 rounded-sm bg-white/80 px-0.5 font-bold text-amber-700" aria-hidden="true">

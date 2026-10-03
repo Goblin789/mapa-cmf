@@ -25,6 +25,7 @@ function casa(id: string, localId: string, lotacao: number, maxContrato: number 
     notaContrato: null,
     senhorio: null,
     equipamento: null,
+    sempreCheia: false,
     ordem,
   };
 }
@@ -39,6 +40,7 @@ function carrinha(id: string, lugares: number, ordem: number, dorme: Partial<Car
     dormeCasaId: null,
     dormeLocalId: null,
     temporaria: false,
+    condutorId: null,
     nota: null,
     ordem,
     ...dorme,

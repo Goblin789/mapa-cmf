@@ -32,6 +32,7 @@ function casaFicticia(campos: Partial<Casa> & Pick<Casa, 'id' | 'nome' | 'localI
     notaContrato: null,
     senhorio: null,
     equipamento: null,
+    sempreCheia: false,
     ...campos,
   };
 }
@@ -46,6 +47,7 @@ function carrinhaFicticia(
     dormeCasaId: null,
     dormeLocalId: null,
     temporaria: false,
+    condutorId: null,
     nota: null,
     ...campos,
   };

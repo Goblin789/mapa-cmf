@@ -15,9 +15,7 @@ export interface RespostaGuardar {
 }
 
 /** Conflito devolvido pelo servidor, já com a frase pronta a mostrar. */
-export interface ConflitoServidor extends Conflito {
-  descricao: string;
-}
+export type ConflitoServidor = Conflito & { descricao: string };
 
 export interface AlteracaoHistorico {
   entidade: string;

@@ -29,6 +29,8 @@ export interface CasaInicial {
   maxContrato: number | null;
   tolerado: number | null;
   notaContrato: string | null;
+  /** Casa que conta sempre como cheia (sem vagas). Por omissão, false. */
+  sempreCheia?: boolean;
 }
 
 export interface CarrinhaInicial {

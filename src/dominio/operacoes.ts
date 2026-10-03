@@ -3,7 +3,7 @@
 // num lote com histórico. Funções puras, iguais nos dois lados.
 
 import { formatarMatricula } from './matricula';
-import type { Estado, Id, Pessoa } from './tipos';
+import type { Carrinha, Estado, Id, Pessoa } from './tipos';
 
 export type CampoMovivel = 'casaId' | 'carrinhaId' | 'obraId';
 
@@ -17,7 +17,16 @@ export interface OperacaoMover {
   para: Id | null;
 }
 
-export type Operacao = OperacaoMover;
+/** Definir (ou tirar) o condutor de uma carrinha. O condutor tem de ir nessa carrinha. */
+export interface OperacaoCondutor {
+  tipo: 'condutor';
+  carrinhaId: Id;
+  /** Condutor quando a mudança foi feita (null = sem condutor). */
+  de: Id | null;
+  para: Id | null;
+}
+
+export type Operacao = OperacaoMover | OperacaoCondutor;
 
 /** Sítio onde se larga uma ou mais pessoas. */
 export type Alvo =
@@ -64,21 +73,36 @@ export function lerChaveAlvo(chave: string): Alvo | null {
   return null;
 }
 
-/** Operações para levar as pessoas até ao alvo. Quem já lá está (ou não existe) fica de fora. */
+/**
+ * Operações para levar as pessoas até ao alvo. Quem já lá está (ou não existe) fica de fora.
+ * Quem sai da carrinha que conduz deixa de ser o condutor dela (vai junto uma operação de condutor).
+ */
 export function operacoesParaAlvo(estado: Estado, pessoaIds: readonly Id[], alvo: Alvo): Operacao[] {
   const campo = campoDoAlvo(alvo);
   const para = valorDoAlvo(alvo);
   const pessoas = new Map(estado.pessoas.map((p) => [p.id, p]));
+  const carrinhas = new Map(estado.carrinhas.map((c) => [c.id, c]));
   const ops: Operacao[] = [];
   for (const id of new Set(pessoaIds)) {
     const p = pessoas.get(id);
     if (!p || p[campo] === para) continue;
     ops.push({ tipo: 'mover', pessoaId: id, campo, de: p[campo], para });
+    const conduzia = campo === 'carrinhaId' && p.carrinhaId ? carrinhas.get(p.carrinhaId) : undefined;
+    if (conduzia && conduzia.condutorId === id) {
+      ops.push({ tipo: 'condutor', carrinhaId: conduzia.id, de: id, para: null });
+    }
   }
   return ops;
 }
 
-function aplicarUma(p: Pessoa, op: Operacao): Pessoa {
+/** Operação para pôr `pessoaId` (ou ninguém) a conduzir a carrinha; null se já for assim. */
+export function operacaoCondutor(estado: Estado, carrinhaId: Id, pessoaId: Id | null): Operacao | null {
+  const carrinha = estado.carrinhas.find((c) => c.id === carrinhaId);
+  if (!carrinha || carrinha.condutorId === pessoaId) return null;
+  return { tipo: 'condutor', carrinhaId, de: carrinha.condutorId, para: pessoaId };
+}
+
+function aplicarUma(p: Pessoa, op: OperacaoMover): Pessoa {
   const nova: Pessoa = { ...p, [op.campo]: op.para };
   // Mudar alguém de casa/carrinha à mão confirma a nova situação.
   if (op.campo === 'casaId') nova.casaAConfirmar = false;
@@ -86,21 +110,36 @@ function aplicarUma(p: Pessoa, op: Operacao): Pessoa {
   return nova;
 }
 
-/** Aplica as operações por ordem, sem alterar o estado recebido. Operações de pessoas que não existem são ignoradas. */
+/** Aplica as operações por ordem, sem alterar o estado recebido. Operações de pessoas/carrinhas que não existem são ignoradas. */
 export function aplicarOperacoes(estado: Estado, ops: readonly Operacao[]): Estado {
   if (ops.length === 0) return estado;
-  const porPessoa = new Map<Id, Operacao[]>();
+  const porPessoa = new Map<Id, OperacaoMover[]>();
+  const condutores = new Map<Id, Id | null>();
   for (const op of ops) {
+    if (op.tipo === 'condutor') {
+      condutores.set(op.carrinhaId, op.para);
+      continue;
+    }
     const lista = porPessoa.get(op.pessoaId);
     if (lista) lista.push(op);
     else porPessoa.set(op.pessoaId, [op]);
   }
   return {
     ...estado,
-    pessoas: estado.pessoas.map((p) => {
-      const lista = porPessoa.get(p.id);
-      return lista ? lista.reduce(aplicarUma, p) : p;
-    }),
+    pessoas:
+      porPessoa.size === 0
+        ? estado.pessoas
+        : estado.pessoas.map((p) => {
+            const lista = porPessoa.get(p.id);
+            return lista ? lista.reduce(aplicarUma, p) : p;
+          }),
+    carrinhas:
+      condutores.size === 0
+        ? estado.carrinhas
+        : estado.carrinhas.map((c): Carrinha => {
+            const condutorId = condutores.get(c.id);
+            return condutorId === undefined ? c : { ...c, condutorId };
+          }),
   };
 }
 
@@ -111,46 +150,79 @@ export function aplicarOperacoes(estado: Estado, ops: readonly Operacao[]): Esta
 export function compactarOperacoes(ops: readonly Operacao[]): Operacao[] {
   const juntas = new Map<string, Operacao>();
   for (const op of ops) {
-    const chave = `${op.pessoaId}\u0000${op.campo}`;
+    const chave =
+      op.tipo === 'condutor' ? `c\u0000${op.carrinhaId}` : `p\u0000${op.pessoaId}\u0000${op.campo}`;
     const anterior = juntas.get(chave);
     juntas.set(chave, anterior ? { ...anterior, para: op.para } : { ...op });
   }
   return [...juntas.values()].filter((op) => op.de !== op.para);
 }
 
-export interface Conflito {
-  pessoaId: Id;
-  campo: CampoMovivel;
-  /** O que a operação esperava encontrar (`de`). */
-  esperado: Id | null;
-  /** O que lá está agora. */
-  atual: Id | null;
-}
+/** `esperado` = o que a operação esperava encontrar (`de`); `atual` = o que lá está agora. */
+export type Conflito =
+  | { tipo: 'mover'; pessoaId: Id; campo: CampoMovivel; esperado: Id | null; atual: Id | null }
+  | { tipo: 'condutor'; carrinhaId: Id; esperado: Id | null; atual: Id | null };
 
-/** Operações cujo `de` já não corresponde ao estado (alguém mudou a pessoa entretanto). */
+/** Operações cujo `de` já não corresponde ao estado (alguém mudou entretanto). */
 export function encontrarConflitos(estado: Estado, ops: readonly Operacao[]): Conflito[] {
   const pessoas = new Map(estado.pessoas.map((p) => [p.id, p]));
+  const carrinhas = new Map(estado.carrinhas.map((c) => [c.id, c]));
   const conflitos: Conflito[] = [];
   for (const op of ops) {
+    if (op.tipo === 'condutor') {
+      const c = carrinhas.get(op.carrinhaId);
+      if (c && c.condutorId !== op.de) {
+        conflitos.push({ tipo: 'condutor', carrinhaId: op.carrinhaId, esperado: op.de, atual: c.condutorId });
+      }
+      continue;
+    }
     const p = pessoas.get(op.pessoaId);
     if (!p) continue;
     if (p[op.campo] !== op.de) {
-      conflitos.push({ pessoaId: op.pessoaId, campo: op.campo, esperado: op.de, atual: p[op.campo] });
+      conflitos.push({
+        tipo: 'mover',
+        pessoaId: op.pessoaId,
+        campo: op.campo,
+        esperado: op.de,
+        atual: p[op.campo],
+      });
     }
   }
   return conflitos;
 }
 
-/** Erros de referência (pessoa ou destino que não existem, pessoa inativa). Lista vazia = válido. */
+/**
+ * Erros de referência (pessoa, carrinha ou destino que não existem, pessoa inativa) e a regra do condutor:
+ * no fim das operações, o condutor de cada carrinha mexida tem de ir nela. Lista vazia = válido.
+ */
 export function validarOperacoes(estado: Estado, ops: readonly Operacao[]): string[] {
   const pessoas = new Map(estado.pessoas.map((p) => [p.id, p]));
+  const carrinhas = new Map(estado.carrinhas.map((c) => [c.id, c]));
   const existe: Record<CampoMovivel, Set<Id>> = {
     casaId: new Set(estado.casas.map((c) => c.id)),
     carrinhaId: new Set(estado.carrinhas.map((c) => c.id)),
     obraId: new Set(estado.obras.map((o) => o.id)),
   };
   const erros: string[] = [];
+  const carrinhasMexidas = new Set<Id>();
   for (const op of ops) {
+    if (op.tipo === 'condutor') {
+      if (!carrinhas.has(op.carrinhaId)) {
+        erros.push(`A carrinha ${op.carrinhaId} não existe.`);
+        continue;
+      }
+      carrinhasMexidas.add(op.carrinhaId);
+      if (op.para !== null) {
+        const c = pessoas.get(op.para);
+        if (!c) erros.push(`A pessoa ${op.para} não existe.`);
+        else if (!c.ativa) erros.push(`${c.nomeCurto} não está ativa.`);
+      }
+      continue;
+    }
+    if (op.campo === 'carrinhaId') {
+      if (op.de) carrinhasMexidas.add(op.de);
+      if (op.para) carrinhasMexidas.add(op.para);
+    }
     const p = pessoas.get(op.pessoaId);
     if (!p) {
       erros.push(`A pessoa ${op.pessoaId} não existe.`);
@@ -159,6 +231,18 @@ export function validarOperacoes(estado: Estado, ops: readonly Operacao[]): stri
     if (!p.ativa) erros.push(`${p.nomeCurto} não está ativa.`);
     if (op.para !== null && !existe[op.campo].has(op.para)) {
       erros.push(`${p.nomeCurto}: o destino ${op.para} não existe.`);
+    }
+  }
+  if (erros.length > 0 || carrinhasMexidas.size === 0) return erros;
+  const final = aplicarOperacoes(estado, ops);
+  const pessoasFinal = new Map(final.pessoas.map((p) => [p.id, p]));
+  for (const c of final.carrinhas) {
+    if (!carrinhasMexidas.has(c.id) || c.condutorId === null) continue;
+    const condutor = pessoasFinal.get(c.condutorId);
+    if (!condutor || condutor.carrinhaId !== c.id) {
+      erros.push(
+        `${condutor?.nomeCurto ?? c.condutorId} não vai na carrinha ${formatarMatricula(c.matricula)}: não pode ser o condutor.`,
+      );
     }
   }
   return erros;
@@ -178,8 +262,18 @@ export function nomeDoValor(estado: Estado, campo: CampoMovivel, valor: Id | nul
   return valor === null ? 'sem obra' : (estado.obras.find((o) => o.id === valor)?.nome ?? valor);
 }
 
-/** Ex.: "Ana Exemplo — casa: Casa A → Casa B". */
+function nomePessoa(estado: Estado, id: Id | null): string {
+  if (id === null) return 'sem condutor';
+  return estado.pessoas.find((p) => p.id === id)?.nomeCurto ?? id;
+}
+
+/** Ex.: "Ana Exemplo — casa: Casa A → Casa B"; "ZZ 1001 — condutor: sem condutor → Ana Exemplo". */
 export function descreverOperacao(estado: Estado, op: Operacao): string {
+  if (op.tipo === 'condutor') {
+    const matricula = estado.carrinhas.find((c) => c.id === op.carrinhaId)?.matricula;
+    const carrinha = matricula ? formatarMatricula(matricula) : op.carrinhaId;
+    return `${carrinha} — condutor: ${nomePessoa(estado, op.de)} → ${nomePessoa(estado, op.para)}`;
+  }
   const nome = estado.pessoas.find((p) => p.id === op.pessoaId)?.nomeCurto ?? op.pessoaId;
   return `${nome} — ${NOME_CAMPO[op.campo]}: ${nomeDoValor(estado, op.campo, op.de)} → ${nomeDoValor(estado, op.campo, op.para)}`;
 }

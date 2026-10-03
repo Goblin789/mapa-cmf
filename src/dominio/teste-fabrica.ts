@@ -43,6 +43,7 @@ export function criarCasa(parcial: Partial<Casa> = {}): Casa {
     notaContrato: null,
     senhorio: null,
     equipamento: null,
+    sempreCheia: false,
     ordem: 0,
     ...parcial,
   };
@@ -58,6 +59,7 @@ export function criarCarrinha(parcial: Partial<Carrinha> = {}): Carrinha {
     lugares: 9,
     dormeCasaId: null,
     dormeLocalId: null,
+    condutorId: null,
     temporaria: false,
     nota: null,
     ordem: 0,

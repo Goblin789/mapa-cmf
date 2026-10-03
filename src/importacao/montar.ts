@@ -140,6 +140,7 @@ function montarCasas(dados: DadosIniciais, locais: Local[], erros: ErroImportaca
       notaContrato: c.notaContrato,
       senhorio: null,
       equipamento: null,
+      sempreCheia: c.sempreCheia === true,
       ordem: i,
     };
   });
@@ -162,6 +163,7 @@ function montarCarrinhas(dados: DadosIniciais, erros: ErroImportacao[]): Carrinh
     dormeCasaId: null,
     dormeLocalId: null,
     temporaria: false,
+    condutorId: null,
     nota: c.nota,
     ordem: i,
   }));
