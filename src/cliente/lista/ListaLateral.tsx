@@ -121,7 +121,9 @@ export function ListaLateral() {
         aoAlternarAlargado={() => mudarPreferencias({ alargado: !preferencias.alargado })}
         modoEdicao={modoEdicao}
       />
-      <div className="md:min-h-0 md:flex-1 md:overflow-y-auto md:overscroll-contain">
+      {/* relative: os textos só para leitores de ecrã (sr-only, absolutos) ficam presos a esta caixa que rola;
+          sem isto escapavam-lhe e a página inteira passava a rolar (a roda do rato na legenda escondia o topo). */}
+      <div className="relative md:min-h-0 md:flex-1 md:overflow-y-auto md:overscroll-contain">
         <div className="flex flex-col gap-4 px-3 pt-3 pb-6">
           {vista === 'obras' && estado.obras.length === 0 && <NotaSemObras />}
           {comFiltros && mostradas === 0 && (

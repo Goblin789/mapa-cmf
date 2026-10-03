@@ -52,6 +52,23 @@ describe('calcularContadores', () => {
     });
   });
 
+  it('casas que contam sempre como cheias não somam lugares livres (e não ficam "em excesso")', () => {
+    const estado = estadoExemplo();
+    // casa-3: 4 lugares e ninguém (4 livres); casa-2: 2 lugares e 3 moradores (excesso).
+    const sempreCheias = {
+      ...estado,
+      casas: estado.casas.map((c) =>
+        c.id === 'casa-3' || c.id === 'casa-2' ? { ...c, sempreCheia: true } : c,
+      ),
+    };
+    const antes = calcularContadores(estado);
+    const depois = calcularContadores(sempreCheias);
+    expect(depois.lugaresLivresCasas).toBe(antes.lugaresLivresCasas - 4);
+    expect(depois.casasEmExcesso).toBe(antes.casasEmExcesso - 1);
+    expect(depois.casasCheias).toBe(antes.casasCheias + 2);
+    expect(depois.foraDasCasas).toStrictEqual(antes.foraDasCasas);
+  });
+
   it('pessoas inativas não contam em lado nenhum (nem em "a confirmar")', () => {
     const estado = criarEstado({
       casas: [criarCasa({ id: 'c1', lotacao: 1 })],

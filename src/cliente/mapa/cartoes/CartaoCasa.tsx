@@ -1,6 +1,8 @@
 // Casa vista de frente: telhado de duas águas com beirais e chaminé, o nome no frontão, uma linha de
 // estado (aviso de contrato à esquerda, "ocupados/lotação" à direita) e os nomes em duas colunas.
 // Neutra: só a pastilha da lotação tem a cor do nível. Os nomes têm a cor do cliente.
+// Uma casa que conta sempre como cheia (Walferdange, Schifflange) não tem lugares vazios: os lugares são
+// os moradores (ocupacaoCasa) e a pastilha mostra n/n.
 // Clicar na casa põe-na em foco; no modo de edição é um alvo onde se largam pessoas (data-alvo).
 
 import { ocupacaoCasa } from '../../../dominio/ocupacao';
@@ -100,7 +102,14 @@ export function CartaoCasa({ casaId, geometria: g, x, y, destaque }: Props) {
     ? `${aviso.rotulo}: ${oc.usados} lugares para um máximo de ${casa.maxContrato}` +
       `${casa.tolerado !== null ? ` (tolerado ${casa.tolerado})` : ''}.${casa.notaContrato ? ` ${casa.notaContrato}` : ''}`
     : '';
-  const descricao = `${casa.nome} · ${oc.ocupados}/${oc.lotacao} lugares · ${estilo.rotulo}`;
+  const descricao = [
+    casa.nome,
+    `${oc.ocupados}/${oc.lotacao} lugares`,
+    estilo.rotulo,
+    casa.sempreCheia ? 'conta sempre como cheia' : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
 
   return (
     <div
@@ -144,7 +153,7 @@ export function CartaoCasa({ casaId, geometria: g, x, y, destaque }: Props) {
         )}
         <PastilhaLotacao ocupados={oc.ocupados} lugares={oc.lotacao} nivel={oc.nivel} />
       </div>
-      <Lugares pessoas={moradores} lugares={g.lugares} capacidade={casa.lotacao} />
+      <Lugares pessoas={moradores} lugares={g.lugares} capacidade={oc.lotacao} />
     </div>
   );
 }

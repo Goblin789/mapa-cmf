@@ -1,9 +1,10 @@
 // Os lugares de uma casa, carrinha ou obra, nas posições calculadas (layout/medidas.ts):
 // o nome da pessoa (NomeChip: cor do cliente, clique, seleção e arrastar) ou um lugar vazio discreto.
 // Os lugares a mais (gente acima da lotação) ficam com contorno vermelho e "lugar a mais" no tooltip.
+// Numa carrinha, o condutor leva o volante (vem em primeiro: indices.passageiros já o põe à frente).
 // A lista vai dentro de ContextoOrdemPessoas (Shift+clique escolhe um intervalo desta lista).
 
-import type { Pessoa } from '../../../dominio/tipos';
+import type { Id, Pessoa } from '../../../dominio/tipos';
 import { NomeChip } from '../../comum/NomeChip';
 import { ContextoOrdemPessoas } from '../../comum/ordemPessoas';
 import type { Retangulo } from '../layout/geometria';
@@ -14,9 +15,11 @@ interface Props {
   lugares: readonly Retangulo[];
   /** Lugares "normais" (lotação/lugares); daí para a frente são lugares a mais. null = sem limite (obra). */
   capacidade: number | null;
+  /** Condutor da carrinha (leva o volante). */
+  condutorId?: Id | null;
 }
 
-export function Lugares({ pessoas, lugares, capacidade }: Props) {
+export function Lugares({ pessoas, lugares, capacidade, condutorId = null }: Props) {
   const ids = pessoas.map((p) => p.id);
   return (
     <ContextoOrdemPessoas.Provider value={ids}>
@@ -42,7 +45,7 @@ export function Lugares({ pessoas, lugares, capacidade }: Props) {
             style={posicao(r)}
             title={aMais ? 'Lugar a mais (acima da lotação)' : undefined}
           >
-            <NomeChip pessoa={pessoa} compacto className="h-full" />
+            <NomeChip pessoa={pessoa} compacto className="h-full" condutor={pessoa.id === condutorId} />
           </div>
         );
       })}

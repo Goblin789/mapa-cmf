@@ -1,5 +1,6 @@
 // Importação com I/O: lê os Excel da pasta de origem (só leitura, nunca se escreve lá), escreve o relatório
 // em dados/ e, com --aplicar, grava na base de dados local. A lógica está nas funções puras de processar.ts.
+// Se a base de dados já tiver gravações feitas no programa, --aplicar recusa (apagava-as) sem --forcar.
 
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
@@ -7,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import readXlsxFile from 'read-excel-file/node';
 import { config } from '../servidor/config';
 import { abrirBd } from '../servidor/db/ligacao';
-import { aplicarNaBd } from './aplicar';
+import { aplicarNaBd, ErroGravacoesNoPrograma } from './aplicar';
 import {
   type Folhas,
   processarImportacao,
@@ -77,6 +78,7 @@ function imprimirResumo(s: Resumo, r: ResultadoImportacao, meta: MetaRelatorio):
     ensaio: 'modo de ensaio (nada foi gravado)',
     aplicado: `gravado em ${meta.bd} (lote nº ${meta.loteId})`,
     recusado: 'NÃO gravado: há erros bloqueantes',
+    protegido: `NÃO gravado: ${meta.falha}`,
     falhou: `a gravação FALHOU (${meta.falha}); a base de dados ficou como estava`,
   }[meta.modo];
   const d = r.discrepancias;
@@ -99,8 +101,17 @@ function imprimirResumo(s: Resumo, r: ResultadoImportacao, meta: MetaRelatorio):
   console.log(linhas.join('\n'));
 }
 
-/** Corre a importação. Devolve o código de saída (0 = correu bem). */
-export async function executarImportacao({ aplicar }: { aplicar: boolean }): Promise<number> {
+/**
+ * Corre a importação. Devolve o código de saída (0 = correu bem).
+ * `forcar`: grava mesmo que a base de dados tenha gravações feitas no programa (perdem-se).
+ */
+export async function executarImportacao({
+  aplicar,
+  forcar = false,
+}: {
+  aplicar: boolean;
+  forcar?: boolean;
+}): Promise<number> {
   const agora = new Date();
   if (!config.pastaOrigem) {
     console.error('Falta PASTA_ORIGEM no .env (pasta com os Excel de origem).');
@@ -143,13 +154,17 @@ export async function executarImportacao({ aplicar }: { aplicar: boolean }): Pro
       try {
         const bd = abrirBd(config.bd);
         try {
-          meta.loteId = aplicarNaBd(bd, resultado.entidades, { agora, comentario: textoResumo(resumo) });
+          meta.loteId = aplicarNaBd(bd, resultado.entidades, {
+            agora,
+            comentario: textoResumo(resumo),
+            forcar,
+          });
           meta.modo = 'aplicado';
         } finally {
           bd.$client.close();
         }
       } catch (erro) {
-        meta.modo = 'falhou';
+        meta.modo = erro instanceof ErroGravacoesNoPrograma ? 'protegido' : 'falhou';
         meta.falha = erro instanceof Error ? erro.message : String(erro);
       }
     }
@@ -158,5 +173,5 @@ export async function executarImportacao({ aplicar }: { aplicar: boolean }): Pro
   mkdirSync(dirname(CAMINHO_RELATORIO), { recursive: true });
   writeFileSync(CAMINHO_RELATORIO, gerarRelatorioHtml(resultado, meta), 'utf8');
   imprimirResumo(resumo, resultado, meta);
-  return meta.modo === 'recusado' || meta.modo === 'falhou' ? 1 : 0;
+  return meta.modo === 'aplicado' || meta.modo === 'ensaio' ? 0 : 1;
 }

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { indexar } from '../../../dominio/indices';
 import { contextoFicticio } from './estadoFicticioTeste';
 import { montarModelo } from './grupos';
 
@@ -32,6 +33,17 @@ describe('montarModelo', () => {
     // C1: lotação 4 com 5 moradores; C2: lotação 2 com 1 morador ativo (o outro está inativo).
     expect(grupo('L1')?.casas[0]).toEqual({ id: 'C1', nLugares: 5 });
     expect(grupo('L1')?.casas[1]).toEqual({ id: 'C2', nLugares: 2 });
+  });
+
+  it('uma casa que conta sempre como cheia desenha só os lugares dos moradores (sem vagas)', () => {
+    // C3: lotação 3 com um só morador.
+    const sempreCheia = {
+      ...estado,
+      casas: estado.casas.map((c) => (c.id === 'C3' ? { ...c, sempreCheia: true } : c)),
+    };
+    const m = montarModelo(sempreCheia, indexar(sempreCheia), dormidas);
+    expect(m.grupos.find((g) => g.localId === 'L2')?.casas).toEqual([{ id: 'C3', nLugares: 1 }]);
+    expect(grupo('L2')?.casas).toEqual([{ id: 'C3', nLugares: 3 }]);
   });
 
   it('as obras ficam no seu local, com o número de pessoas', () => {

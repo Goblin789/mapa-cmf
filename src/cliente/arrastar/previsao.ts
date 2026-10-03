@@ -46,16 +46,35 @@ export interface Previsao {
   nivel: NivelLotacao | null;
 }
 
+/** Ids das pessoas que mudam de facto se forem largadas no alvo (quem já lá está não conta). */
+export function pessoasQueMudam(estado: Estado, ids: readonly Id[], alvo: Alvo): Id[] {
+  return operacoesParaAlvo(estado, ids, alvo).flatMap((op) => (op.tipo === 'mover' ? [op.pessoaId] : []));
+}
+
+/** Condutores que deixam de o ser por saírem da carrinha que conduzem: "ZZ 1001 fica sem condutor." */
+export function textoCondutoresQueSaem(estado: Estado, ids: readonly Id[], alvo: Alvo): string | null {
+  const carrinhas = operacoesParaAlvo(estado, ids, alvo).flatMap((op) =>
+    op.tipo === 'condutor' && op.para === null ? [op.carrinhaId] : [],
+  );
+  if (carrinhas.length === 0) return null;
+  const matriculas = carrinhas.map((id) => {
+    const c = estado.carrinhas.find((x) => x.id === id);
+    return c ? formatarMatricula(c.matricula) : id;
+  });
+  return matriculas.length === 1
+    ? `${matriculas[0]} fica sem condutor.`
+    : `${matriculas.join(', ')} ficam sem condutor.`;
+}
+
 function semObra(estado: Estado, ind: Pick<Indices, 'obras'>): number {
   return estado.pessoas.filter((p) => p.ativa && !(p.obraId && ind.obras.has(p.obraId))).length;
 }
 
 /** O que acontece se as pessoas `ids` forem largadas em `alvo`. null se o alvo não existir. */
 export function preverLargada(estado: Estado, ind: Indices, ids: readonly Id[], alvo: Alvo): Previsao | null {
-  // Só contam as ativas, como nos índices (são as únicas que ocupam lugares).
-  const entram = operacoesParaAlvo(estado, ids, alvo).filter(
-    (op) => ind.pessoas.get(op.pessoaId)?.ativa,
-  ).length;
+  // Só contam as ativas, como nos índices (são as únicas que ocupam lugares). As operações de condutor
+  // que vêm junto (quem sai da carrinha que conduz) não são pessoas a entrar.
+  const entram = pessoasQueMudam(estado, ids, alvo).filter((id) => ind.pessoas.get(id)?.ativa).length;
   const arrastadas = new Set(ids).size;
   const semLugares = (rotulo: string, antes: number): Previsao => ({
     rotulo,

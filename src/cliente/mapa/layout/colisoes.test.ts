@@ -234,6 +234,108 @@ describe('colocarBlocos', () => {
     expect(r).toEqual(colocarBlocos(caixas));
   });
 
+  it('um bloco com lado fica todo desse lado da vertical e à altura do seu ponto', () => {
+    // Sozinho preferia ficar por cima do ponto; com lado, fica ao lado (à esquerda ou à direita).
+    for (const lado of ['esquerda', 'direita'] as const) {
+      const x = lado === 'esquerda' ? -PINO : PINO;
+      const [c] = colocarBlocos([{ ...bloco('a', 0, 0, 120, 80), lado: { lado, x } }]);
+      if (!c) throw new Error('sem bloco');
+      if (lado === 'esquerda') expect(c.x + c.largura).toBeLessThanOrEqual(x);
+      else expect(c.x).toBeGreaterThanOrEqual(x);
+      expect(c.y).toBeLessThanOrEqual(0);
+      expect(c.y + c.altura).toBeGreaterThanOrEqual(0);
+      expect(c.afastamento).toBe(PINO);
+    }
+  });
+
+  it('com rótulo, o ponto fica na linha do rótulo (o nome mesmo ao lado do ponto)', () => {
+    const rotulo = { x: 60, y: 0, largura: 60, altura: 13 };
+    const [c] = colocarBlocos([
+      {
+        chave: 'rua',
+        pontos: [{ x: 0, y: 0 }],
+        formas: [{ largura: 120, altura: 80, partes: [[rotulo]], rotulos: [rotulo] }],
+        lado: { lado: 'esquerda', x: -PINO },
+      },
+    ]);
+    if (!c) throw new Error('sem bloco');
+    expect(c.y + rotulo.y).toBeLessThanOrEqual(0);
+    expect(c.y + rotulo.y + rotulo.altura).toBeGreaterThanOrEqual(0);
+    expect(c.x + c.largura).toBe(-PINO);
+  });
+
+  it('dois blocos lado a lado ficam virados para o mesmo lado, mesmo com uma parede a empurrar um deles', () => {
+    // Duas ruas quase no mesmo sítio; por baixo da da direita há uma parede: as duas sobem.
+    const rua = (chave: string, x: number, y: number, lado: 'esquerda' | 'direita', par: string) => {
+      const emCima = { x: 0, y: 0, largura: 100, altura: 13 };
+      const emBaixo = { x: 0, y: 87, largura: 100, altura: 13 };
+      return {
+        chave,
+        pontos: [{ x, y }],
+        formas: [
+          { largura: 100, altura: 100, partes: [[emCima]], rotulos: [emCima] },
+          { largura: 100, altura: 100, partes: [[emBaixo]], rotulos: [emBaixo] },
+        ],
+        lado: { lado, x: lado === 'esquerda' ? -PINO : 4 + PINO, par },
+      };
+    };
+    const r = colocarBlocos([
+      rua('oeste', 0, 0, 'esquerda', 'leste'),
+      rua('leste', 4, 6, 'direita', 'oeste'),
+      bloco('parede', 150, 60, 200, 40),
+    ]);
+    const oeste = r.find((c) => c.chave === 'oeste') as CaixaColocada;
+    const leste = r.find((c) => c.chave === 'leste') as CaixaColocada;
+    expect(oeste.x + oeste.largura).toBeLessThanOrEqual(-PINO);
+    expect(leste.x).toBeGreaterThanOrEqual(4 + PINO);
+    // A de leste tem de subir (rótulo em baixo, forma 1) e a de oeste sobe com ela.
+    expect(leste.forma).toBe(1);
+    expect(oeste.forma).toBe(1);
+    expect(semSobreposicoes(r, MARGEM_COLISAO)).toBe(true);
+  });
+
+  it('os dois blocos lado a lado escolhem juntos para onde ficam virados, para ficarem os dois encostados', () => {
+    // Por cima e à esquerda das duas ruas há o ponto de outro local: a de oeste não pode subir encostada.
+    // O ecrã é baixo, por isso descer custa (o conjunto passa do ecrã): sozinha, a de leste subia e a de
+    // oeste, obrigada a subir também, ficava afastada do seu ponto. Juntas, descem as duas.
+    const rua = (chave: string, x: number, y: number, lado: 'esquerda' | 'direita', par: string) => {
+      const emCima = { x: 0, y: 0, largura: 100, altura: 13 };
+      const emBaixo = { x: 0, y: 87, largura: 100, altura: 13 };
+      return {
+        chave,
+        pontos: [{ x, y }],
+        formas: [
+          { largura: 100, altura: 100, partes: [[emCima]], rotulos: [emCima] },
+          { largura: 100, altura: 100, partes: [[emBaixo]], rotulos: [emBaixo] },
+        ],
+        lado: { lado, x: lado === 'esquerda' ? -PINO : 4 + PINO, par },
+      };
+    };
+    const r = colocarBlocos(
+      [
+        rua('oeste', 0, 0, 'esquerda', 'leste'),
+        rua('leste', 4, 6, 'direita', 'oeste'),
+        bloco('vizinho', -50, -60, 60, 40),
+      ],
+      { ecra: { largura: 2000, altura: 120 } },
+    );
+    const oeste = r.find((c) => c.chave === 'oeste') as CaixaColocada;
+    const leste = r.find((c) => c.chave === 'leste') as CaixaColocada;
+    expect(oeste.afastamento).toBe(PINO);
+    expect(leste.afastamento).toBe(PINO);
+    expect(oeste.x + oeste.largura).toBe(-PINO);
+    expect(leste.x).toBe(4 + PINO);
+    // As duas a descer dos pontos (rótulo em cima, forma 0).
+    expect([oeste.forma, leste.forma]).toEqual([0, 0]);
+    expect(semSobreposicoes(r, MARGEM_COLISAO)).toBe(true);
+  });
+
+  it('um bloco fixo que já não está do seu lado procura sítio', () => {
+    const caixa = { ...bloco('a', 0, 0, 120, 80), lado: { lado: 'esquerda' as const, x: -PINO } };
+    const r = colocarBlocos([caixa], { fixos: new Map([['a', { x: -60, y: -100, forma: 0 }]]) });
+    expect(r).toEqual(colocarBlocos([caixa]));
+  });
+
   it('marca como deslocado quem ficou mais longe do que o pino', () => {
     for (const c of colocarBlocos(blocosAleatorios(11, 15, 200))) {
       expect(c.deslocada).toBe(c.afastamento > PINO + 1);

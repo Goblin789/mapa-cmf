@@ -5,6 +5,7 @@ import {
   arrumarLocais,
   arrumarLocal,
   caixaDoLocal,
+  colunasCompactas,
   type ElementoCartao,
   FOLGA_CARTOES,
   grelha,
@@ -16,7 +17,7 @@ import {
   rotulosJuntoDosPontos,
 } from './arrumacao';
 import { distanciaAoRetangulo } from './colisoes';
-import { type Retangulo, sobrepoem } from './geometria';
+import { type Retangulo, sobrepoem, uniao } from './geometria';
 import { geometriaCarrinha, geometriaCasa } from './medidas';
 import type { Ponto } from './projecao';
 
@@ -226,7 +227,7 @@ describe('rotulosJuntoDosPontos', () => {
   });
 });
 
-describe('locais juntos (as duas ruas de Himeling)', () => {
+describe('locais juntos (abertos a partir da mesma pastilha do resumo)', () => {
   const norte: LocalAArrumar = { ...RUA, localId: 'N', rotulo: 'Norte' };
   const sul: LocalAArrumar = {
     localId: 'S',
@@ -258,5 +259,51 @@ describe('locais juntos (as duas ruas de Himeling)', () => {
     expect(direcoes).toContain('baixo');
     expect(direcoes).toContain('lado');
     expect(direcoes).not.toContain('misturado');
+  });
+});
+
+describe('local com vizinho: todo de um lado do ponto (Himeling)', () => {
+  const tipoDe = (o: Arrumacao, tipo: 'casa' | 'carrinha') =>
+    o.cartoes.filter((c) => c.geometria.tipo === tipo);
+  const caixaDe = (cartoes: readonly CartaoArrumadoT[]) =>
+    uniao(cartoes.map((c) => ({ x: c.x, y: c.y, largura: c.geometria.largura, altura: c.geometria.altura })));
+  type CartaoArrumadoT = Arrumacao['cartoes'][number];
+
+  for (const lado of ['esquerda', 'direita'] as const) {
+    it(`${lado}: as casas em 2×2 do lado do ponto, o rótulo encostado a elas e as carrinhas por baixo ou por fora`, () => {
+      const opcoes = arrumacoesDoLocal({ ...RUA, lado });
+      expect(opcoes.length).toBeGreaterThan(2);
+      for (const o of opcoes) {
+        arrumada(o);
+        const casas = tipoDe(o, 'casa');
+        // Grelha compacta: 2 colunas e 2 linhas.
+        expect(new Set(casas.map((c) => c.x)).size).toBe(2);
+        expect(new Set(casas.map((c) => c.y + c.geometria.altura)).size).toBe(2);
+        const cc = caixaDe(casas) as Retangulo;
+        const cv = caixaDe(tipoDe(o, 'carrinha')) as Retangulo;
+        // Nada entre as casas e o ponto: do lado de dentro, as casas encostam à borda do bloco.
+        if (lado === 'esquerda') expect(cc.x + cc.largura).toBe(o.largura);
+        else expect(cc.x).toBe(0);
+        // As carrinhas por baixo/por cima das casas ou do lado de fora, nunca do lado do ponto.
+        const porFora = lado === 'esquerda' ? cv.x + cv.largura <= cc.x : cv.x >= cc.x + cc.largura;
+        const alem = cv.y >= cc.y + cc.altura || cv.y + cv.altura <= cc.y;
+        expect(porFora || alem).toBe(true);
+        // O rótulo encostado às casas (por cima ou por baixo), sem nada no meio.
+        const r = o.rotulos[0]?.retangulo as Retangulo;
+        expect(r.y + r.altura + 1 === cc.y || cc.y + cc.altura + 1 === r.y).toBe(true);
+      }
+    });
+  }
+
+  it('sem casas (só a camada das carrinhas), as carrinhas ficam em grelha compacta', () => {
+    const soCarrinhas: LocalAArrumar = { ...RUA, casas: [], lado: 'direita' };
+    for (const o of arrumacoesDoLocal(soCarrinhas)) {
+      expect(new Set(o.cartoes.map((c) => c.x)).size).toBe(2);
+      arrumada(o);
+    }
+  });
+
+  it('a grelha compacta é quase quadrada', () => {
+    expect([1, 2, 3, 4, 5, 6, 9, 10].map(colunasCompactas)).toEqual([1, 2, 2, 2, 3, 3, 3, 4]);
   });
 });

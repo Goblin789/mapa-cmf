@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { indexar } from '../../dominio/indices';
+import { aplicarOperacoes } from '../../dominio/operacoes';
 import { criarPessoa, estadoExemplo } from '../../dominio/teste-fabrica';
 import {
   aConfirmarNaVista,
+  condutorPrimeiro,
   criarFiltro,
   type Filtros,
   filtrosAtivos,
@@ -75,6 +77,24 @@ describe('seccoesDaVista: carrinhas, obras e clientes', () => {
     ]);
     expect(seccoes[0]).toMatchObject({ lugares: 5, alvo: { tipo: 'carrinha', id: 'zz1001' } });
     expect(seccoes[3]?.alvo).toEqual({ tipo: 'sem-transporte' });
+  });
+
+  it('nas carrinhas o condutor vem sempre em primeiro (os outros pela ordem de sempre)', () => {
+    // O Gil seria o último (cliente Alfa, "G"); como condutor passa para cima.
+    const comCondutor = aplicarOperacoes(estado, [
+      { tipo: 'condutor', carrinhaId: 'zz1001', de: null, para: 'p-gil' },
+    ]);
+    const seccoes = seccoesDaVista('carrinhas', comCondutor, indexar(comCondutor), SEM_FILTROS);
+    expect(resumo(seccoes)[0]).toEqual(['carrinha:zz1001', ['p-gil', 'p-bruno', 'p-filipe', 'p-ana']]);
+    // Com filtros, se o condutor não passa, a ordem dos outros fica igual.
+    // (O cliente da cor do Gil é o da obra, Beta; Bruno e Filipe são Alfa.)
+    const soAlfa = seccoesDaVista(
+      'carrinhas',
+      comCondutor,
+      indexar(comCondutor),
+      filtros({ clientes: new Set(['cliente-a']) }),
+    );
+    expect(resumo(soAlfa)[0]).toEqual(['carrinha:zz1001', ['p-bruno', 'p-filipe']]);
   });
 
   it('obras pela ordem do cliente e depois "Sem obra"', () => {
@@ -224,6 +244,40 @@ describe('seccoesVisiveis', () => {
   it('as secções por cliente não são alvos: escondem-se mesmo no modo de edição', () => {
     const clientes = seccoesDaVista('clientes', estado, ind, filtros({ texto: 'gil' }));
     expect(seccoesVisiveis(clientes, true, true).map((v) => v.seccao.chave)).toEqual(['cliente:cliente-b']);
+  });
+});
+
+describe('condutorPrimeiro', () => {
+  const [a, b, c] = [criarPessoa({ id: 'a' }), criarPessoa({ id: 'b' }), criarPessoa({ id: 'c' })];
+
+  it('passa o condutor para o início sem mexer nos outros', () => {
+    expect(condutorPrimeiro([a, b, c], { condutorId: 'c' }).map((p) => p.id)).toEqual(['c', 'a', 'b']);
+    expect(condutorPrimeiro([a, b, c], { condutorId: 'a' }).map((p) => p.id)).toEqual(['a', 'b', 'c']);
+  });
+
+  it('sem condutor, ou com um condutor que não está na lista, fica igual (numa cópia)', () => {
+    const lista = [a, b, c];
+    expect(condutorPrimeiro(lista, { condutorId: null })).toEqual(lista);
+    expect(condutorPrimeiro(lista, { condutorId: 'x' })).toEqual(lista);
+    expect(condutorPrimeiro(lista, { condutorId: null })).not.toBe(lista);
+  });
+});
+
+describe('casas que contam sempre como cheias', () => {
+  // casa-3 tem 4 lugares e ninguém; casa-2 tem 2 lugares e 3 moradores.
+  const sempreCheias = {
+    ...estado,
+    casas: estado.casas.map((c) =>
+      c.id === 'casa-3' || c.id === 'casa-2' ? { ...c, sempreCheia: true } : c,
+    ),
+  };
+  const seccoes = seccoesDaVista('casas', sempreCheias, indexar(sempreCheias), SEM_FILTROS);
+
+  it('os lugares são os moradores: sem lugares livres desenhados', () => {
+    const [, dois, tres] = seccoes;
+    if (!dois || !tres) throw new Error('Faltam secções');
+    expect([dois.lugares, dois.total, lugaresVazios(dois, false)]).toEqual([3, 3, 0]);
+    expect([tres.lugares, tres.total, lugaresVazios(tres, false)]).toEqual([0, 0, 0]);
   });
 });
 

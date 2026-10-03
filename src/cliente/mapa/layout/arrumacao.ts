@@ -1,4 +1,4 @@
-// Arrumação dos cartões de um local (e de locais vizinhos juntos, como as duas ruas de Himeling) num
+// Arrumação dos cartões de um local (ou de locais muito perto, abertos juntos a partir do resumo) num
 // bloco compacto, em píxeis base. Regras:
 // - as casas em grelha (linhas alinhadas em baixo, como casas na rua), as carrinhas em fila ao lado
 //   ou por baixo das casas, as obras a seguir;
@@ -6,7 +6,10 @@
 //   ocupa menos área sem ficar alta e estreita (o espaço vertical é o que mais falta no ecrã);
 // - os locais com várias casas (ou só com carrinhas) levam um rótulo com o nome do local por cima (ou
 //   por baixo), numa faixa da largura dos cartões; depois de o bloco ter sítio no mapa, o rótulo desliza
-//   na faixa até ficar junto do ponto do local (rotulosJuntoDosPontos).
+//   na faixa até ficar junto do ponto do local (rotulosJuntoDosPontos);
+// - um local com um vizinho (as duas ruas de Himeling) fica todo de um lado do ponto (`lado`): as casas
+//   numa grelha compacta (4 casas em 2×2) do lado de dentro, junto do ponto, e as carrinhas e as obras
+//   por baixo delas ou do lado de fora (arrumacoesDeLado).
 
 import type { Id } from '../../../dominio/tipos';
 import { type Retangulo, uniao } from './geometria';
@@ -57,6 +60,9 @@ export interface Arrumacao {
   rotulos: RotuloArrumado[];
 }
 
+/** De que lado do ponto fica o bloco de um local com vizinho (ver disposicao.ts, ladosDosVizinhos). */
+export type LadoDoPonto = 'esquerda' | 'direita';
+
 export interface LocalAArrumar {
   localId: Id;
   /** Rótulo por cima dos cartões (null = sem rótulo: o nome já está na casa). */
@@ -64,6 +70,11 @@ export interface LocalAArrumar {
   casas: readonly ElementoCartao[];
   carrinhas: readonly ElementoCartao[];
   obras: readonly ElementoCartao[];
+  /**
+   * O bloco fica todo deste lado do ponto (locais vizinhos lado a lado): só arrumações com as casas em
+   * grelha compacta junto do ponto e o resto por baixo ou do lado de fora.
+   */
+  lado?: LadoDoPonto | null;
 }
 
 const VAZIA: Arrumacao = { largura: 0, altura: 0, cartoes: [], rotulos: [] };
@@ -105,15 +116,31 @@ export function grelha(itens: readonly ElementoCartao[], colunas: number): Arrum
 }
 
 export type Direcao = 'lado' | 'baixo';
+/** Alinhamento na outra direção: em cima/à esquerda ('inicio'), ao meio ou em baixo/à direita ('fim'). */
+export type Alinhamento = 'inicio' | 'centro' | 'fim';
 
-/** Junta dois blocos: lado a lado (alinhados em baixo) ou um por baixo do outro (centrados). */
-export function juntar(a: Arrumacao, b: Arrumacao, direcao: Direcao, folga = FOLGA_CARTOES): Arrumacao {
+function desvio(total: number, tamanho: number, alinhamento: Alinhamento): number {
+  if (alinhamento === 'inicio') return 0;
+  return alinhamento === 'fim' ? total - tamanho : Math.floor((total - tamanho) / 2);
+}
+
+/**
+ * Junta dois blocos: lado a lado (por omissão alinhados em baixo) ou um por baixo do outro (por omissão
+ * centrados).
+ */
+export function juntar(
+  a: Arrumacao,
+  b: Arrumacao,
+  direcao: Direcao,
+  folga = FOLGA_CARTOES,
+  alinhamento: Alinhamento = direcao === 'lado' ? 'fim' : 'centro',
+): Arrumacao {
   if (a.cartoes.length === 0 && a.rotulos.length === 0) return b;
   if (b.cartoes.length === 0 && b.rotulos.length === 0) return a;
   if (direcao === 'lado') {
     const altura = Math.max(a.altura, b.altura);
-    const pa = deslocar(a, 0, altura - a.altura);
-    const pb = deslocar(b, a.largura + folga, altura - b.altura);
+    const pa = deslocar(a, 0, desvio(altura, a.altura, alinhamento));
+    const pb = deslocar(b, a.largura + folga, desvio(altura, b.altura, alinhamento));
     return {
       largura: a.largura + folga + b.largura,
       altura,
@@ -122,8 +149,8 @@ export function juntar(a: Arrumacao, b: Arrumacao, direcao: Direcao, folga = FOL
     };
   }
   const largura = Math.max(a.largura, b.largura);
-  const pa = deslocar(a, Math.floor((largura - a.largura) / 2), 0);
-  const pb = deslocar(b, Math.floor((largura - b.largura) / 2), a.altura + folga);
+  const pa = deslocar(a, desvio(largura, a.largura, alinhamento), 0);
+  const pb = deslocar(b, desvio(largura, b.largura, alinhamento), a.altura + folga);
   return {
     largura,
     altura: a.altura + folga + b.altura,
@@ -235,18 +262,72 @@ function casasECarrinhas(local: LocalAArrumar, casas: Arrumacao): Arrumacao[] {
   return opcoes;
 }
 
+/** Colunas da grelha compacta de `n` cartões: quase quadrada (4 casas em 2×2, 6 em 3×2). */
+export function colunasCompactas(n: number): number {
+  return Math.max(1, Math.ceil(Math.sqrt(n)));
+}
+
+/**
+ * Arrumações de um local que fica todo de um lado do ponto (`lado`): as casas em grelha compacta (o lado
+ * de dentro fica junto do ponto) e o rótulo encostado às casas, em cima ou em baixo; as carrinhas e as
+ * obras do outro lado das casas (por baixo, ou por cima com o rótulo em baixo) ou numa coluna do lado de
+ * fora, alinhada com as casas. Nunca nada entre as casas e o ponto, nem entre as casas e o rótulo. Sem
+ * casas (só a camada das carrinhas), as carrinhas ficam elas em grelha compacta.
+ */
+function arrumacoesDeLado(local: LocalAArrumar, lado: LadoDoPonto): Arrumacao[] {
+  const casas = grelha(local.casas, colunasCompactas(local.casas.length));
+  const resultado: Arrumacao[] = [];
+  for (const rotuloEmBaixo of local.rotulo ? [false, true] : [false]) {
+    // `resto` do lado oposto ao rótulo (por baixo das casas, ou por cima) ou do lado de fora.
+    // Encostados ao lado de dentro (o do ponto) e, por fora, à linha do rótulo.
+    const dentro: Alinhamento = lado === 'esquerda' ? 'fim' : 'inicio';
+    const linhaDoRotulo: Alinhamento = rotuloEmBaixo ? 'fim' : 'inicio';
+    const alem = (a: Arrumacao, resto: Arrumacao) =>
+      rotuloEmBaixo
+        ? juntar(resto, a, 'baixo', FOLGA_CARTOES, dentro)
+        : juntar(a, resto, 'baixo', FOLGA_CARTOES, dentro);
+    const porFora = (a: Arrumacao, resto: Arrumacao) =>
+      lado === 'esquerda'
+        ? juntar(resto, a, 'lado', FOLGA_CARTOES, linhaDoRotulo)
+        : juntar(a, resto, 'lado', FOLGA_CARTOES, linhaDoRotulo);
+    const comCarrinhas: Arrumacao[] = [];
+    const nv = local.carrinhas.length;
+    // Sem casas, as carrinhas é que ficam junto do ponto: também em grelha compacta.
+    const colunas = casas.cartoes.length > 0 ? colunasPossiveis(nv) : [colunasCompactas(nv)];
+    for (const cv of colunas) {
+      const carrinhas = grelha(local.carrinhas, cv);
+      comCarrinhas.push(alem(casas, carrinhas));
+      if (casas.cartoes.length > 0 && nv > 0) comCarrinhas.push(porFora(casas, carrinhas));
+    }
+    for (const primeiro of comCarrinhas) {
+      for (const co of colunasPossiveis(local.obras.length)) {
+        const obras = grelha(local.obras, co);
+        const blocos =
+          obras.cartoes.length === 0 ? [primeiro] : [alem(primeiro, obras), porFora(primeiro, obras)];
+        for (const bloco of blocos)
+          resultado.push(porTipo(comRotulo(bloco, local.localId, local.rotulo, rotuloEmBaixo)));
+        if (obras.cartoes.length === 0) break;
+      }
+    }
+  }
+  return resultado;
+}
+
 /** Todas as arrumações de um local, da melhor para a pior (sem repetir arrumações iguais). */
 export function arrumacoesDoLocal(local: LocalAArrumar): Arrumacao[] {
   const resultado: Arrumacao[] = [];
-  for (const cc of colunasPossiveis(local.casas.length)) {
-    for (const primeiro of casasECarrinhas(local, grelha(local.casas, cc))) {
-      for (const co of colunasPossiveis(local.obras.length)) {
-        const obras = grelha(local.obras, co);
-        for (const d2 of ['lado', 'baixo'] as const) {
-          const bloco = juntar(primeiro, obras, d2);
-          resultado.push(porTipo(comRotulo(bloco, local.localId, local.rotulo)));
-          if (local.rotulo) resultado.push(porTipo(comRotulo(bloco, local.localId, local.rotulo, true)));
-          if (obras.cartoes.length === 0) break;
+  if (local.lado) resultado.push(...arrumacoesDeLado(local, local.lado));
+  else {
+    for (const cc of colunasPossiveis(local.casas.length)) {
+      for (const primeiro of casasECarrinhas(local, grelha(local.casas, cc))) {
+        for (const co of colunasPossiveis(local.obras.length)) {
+          const obras = grelha(local.obras, co);
+          for (const d2 of ['lado', 'baixo'] as const) {
+            const bloco = juntar(primeiro, obras, d2);
+            resultado.push(porTipo(comRotulo(bloco, local.localId, local.rotulo)));
+            if (local.rotulo) resultado.push(porTipo(comRotulo(bloco, local.localId, local.rotulo, true)));
+            if (obras.cartoes.length === 0) break;
+          }
         }
       }
     }

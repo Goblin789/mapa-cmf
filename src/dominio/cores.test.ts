@@ -55,18 +55,19 @@ describe('corTexto', () => {
     },
   );
 
-  it('as 7 cores reais dão todas texto preto (valores de referência)', () => {
-    const escolhas = Object.fromEntries(clientesIniciais.map((c) => [c.cor, corTexto(c.cor)]));
-    expect(escolhas).toEqual({
-      '#ED7D31': '#000000',
-      '#808080': '#000000',
-      '#B4C6E7': '#000000',
-      '#C6E0B4': '#000000',
-      '#A3DBFF': '#000000',
-      '#00B0F0': '#000000',
-      '#FFD966': '#000000',
-    });
-    // As duas mais justas: cinzento Galère e laranja Costantini.
+  // Não fixa a paleta (as cores dos clientes podem mudar): verifica que cada cor real leva o texto com mais
+  // contraste e que esse contraste chega para ler (WCAG AA, 4.5:1).
+  it('as cores reais dos clientes levam o texto com mais contraste, sempre legível (≥ 4.5)', () => {
+    expect(clientesIniciais).toHaveLength(7);
+    for (const { cor } of clientesIniciais) {
+      const texto = corTexto(cor);
+      const outro = texto === '#000000' ? '#ffffff' : '#000000';
+      expect(contraste(cor, texto), cor).toBeGreaterThanOrEqual(contraste(cor, outro));
+      expect(contraste(cor, texto), cor).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
+  it('valores de referência do contraste', () => {
     expect(contraste('#808080', '#000000')).toBeCloseTo(5.32, 2);
     expect(contraste('#ED7D31', '#000000')).toBeCloseTo(7.58, 2);
   });

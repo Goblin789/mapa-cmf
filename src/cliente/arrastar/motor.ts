@@ -6,6 +6,7 @@
 
 import { clienteEfetivoId, corTexto } from '../../dominio/cores';
 import type { Id } from '../../dominio/tipos';
+import { useUiEdicao } from '../edicao/ui';
 import { useLoja } from '../estado/loja';
 import { type AlvoEncontrado, ATRIBUTO_ESTADO_ALVO, encontrarAlvo, pessoaArrastavel } from './alvo';
 import { podeDeslizar, velocidadeBorda } from './deslizar';
@@ -23,7 +24,9 @@ import {
   descricaoArrastados,
   partesArrastados,
   partesPrevisao,
+  pessoasQueMudam,
   preverLargada,
+  textoCondutoresQueSaem,
   textoLargado,
 } from './previsao';
 import { idsAArrastar } from './selecao';
@@ -161,12 +164,19 @@ export function instalarMotorArrastar(): () => void {
     // Só se larga num alvo que existe no estado (a previsão confirma-o).
     const previsao = alvo && visivel && indices ? preverLargada(visivel, indices, levados, alvo) : null;
     terminar();
-    if (!alvo || !previsao) {
+    if (!alvo || !visivel || !previsao) {
       anunciar('Largado fora de uma casa, carrinha ou obra: nada mudou.');
       return;
     }
-    const n = moverPara(levados, alvo);
-    anunciar(textoLargado(n, previsao.rotulo, previsao.arrastadas));
+    // Contam-se pessoas (moverPara conta operações: quem sai da carrinha que conduz traz a do condutor).
+    const pessoas = pessoasQueMudam(visivel, levados, alvo).length;
+    const condutores = textoCondutoresQueSaem(visivel, levados, alvo);
+    moverPara(levados, alvo);
+    anunciar(
+      [textoLargado(pessoas, previsao.rotulo, previsao.arrastadas), condutores].filter(Boolean).join(' '),
+    );
+    // Perder o condutor não se vê bem no sítio de onde se arrastou: fica também um aviso à vista.
+    if (pessoas > 0 && condutores) useUiEdicao.getState().avisar(`${condutores} Ctrl+Z desfaz.`);
   }
 
   /** Arruma tudo o que o arrasto pôs no ecrã. */

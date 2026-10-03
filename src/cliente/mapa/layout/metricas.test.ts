@@ -5,6 +5,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { DISTRIBUICOES, gruposReais } from './cenariosTeste';
+import { chavesDoLocal } from './disposicao';
 import { COBERTURA_MAXIMA, type Margens, PINO_ACEITAVEL } from './enquadramento';
 import type { CamadasVisiveis } from './grupos';
 import { areaCoberta, medirVistaInicial } from './metricas';
@@ -23,23 +24,37 @@ const CAMADAS: Record<string, CamadasVisiveis> = {
 
 /**
  * Limites para a distribuição de hoje ('tipica'): fração do mapa tapada, pino mais comprido (px) e
- * cartão mais afastado do seu sítio (km no terreno). Himeling tem 8 casas e 10 carrinhas à volta de
- * dois pontos a 360 m: os seus cartões são os que ficam mais longe, inevitavelmente.
+ * cartão mais afastado do seu sítio (km no terreno), em Himeling e no resto. Himeling tem 8 casas e 10
+ * carrinhas à volta de dois pontos a 360 m, com a Rue de la Forêt toda à esquerda e a Rue de la Grotte toda
+ * à direita (pedido do Rafael): os seus cartões são os que ficam mais longe, inevitavelmente.
+ * Medido em 03/10/2026 (antes → depois de pôr as duas ruas lado a lado): todas, Himeling 19,9 → 33,4 km
+ * e o resto 18,2 → 16,1 km; só casas, Himeling 8,3 → 10,4 km; só carrinhas, Himeling 12,0 → 15,2 km e o
+ * resto 5,1 → 11,5 km (os mesmos 123 px, num zoom meio nível mais afastado). O pino mais comprido com
+ * todas as camadas passou de 27 para 8 px.
  */
-const LIMITES: Record<string, { cobertura: number; pino: number; km: number }> = {
-  todas: { cobertura: 0.3, pino: 30, km: 30 },
-  'só casas': { cobertura: 0.15, pino: 12, km: 10 },
-  'só carrinhas': { cobertura: 0.2, pino: 12, km: 15 },
+const LIMITES: Record<string, { cobertura: number; pino: number; kmHimeling: number; kmResto: number }> = {
+  todas: { cobertura: 0.3, pino: 12, kmHimeling: 35, kmResto: 20 },
+  'só casas': { cobertura: 0.15, pino: 12, kmHimeling: 12, kmResto: 1 },
+  'só carrinhas': { cobertura: 0.2, pino: 12, kmHimeling: 20, kmResto: 15 },
 };
 
+const HIMELING = new Set(['himeling-foret', 'himeling-grotte']);
+
 function medir(distribuicao: (typeof DISTRIBUICOES)[number], camadas: CamadasVisiveis) {
-  const m = medirVistaInicial(gruposReais(distribuicao, camadas), { ...MAPA, margem: MARGENS });
+  const grupos = gruposReais(distribuicao, camadas);
+  const m = medirVistaInicial(grupos, { ...MAPA, margem: MARGENS });
   if (!m) throw new Error('sem enquadramento');
   const metros = metrosPorPixel(LATITUDE_LUXEMBURGO, m.zoom);
+  const deHimeling = new Set(
+    grupos.filter((g) => HIMELING.has(g.localId)).flatMap((g) => [...chavesDoLocal(g)]),
+  );
+  const km = (filtro: (chave: string) => boolean) =>
+    (Math.max(0, ...[...m.afastamentos].filter(([k]) => filtro(k)).map(([, px]) => px)) * metros) / 1000;
   return {
     m,
     pinoMaximo: Math.max(...m.pinos.values()),
-    kmMaximo: (Math.max(0, ...m.afastamentos.values()) * metros) / 1000,
+    kmHimeling: km((k) => deHimeling.has(k)),
+    kmResto: km((k) => !deHimeling.has(k)),
   };
 }
 
@@ -48,7 +63,7 @@ describe('vista inicial num PC (1600×1030), distribuição de hoje', () => {
     const limite = LIMITES[nome] as (typeof LIMITES)[string];
 
     it(`${nome}: cabe, com os nomes, sem sobreposições e sem tapar demasiado o mapa`, () => {
-      const { m, pinoMaximo, kmMaximo } = medir('tipica', camadas);
+      const { m, pinoMaximo, kmHimeling, kmResto } = medir('tipica', camadas);
       expect(m.cabe).toBe(true);
       expect(m.modo).toBe('completo');
       expect(m.escala).toBeGreaterThanOrEqual(0.9);
@@ -56,7 +71,8 @@ describe('vista inicial num PC (1600×1030), distribuição de hoje', () => {
       expect(m.pontosTapados).toEqual([]);
       expect(m.cobertura).toBeLessThanOrEqual(limite.cobertura);
       expect(pinoMaximo).toBeLessThanOrEqual(limite.pino);
-      expect(kmMaximo).toBeLessThanOrEqual(limite.km);
+      expect(kmHimeling).toBeLessThanOrEqual(limite.kmHimeling);
+      expect(kmResto).toBeLessThanOrEqual(limite.kmResto);
     });
   }
 

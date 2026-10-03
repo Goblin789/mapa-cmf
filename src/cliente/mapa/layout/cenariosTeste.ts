@@ -1,5 +1,6 @@
 // Cenários para os testes do layout com os dados reais SEM dados pessoais:
-// coordenadas de dados-iniciais/locais.json, lotações de casas.json e lugares de carrinhas.json.
+// coordenadas de dados-iniciais/locais.json, lotações de casas.json (nas casas sempre cheias, os
+// moradores do documento) e lugares de carrinhas.json.
 // Onde dorme cada carrinha depende dos passageiros (dados pessoais), por isso experimentam-se
 // distribuições artificiais: 'tipica' (2–3 carrinhas por casa, as de Himeling nas duas ruas, as novas
 // sem sítio, como hoje), 'roda', 'himeling' (a pior: todas em Himeling), 'grotte' e 'com-estacionamento'.
@@ -28,7 +29,8 @@ interface LocalJson {
 }
 
 function casaNoMapa(c: (typeof casasJson)[number]): CasaNoMapa {
-  return { id: c.id, nLugares: c.lotacao };
+  // Uma casa sempre cheia desenha só os lugares dos moradores (ocupacaoCasa).
+  return { id: c.id, nLugares: 'sempreCheia' in c && c.sempreCheia ? c.moradoresDoc : c.lotacao };
 }
 
 /**

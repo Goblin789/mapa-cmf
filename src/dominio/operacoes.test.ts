@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   type Alvo,
   aplicarOperacoes,
+  type CampoMovivel,
   campoDoAlvo,
   chaveAlvo,
   compactarOperacoes,
@@ -10,6 +11,7 @@ import {
   lerChaveAlvo,
   nomeDoValor,
   type Operacao,
+  operacaoCondutor,
   operacoesParaAlvo,
   validarOperacoes,
   valorDoAlvo,
@@ -17,8 +19,27 @@ import {
 import { estadoAleatorio, estadoExemplo } from './teste-fabrica';
 import type { Estado } from './tipos';
 
-function mover(pessoaId: string, campo: Operacao['campo'], de: string | null, para: string | null): Operacao {
+function mover(pessoaId: string, campo: CampoMovivel, de: string | null, para: string | null): Operacao {
   return { tipo: 'mover', pessoaId, campo, de, para };
+}
+
+function condutor(carrinhaId: string, de: string | null, para: string | null): Operacao {
+  return { tipo: 'condutor', carrinhaId, de, para };
+}
+
+/** estadoExemplo com a Ana a conduzir a ZZ 1001 (onde vai) e a Célia a ZZ 1002. */
+function comCondutores(): Estado {
+  const estado = estadoExemplo();
+  return {
+    ...estado,
+    carrinhas: estado.carrinhas.map((c) =>
+      c.id === 'zz1001'
+        ? { ...c, condutorId: 'p-ana' }
+        : c.id === 'zz1002'
+          ? { ...c, condutorId: 'p-celia' }
+          : c,
+    ),
+  };
 }
 
 /** Cópia profunda, para provar que uma função não mexe no que recebe. */
@@ -337,21 +358,36 @@ describe('encontrarConflitos', () => {
         mover('p-gil', 'obraId', null, 'obra-a'),
       ]),
     ).toStrictEqual([
-      { pessoaId: 'p-ana', campo: 'carrinhaId', esperado: 'zz1002', atual: 'zz1001' },
-      { pessoaId: 'p-helena', campo: 'casaId', esperado: 'casa-2', atual: null },
-      { pessoaId: 'p-gil', campo: 'obraId', esperado: null, atual: 'obra-b' },
+      { tipo: 'mover', pessoaId: 'p-ana', campo: 'carrinhaId', esperado: 'zz1002', atual: 'zz1001' },
+      { tipo: 'mover', pessoaId: 'p-helena', campo: 'casaId', esperado: 'casa-2', atual: null },
+      { tipo: 'mover', pessoaId: 'p-gil', campo: 'obraId', esperado: null, atual: 'obra-b' },
     ]);
   });
 
   it('é conflito mesmo que a pessoa já esteja no destino (alguém fez a mesma mudança)', () => {
     const estado = estadoExemplo();
     expect(encontrarConflitos(estado, [mover('p-ana', 'casaId', 'casa-2', 'casa-1')])).toStrictEqual([
-      { pessoaId: 'p-ana', campo: 'casaId', esperado: 'casa-2', atual: 'casa-1' },
+      { tipo: 'mover', pessoaId: 'p-ana', campo: 'casaId', esperado: 'casa-2', atual: 'casa-1' },
     ]);
   });
 
   it('pessoas que não existem não são conflito (são erro de validação)', () => {
     expect(encontrarConflitos(estadoExemplo(), [mover('nao-existe', 'casaId', 'x', 'y')])).toStrictEqual([]);
+  });
+
+  it('condutor: o "de" tem de ser o condutor atual da carrinha', () => {
+    const estado = comCondutores();
+    expect(
+      encontrarConflitos(estado, [
+        condutor('zz1001', 'p-ana', 'p-bruno'),
+        condutor('zz1002', null, 'p-duarte'),
+        condutor('zz1003', 'p-ivo', null),
+        condutor('nao-existe', null, 'p-ana'),
+      ]),
+    ).toStrictEqual([
+      { tipo: 'condutor', carrinhaId: 'zz1002', esperado: null, atual: 'p-celia' },
+      { tipo: 'condutor', carrinhaId: 'zz1003', esperado: 'p-ivo', atual: null },
+    ]);
   });
 });
 
@@ -405,6 +441,155 @@ describe('validarOperacoes', () => {
   });
 });
 
+describe('validarOperacoes: condutor', () => {
+  it('o condutor tem de ir na carrinha (ou entrar nela no mesmo lote)', () => {
+    const estado = estadoExemplo();
+    expect(validarOperacoes(estado, [condutor('zz1001', null, 'p-ana')])).toStrictEqual([]);
+    expect(validarOperacoes(estado, [condutor('zz1001', null, 'p-celia')])).toStrictEqual([
+      'Célia F. não vai na carrinha ZZ 1001: não pode ser o condutor.',
+    ]);
+    expect(
+      validarOperacoes(estado, [
+        mover('p-helena', 'carrinhaId', null, 'zz1001'),
+        condutor('zz1001', null, 'p-helena'),
+      ]),
+    ).toStrictEqual([]);
+    // A ordem não importa: o que conta é o fim.
+    expect(
+      validarOperacoes(estado, [
+        condutor('zz1001', null, 'p-helena'),
+        mover('p-helena', 'carrinhaId', null, 'zz1001'),
+      ]),
+    ).toStrictEqual([]);
+  });
+
+  it('o condutor que sai da carrinha tem de deixar de ser condutor no mesmo lote', () => {
+    const estado = comCondutores();
+    expect(validarOperacoes(estado, [mover('p-ana', 'carrinhaId', 'zz1001', 'zz1003')])).toStrictEqual([
+      'Ana T. não vai na carrinha ZZ 1001: não pode ser o condutor.',
+    ]);
+    expect(
+      validarOperacoes(estado, operacoesParaAlvo(estado, ['p-ana'], { tipo: 'sem-transporte' })),
+    ).toStrictEqual([]);
+    // Mudar de casa ou de obra não mexe na carrinha.
+    expect(validarOperacoes(estado, [mover('p-ana', 'casaId', 'casa-1', 'casa-3')])).toStrictEqual([]);
+  });
+
+  it('tirar o condutor é sempre válido; pessoa inexistente, inativa ou carrinha inexistente não', () => {
+    const estado = comCondutores();
+    expect(validarOperacoes(estado, [condutor('zz1001', 'p-ana', null)])).toStrictEqual([]);
+    expect(validarOperacoes(estado, [condutor('zz1001', 'p-ana', 'nao-existe')])).toStrictEqual([
+      'A pessoa nao-existe não existe.',
+    ]);
+    expect(validarOperacoes(estado, [condutor('zz1003', null, 'p-ivo')])).toStrictEqual([
+      'Ivo X. não está ativa.',
+    ]);
+    expect(validarOperacoes(estado, [condutor('zz9999', null, 'p-ana')])).toStrictEqual([
+      'A carrinha zz9999 não existe.',
+    ]);
+  });
+
+  it('só verifica as carrinhas mexidas (um condutor antigo incoerente não bloqueia outras mudanças)', () => {
+    const estado = estadoExemplo();
+    const incoerente = {
+      ...estado,
+      carrinhas: estado.carrinhas.map((c) => (c.id === 'zz1003' ? { ...c, condutorId: 'p-helena' } : c)),
+    };
+    expect(validarOperacoes(incoerente, [mover('p-ana', 'casaId', 'casa-1', 'casa-3')])).toStrictEqual([]);
+    expect(validarOperacoes(incoerente, [mover('p-gil', 'carrinhaId', 'zz1001', 'zz1003')])).toStrictEqual([
+      'Helena Z. não vai na carrinha ZZ 1003: não pode ser o condutor.',
+    ]);
+  });
+});
+
+describe('operacoesParaAlvo e operacaoCondutor', () => {
+  it('quem sai da carrinha que conduz deixa de ser o condutor (vai junto uma operação)', () => {
+    const estado = comCondutores();
+    expect(operacoesParaAlvo(estado, ['p-ana', 'p-bruno'], { tipo: 'carrinha', id: 'zz1003' })).toStrictEqual(
+      [
+        mover('p-ana', 'carrinhaId', 'zz1001', 'zz1003'),
+        condutor('zz1001', 'p-ana', null),
+        mover('p-bruno', 'carrinhaId', 'zz1001', 'zz1003'),
+      ],
+    );
+    expect(operacoesParaAlvo(estado, ['p-celia'], { tipo: 'sem-transporte' })).toStrictEqual([
+      mover('p-celia', 'carrinhaId', 'zz1002', null),
+      condutor('zz1002', 'p-celia', null),
+    ]);
+  });
+
+  it('mudar o condutor de casa ou de obra, ou para a mesma carrinha, não mexe no condutor', () => {
+    const estado = comCondutores();
+    expect(operacoesParaAlvo(estado, ['p-ana'], { tipo: 'casa', id: 'casa-3' })).toStrictEqual([
+      mover('p-ana', 'casaId', 'casa-1', 'casa-3'),
+    ]);
+    expect(operacoesParaAlvo(estado, ['p-ana'], { tipo: 'sem-obra' })).toStrictEqual([
+      mover('p-ana', 'obraId', 'obra-b', null),
+    ]);
+    expect(operacoesParaAlvo(estado, ['p-ana'], { tipo: 'carrinha', id: 'zz1001' })).toStrictEqual([]);
+  });
+
+  it('operacaoCondutor: definir, trocar e tirar; null se já for assim ou a carrinha não existir', () => {
+    const estado = comCondutores();
+    expect(operacaoCondutor(estadoExemplo(), 'zz1001', 'p-gil')).toStrictEqual(
+      condutor('zz1001', null, 'p-gil'),
+    );
+    expect(operacaoCondutor(estado, 'zz1001', 'p-gil')).toStrictEqual(condutor('zz1001', 'p-ana', 'p-gil'));
+    expect(operacaoCondutor(estado, 'zz1001', null)).toStrictEqual(condutor('zz1001', 'p-ana', null));
+    expect(operacaoCondutor(estado, 'zz1001', 'p-ana')).toBeNull();
+    expect(operacaoCondutor(estado, 'zz1003', null)).toBeNull();
+    expect(operacaoCondutor(estado, 'nao-existe', 'p-ana')).toBeNull();
+  });
+});
+
+describe('aplicarOperacoes e compactarOperacoes: condutor', () => {
+  it('muda o condutor (a última operação da carrinha ganha) sem alterar o estado recebido', () => {
+    const estado = estadoExemplo();
+    const antes = copia(estado);
+    const novo = aplicarOperacoes(estado, [
+      condutor('zz1001', null, 'p-ana'),
+      condutor('zz1002', null, 'p-celia'),
+      condutor('zz1001', 'p-ana', 'p-gil'),
+      condutor('nao-existe', null, 'p-ana'),
+    ]);
+    expect(novo.carrinhas.map((c) => [c.id, c.condutorId])).toStrictEqual([
+      ['zz1001', 'p-gil'],
+      ['zz1002', 'p-celia'],
+      ['zz1003', null],
+    ]);
+    expect(estado).toStrictEqual(antes);
+    // Só com operações de condutor, as pessoas ficam as mesmas (a mesma lista).
+    expect(novo.pessoas).toBe(estado.pessoas);
+  });
+
+  it('compacta por carrinha: A → B → C fica A → C; A → B → A desaparece', () => {
+    expect(
+      compactarOperacoes([
+        condutor('zz1001', null, 'p-ana'),
+        mover('p-ana', 'casaId', 'casa-1', 'casa-2'),
+        condutor('zz1001', 'p-ana', 'p-gil'),
+        condutor('zz1002', 'p-celia', null),
+        condutor('zz1002', null, 'p-celia'),
+      ]),
+    ).toStrictEqual([condutor('zz1001', null, 'p-gil'), mover('p-ana', 'casaId', 'casa-1', 'casa-2')]);
+  });
+
+  it('o condutor que sai e volta: a pessoa fica onde estava e a carrinha sem condutor (como na simulação)', () => {
+    const estado = comCondutores();
+    const sai = operacoesParaAlvo(estado, ['p-ana'], { tipo: 'carrinha', id: 'zz1003' });
+    const volta = operacoesParaAlvo(aplicarOperacoes(estado, sai), ['p-ana'], {
+      tipo: 'carrinha',
+      id: 'zz1001',
+    });
+    const todas = [...sai, ...volta];
+    expect(compactarOperacoes(todas)).toStrictEqual([condutor('zz1001', 'p-ana', null)]);
+    expect(aplicarOperacoes(estado, compactarOperacoes(todas)).carrinhas).toStrictEqual(
+      aplicarOperacoes(estado, todas).carrinhas,
+    );
+    expect(validarOperacoes(estado, compactarOperacoes(todas))).toStrictEqual([]);
+  });
+});
+
 describe('nomeDoValor', () => {
   it('nomes de casa, carrinha (matrícula) e obra', () => {
     const estado = estadoExemplo();
@@ -448,6 +633,19 @@ describe('descreverOperacao', () => {
   it('pessoa ou valores que não existem aparecem pelo id', () => {
     expect(descreverOperacao(estadoExemplo(), mover('nao-existe', 'obraId', 'obra-x', 'obra-a'))).toBe(
       'nao-existe — obra: obra-x → Obra Alfa',
+    );
+  });
+
+  it('condutor: matrícula da carrinha e os nomes (ou "sem condutor")', () => {
+    const estado = estadoExemplo();
+    expect(descreverOperacao(estado, condutor('zz1001', null, 'p-ana'))).toBe(
+      'ZZ 1001 — condutor: sem condutor → Ana T.',
+    );
+    expect(descreverOperacao(estado, condutor('zz1001', 'p-ana', 'p-gil'))).toBe(
+      'ZZ 1001 — condutor: Ana T. → Gil N.',
+    );
+    expect(descreverOperacao(estado, condutor('zz-x', 'p-x', null))).toBe(
+      'zz-x — condutor: p-x → sem condutor',
     );
   });
 });

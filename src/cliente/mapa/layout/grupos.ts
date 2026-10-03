@@ -4,13 +4,17 @@
 
 import type { ConfiancaDormida, Dormida } from '../../../dominio/dormidas';
 import type { Indices } from '../../../dominio/indices';
+import { ocupacaoCasa } from '../../../dominio/ocupacao';
 import type { Estado, Id } from '../../../dominio/tipos';
 import type { Camada } from '../../estado/loja';
 import { lugaresADesenhar } from './medidas';
 
 export interface CasaNoMapa {
   id: Id;
-  /** Lugares a desenhar: a lotação, ou os ocupados se houver gente a mais. */
+  /**
+   * Lugares a desenhar: a lotação (numa casa sempre cheia, os moradores: sem lugares vazios), ou os
+   * ocupados se houver gente a mais.
+   */
   nLugares: number;
 }
 
@@ -89,10 +93,8 @@ export function montarModelo(
   if (camadas.casas) {
     for (const [localId, casas] of ind.casasPorLocal) {
       for (const casa of casas) {
-        const c = {
-          id: casa.id,
-          nLugares: lugaresADesenhar(casa.lotacao, ind.moradores.get(casa.id)?.length ?? 0),
-        };
+        const ocupados = ind.moradores.get(casa.id)?.length ?? 0;
+        const c = { id: casa.id, nLugares: lugaresADesenhar(ocupacaoCasa(casa, ocupados).lotacao, ocupados) };
         const grupo = grupoDoLocal(localId);
         if (grupo) grupo.casas.push(c);
         else casasSemLocal.push(c);

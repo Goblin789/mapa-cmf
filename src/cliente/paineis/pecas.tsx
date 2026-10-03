@@ -6,6 +6,8 @@ import type { NivelLotacao } from '../../dominio/ocupacao';
 import type { Cliente, Pessoa } from '../../dominio/tipos';
 import { ESTILO_NIVEL } from '../comum/lotacao';
 import { NomeChip } from '../comum/NomeChip';
+import { useLoja } from '../estado/loja';
+import { ehCondutor } from './condutor';
 import { textoLotacao } from './textos';
 
 /**
@@ -59,14 +61,15 @@ export function PastilhaLotacao({
   );
 }
 
-/** Nomes em grelha de duas colunas (caixas laterais e fichas). */
+/** Nomes em grelha de duas colunas (caixas laterais e fichas). Quem conduz leva o volante. */
 export function GrelhaNomes({ pessoas, vazio = 'Ninguém.' }: { pessoas: Pessoa[]; vazio?: ReactNode }) {
+  const indices = useLoja((s) => s.indices);
   if (pessoas.length === 0) return <p className="text-xs text-slate-600 italic">{vazio}</p>;
   return (
     <ul className="grid grid-cols-2 gap-1">
       {pessoas.map((p) => (
         <li key={p.id} className="min-w-0">
-          <NomeChip pessoa={p} />
+          <NomeChip pessoa={p} condutor={indices ? ehCondutor(p, indices) : false} />
         </li>
       ))}
     </ul>

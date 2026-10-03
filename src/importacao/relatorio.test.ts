@@ -68,5 +68,12 @@ describe('gerarRelatorioHtml', () => {
     expect(gerarRelatorioHtml(r, { ...meta, modo: 'falhou', falha: 'disco <cheio>' })).toContain(
       'disco &lt;cheio&gt;',
     );
+    const protegido = gerarRelatorioHtml(r, {
+      ...meta,
+      modo: 'protegido',
+      falha: 'A base de dados tem 2 gravações feitas no programa; reimportar apagava-as.',
+    });
+    expect(protegido).toContain('Não foi gravado: a base de dados ficou como estava.');
+    expect(protegido).toContain('2 gravações feitas no programa');
   });
 });

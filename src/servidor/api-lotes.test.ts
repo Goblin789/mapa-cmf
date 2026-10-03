@@ -2,7 +2,7 @@
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { ConflitoServidor, EntradaHistorico } from '../dominio/api';
-import type { Operacao } from '../dominio/operacoes';
+import type { CampoMovivel, Operacao } from '../dominio/operacoes';
 import { criarApp, TAMANHO_MAXIMO_LOTE } from './app';
 import { inserirDadosFicticios, inserirLotes } from './dados-de-teste';
 import * as esquema from './db/esquema';
@@ -27,8 +27,12 @@ afterEach(() => {
   if (bd.$client.open) bd.$client.close();
 });
 
-function mover(pessoaId: string, campo: Operacao['campo'], de: string | null, para: string | null): Operacao {
+function mover(pessoaId: string, campo: CampoMovivel, de: string | null, para: string | null): Operacao {
   return { tipo: 'mover', pessoaId, campo, de, para };
+}
+
+function condutor(carrinhaId: string, de: string | null, para: string | null): Operacao {
+  return { tipo: 'condutor', carrinhaId, de, para };
 }
 
 function postar(corpo: unknown, cabecalhos: Record<string, string> = {}) {
@@ -202,6 +206,106 @@ describe('POST /api/lotes — gravar', () => {
   });
 });
 
+describe('POST /api/lotes — condutor', () => {
+  it('define o condutor: grava a carrinha e a alteração, e o estado e o histórico mostram-no', async () => {
+    const resposta = await postar({ versaoBase: 1, operacoes: [condutor('car-2', null, 'p-ze')] });
+    expect(resposta.status).toBe(201);
+    expect(await resposta.json()).toStrictEqual({ loteId: 2, versao: 2 });
+
+    const estado = (await (await app.request('/api/estado')).json()) as {
+      carrinhas: { id: string; condutorId: string | null }[];
+    };
+    expect(estado.carrinhas.map((c) => [c.id, c.condutorId])).toStrictEqual([
+      ['car-1', null],
+      ['car-2', 'p-ze'],
+    ]);
+    expect(bd.select().from(esquema.alteracoes).all()).toStrictEqual([
+      {
+        id: 1,
+        loteId: 2,
+        entidade: 'carrinha',
+        entidadeId: 'car-2',
+        campo: 'condutorId',
+        antes: 'null',
+        depois: '"p-ze"',
+      },
+    ]);
+    const historico = (await (await app.request('/api/historico?limite=1')).json()) as EntradaHistorico[];
+    expect(historico[0]?.alteracoes.map((a) => a.descricao)).toStrictEqual([
+      'ZZ 0002 — condutor: sem condutor → Zé Teste',
+    ]);
+  });
+
+  it('condutor que não vai na carrinha → 400 e nada muda', async () => {
+    const antes = fotografia();
+    const resposta = await postar({ versaoBase: 1, operacoes: [condutor('car-1', null, 'p-ze')] });
+    expect(resposta.status).toBe(400);
+    expect(await resposta.json()).toStrictEqual({
+      erro: 'Há mudanças que não se podem gravar. Nada foi gravado.',
+      erros: ['Zé Teste não vai na carrinha ZZ 0001: não pode ser o condutor.'],
+    });
+    expect(fotografia()).toStrictEqual(antes);
+  });
+
+  it('o condutor sai da carrinha e deixa de ser condutor no mesmo lote', async () => {
+    expect((await postar({ versaoBase: 1, operacoes: [condutor('car-2', null, 'p-ze')] })).status).toBe(201);
+    const resposta = await postar({
+      versaoBase: 2,
+      operacoes: [mover('p-ze', 'carrinhaId', 'car-2', null), condutor('car-2', 'p-ze', null)],
+    });
+    expect(resposta.status).toBe(201);
+    const estado = carregarEstado(bd, AGORA);
+    expect(estado.carrinhas.find((c) => c.id === 'car-2')?.condutorId).toBeNull();
+    expect(estado.pessoas.find((p) => p.id === 'p-ze')?.carrinhaId).toBeNull();
+  });
+
+  it('conflito de condutor → 409 com a frase pronta a mostrar', async () => {
+    expect((await postar({ versaoBase: 1, operacoes: [condutor('car-2', null, 'p-ze')] })).status).toBe(201);
+    const depois = fotografia();
+    const resposta = await postar({ versaoBase: 1, operacoes: [condutor('car-2', null, null)] });
+    // null → null não é mudança nenhuma: compacta para nada.
+    expect(resposta.status).toBe(400);
+    const segundo = await postar({ versaoBase: 1, operacoes: [condutor('car-2', null, 'p-ze')] });
+    expect(segundo.status).toBe(409);
+    expect(await segundo.json()).toStrictEqual({
+      erro: 'Alguém mudou entretanto algumas destas pessoas ou carrinhas. Nada foi gravado.',
+      conflitos: [
+        {
+          tipo: 'condutor',
+          carrinhaId: 'car-2',
+          esperado: null,
+          atual: 'p-ze',
+          descricao:
+            'ZZ 0002 — condutor: esperavas que não tivesse condutor, mas agora é Zé Teste (alguém mudou entretanto)',
+        },
+      ],
+    });
+    expect(fotografia()).toStrictEqual(depois);
+  });
+
+  it('tirar da carrinha quem entretanto passou a conduzi-la → 409 (a versaoBase do pedido conta)', async () => {
+    expect((await postar({ versaoBase: 1, operacoes: [condutor('car-2', null, 'p-ze')] })).status).toBe(201);
+    const depois = fotografia();
+    // Um browser ainda na versão 1 (sem saber que o Zé conduz) tira-o da car-2.
+    const antigo = await postar({ versaoBase: 1, operacoes: [mover('p-ze', 'carrinhaId', 'car-2', null)] });
+    expect(antigo.status).toBe(409);
+    expect(((await antigo.json()) as { conflitos: ConflitoServidor[] }).conflitos).toStrictEqual([
+      {
+        tipo: 'condutor',
+        carrinhaId: 'car-2',
+        esperado: null,
+        atual: 'p-ze',
+        descricao:
+          'ZZ 0002 — condutor: esperavas que não tivesse condutor, mas agora é Zé Teste (alguém mudou entretanto)',
+      },
+    ]);
+    // O mesmo pedido sobre a versão atual é mal feito (faltava tirar o condutor): 400.
+    const atual = await postar({ versaoBase: 2, operacoes: [mover('p-ze', 'carrinhaId', 'car-2', null)] });
+    expect(atual.status).toBe(400);
+    expect(fotografia()).toStrictEqual(depois);
+  });
+});
+
 describe('POST /api/lotes — compactação', () => {
   it('A → B → C grava só A → C', async () => {
     const resposta = await postar({
@@ -278,6 +382,7 @@ describe('POST /api/lotes — conflitos (409)', () => {
       erro: 'Alguém mudou entretanto algumas destas pessoas. Nada foi gravado.',
       conflitos: [
         {
+          tipo: 'mover',
           pessoaId: 'p-ze',
           campo: 'carrinhaId',
           esperado: 'car-1',
@@ -286,6 +391,7 @@ describe('POST /api/lotes — conflitos (409)', () => {
             'Zé Teste — carrinha: esperavas ZZ 0001, mas agora está em ZZ 0002 (alguém mudou entretanto)',
         },
         {
+          tipo: 'mover',
           pessoaId: 'p-alvaro',
           campo: 'casaId',
           esperado: 'casa-ribeira',
@@ -413,6 +519,21 @@ describe('POST /api/lotes — pedidos inválidos (400)', () => {
       /operacoes\[0\]\.pessoaId/,
     ],
     ['para numérico', { versaoBase: 1, operacoes: [{ ...op, para: 7 }] }, /operacoes\[0\]\.para/],
+    [
+      'condutor sem carrinha',
+      { versaoBase: 1, operacoes: [{ tipo: 'condutor', de: null, para: 'p-ze' }] },
+      /operacoes\[0\]\.carrinhaId/,
+    ],
+    [
+      'condutor sem "de"',
+      { versaoBase: 1, operacoes: [{ tipo: 'condutor', carrinhaId: 'car-2', para: 'p-ze' }] },
+      /operacoes\[0\]\.de/,
+    ],
+    [
+      'condutor com pessoa vazia',
+      { versaoBase: 1, operacoes: [{ tipo: 'condutor', carrinhaId: 'car-2', de: null, para: '' }] },
+      /operacoes\[0\]\.para/,
+    ],
     [
       'comentário longo',
       { versaoBase: 1, operacoes: [op], comentario: 'x'.repeat(501) },

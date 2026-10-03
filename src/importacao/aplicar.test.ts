@@ -11,7 +11,7 @@ import {
   pessoas,
 } from '../servidor/db/esquema';
 import { abrirBd } from '../servidor/db/ligacao';
-import { aplicarNaBd } from './aplicar';
+import { aplicarNaBd, contarGravacoesDoPrograma, ErroGravacoesNoPrograma } from './aplicar';
 import { dadosFicticios, folhaExtraFicticia, folhaPessoalFicticia } from './dadosFicticios';
 import { processarImportacao } from './processar';
 
@@ -106,6 +106,132 @@ describe('aplicarNaBd', () => {
         .all()
         .every((p) => p.obraId === null),
     ).toBe(true);
+  });
+
+  it('um condutor definido nas carrinhas não impede reimportar (chave estrangeira para as pessoas)', () => {
+    const bd = abrirBd(':memory:');
+    aplicarNaBd(bd, entidades(), { agora, comentario: 'primeira' });
+    bd.update(carrinhas).set({ condutorId: 'p-900-001' }).where(eq(carrinhas.id, 'AA1111')).run();
+    expect(() => aplicarNaBd(bd, entidades(), { agora, comentario: 'segunda' })).not.toThrow();
+    expect(
+      bd
+        .select()
+        .from(carrinhas)
+        .all()
+        .map((c) => c.condutorId),
+    ).toEqual([null, null, null]);
+  });
+
+  it('um condutor vindo da importação liga-se depois de as pessoas entrarem', () => {
+    const bd = abrirBd(':memory:');
+    const e = entidades();
+    const aa = e.carrinhas.find((c) => c.id === 'AA1111');
+    if (aa) aa.condutorId = 'p-900-001';
+    aplicarNaBd(bd, e, { agora, comentario: 'com condutor' });
+    expect(bd.select().from(carrinhas).where(eq(carrinhas.id, 'AA1111')).get()?.condutorId).toBe('p-900-001');
+  });
+
+  it('casas que contam sempre como cheias ficam gravadas', () => {
+    const bd = abrirBd(':memory:');
+    const e = entidades();
+    const b = e.casas.find((c) => c.id === 'casa-b');
+    if (b) b.sempreCheia = true;
+    aplicarNaBd(bd, e, { agora, comentario: 'x' });
+    expect(
+      bd
+        .select()
+        .from(casas)
+        .all()
+        .map((c) => [c.id, c.sempreCheia]),
+    ).toEqual([
+      ['casa-1-foret', false],
+      ['casa-b', true],
+    ]);
+  });
+
+  describe('proteção das gravações feitas no programa', () => {
+    function comUmaMudanca() {
+      const bd = abrirBd(':memory:');
+      const primeiro = aplicarNaBd(bd, entidades(), { agora, comentario: 'primeira' });
+      const quando = agora.toISOString();
+      const { id } = bd
+        .insert(lotes)
+        .values({
+          autor: 'local',
+          tipo: 'mudanca',
+          estado: 'aplicado',
+          criadoEm: quando,
+          efetivoEm: quando,
+          comentario: null,
+        })
+        .returning({ id: lotes.id })
+        .get();
+      bd.update(pessoas).set({ casaId: null }).where(eq(pessoas.id, 'p-900-001')).run();
+      bd.insert(alteracoes)
+        .values({
+          loteId: id,
+          entidade: 'pessoa',
+          entidadeId: 'p-900-001',
+          campo: 'casaId',
+          antes: '"casa-1-foret"',
+          depois: 'null',
+        })
+        .run();
+      return { bd, primeiro, mudanca: id };
+    }
+
+    it('conta só os lotes que não são importações', () => {
+      const { bd } = comUmaMudanca();
+      expect(contarGravacoesDoPrograma(bd)).toBe(1);
+      expect(contarGravacoesDoPrograma(abrirBd(':memory:'))).toBe(0);
+    });
+
+    it('com gravações do programa recusa, explica e não mexe em nada', () => {
+      const { bd } = comUmaMudanca();
+      const antes = {
+        pessoas: bd.select().from(pessoas).all(),
+        lotes: bd.select().from(lotes).all(),
+        alteracoes: bd.select().from(alteracoes).all(),
+      };
+      let erro: unknown;
+      try {
+        aplicarNaBd(bd, entidades(), { agora, comentario: 'segunda' });
+      } catch (e) {
+        erro = e;
+      }
+      expect(erro).toBeInstanceOf(ErroGravacoesNoPrograma);
+      expect((erro as Error).message).toBe(
+        'A base de dados tem 1 gravação feita no programa; reimportar apagava-a. ' +
+          'Use --forcar se tiver mesmo a certeza.',
+      );
+      expect({
+        pessoas: bd.select().from(pessoas).all(),
+        lotes: bd.select().from(lotes).all(),
+        alteracoes: bd.select().from(alteracoes).all(),
+      }).toEqual(antes);
+    });
+
+    it('a mensagem diz quantas são', () => {
+      expect(new ErroGravacoesNoPrograma(3).message).toBe(
+        'A base de dados tem 3 gravações feitas no programa; reimportar apagava-as. ' +
+          'Use --forcar se tiver mesmo a certeza.',
+      );
+    });
+
+    it('com forcar, apaga-as e importa de novo', () => {
+      const { bd, mudanca } = comUmaMudanca();
+      const loteId = aplicarNaBd(bd, entidades(), { agora, comentario: 'forçada', forcar: true });
+      expect(loteId).toBeGreaterThan(mudanca);
+      expect(
+        bd
+          .select()
+          .from(lotes)
+          .all()
+          .map((l) => [l.tipo, l.comentario]),
+      ).toEqual([['importacao', 'forçada']]);
+      expect(bd.select().from(alteracoes).all()).toEqual([]);
+      expect(bd.select().from(pessoas).where(eq(pessoas.id, 'p-900-001')).get()?.casaId).toBe('casa-1-foret');
+    });
   });
 
   it('se alguma coisa falha, nada muda (uma só transação)', () => {

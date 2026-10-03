@@ -5,9 +5,15 @@
 //    mais perto (PINO quando está encostado: por cima, por baixo ou ao lado) + o afastamento entre o
 //    ponto e o centro do bloco (um bloco pendurado para um lado afasta os cartões do sítio real) + o
 //    rótulo longe do ponto + uma pequena preferência por ficar por cima + ficar do lado de um ponto
-//    vizinho (dois locais quase no mesmo sítio: cada bloco do seu lado, o mais a norte em cima) + o
-//    custo da forma (arrumações diferentes dos mesmos cartões). O que se minimiza é a soma desses
-//    custos mais o que a caixa de tudo (pontos e blocos) passa do tamanho do ecrã.
+//    vizinho (dois pontos quase no mesmo sítio do ecrã: cada bloco do seu lado) + o custo da forma
+//    (arrumações diferentes dos mesmos cartões). O que se minimiza é a soma desses custos mais o que a
+//    caixa de tudo (pontos e blocos) passa do tamanho do ecrã.
+//    Um bloco com `lado` (locais vizinhos lado a lado, ex.: as duas ruas de Himeling) só pode ficar desse
+//    lado de uma vertical e à altura do seu ponto: nunca um vizinho por cima e o outro por baixo. E fica
+//    virado como o bloco do outro lado, se já estiver posto (os dois a descer dos pontos, ou a subir).
+//    Fica encostado ao seu ponto sempre que houver sítio, mesmo que o conjunto passe mais do ecrã, e os
+//    dois do par põem-se juntos, na orientação em que ficam os dois encostados (colocarPorOrdem, porPar):
+//    afastados, outro bloco metia-se entre os dois vizinhos.
 // 2. Gulosa: os blocos põem-se um a um, cada um na posição livre de menor custo. A procura é exata: a
 //    zona proibida para o canto de um bloco é uma união de retângulos (blocos já postos alargados pela
 //    margem, pontos dos locais); o melhor ponto livre tem cada coordenada centrada, alinhada com uma
@@ -43,8 +49,9 @@ const PESO_ROTULO = 0.05;
 /** Dois pontos a menos do que isto (px) são vizinhos: cada bloco fica do seu lado. */
 const DISTANCIA_VIZINHO = 40;
 /**
- * Custo de um bloco ficar do lado do ponto vizinho: com dois locais quase no mesmo sítio, o bloco de
- * cada um fica do lado oposto ao outro (a rua mais a norte em cima), em vez de se trocarem.
+ * Custo de um bloco ficar do lado do ponto vizinho: com dois pontos quase no mesmo sítio do ecrã, o bloco
+ * de cada um fica do lado oposto ao outro, em vez de se trocarem. Não conta para os blocos com `lado`
+ * (esses já têm o lado certo à força).
  */
 const CUSTO_LADO_DO_VIZINHO = 15;
 
@@ -88,12 +95,26 @@ export interface FormaBloco {
   custoExtra?: number;
 }
 
+/**
+ * Lado obrigatório de um bloco: 'esquerda' = o bloco acaba antes da vertical `x`; 'direita' = começa
+ * depois dela. Além disso, os pontos do bloco ficam à altura dele: na linha do rótulo, se tiver um (o nome
+ * do sítio mesmo ao lado do ponto), ou entre o topo e o fundo.
+ */
+export interface LadoBloco {
+  lado: 'esquerda' | 'direita';
+  x: number;
+  /** Chave do bloco do outro lado: os dois ficam virados para o mesmo lado (a descer ou a subir). */
+  par?: string | null;
+}
+
 export interface CaixaAColocar {
   chave: string;
   /** Pontos dos locais deste bloco (um, ou vários locais juntos). */
   pontos: readonly Ponto[];
   /** Formas possíveis, a preferida primeiro (pelo menos uma). */
   formas: readonly FormaBloco[];
+  /** Locais vizinhos lado a lado (ex.: as duas ruas de Himeling): o lado do bloco, à força. */
+  lado?: LadoBloco | null;
 }
 
 export interface CaixaColocada extends Retangulo {
@@ -156,8 +177,36 @@ interface Item {
   formas: Forma[];
   /** Centro dos pontos (arredondado). */
   ref: Ponto;
-  /** O ponto de outro bloco muito perto deste (ex.: a outra rua de Himeling), se houver. */
+  /** O ponto de outro bloco muito perto deste no ecrã, se houver (só para os blocos sem `lado`). */
   vizinho: Ponto | null;
+  lado: LadoBloco | null;
+  /** Índice do bloco do outro lado (`lado.par`), se houver. */
+  par: number | null;
+}
+
+/**
+ * Para onde fica virado o bloco: a descer do ponto (1, com o rótulo em cima), a subir (-1, com o rótulo em
+ * baixo) ou, sem rótulo, centrado no ponto (0) ou para o lado onde está o centro.
+ */
+function orientacao(item: Item, forma: Forma, y: number): number {
+  const rotulo = forma.rotulos.find((r) => r !== null);
+  if (rotulo) return rotulo.y + rotulo.altura / 2 < forma.altura / 2 ? 1 : -1;
+  const d = y + forma.altura / 2 - item.ref.y;
+  return Math.abs(d) < forma.altura / 6 ? 0 : Math.sign(d);
+}
+
+/**
+ * O bloco com o canto em (x, y) está do seu lado (se tiver um) e à altura dos seus pontos: com rótulo, o
+ * ponto fica à altura do rótulo (o nome do sítio mesmo ao lado do ponto); sem rótulo, à altura do bloco.
+ */
+function noLado(item: Item, forma: Forma, x: number, y: number): boolean {
+  const { lado } = item;
+  if (!lado) return true;
+  if (lado.lado === 'esquerda' ? x + forma.largura > lado.x : x < lado.x) return false;
+  return item.pontos.every((pt, i) => {
+    const r = forma.rotulos[i] ?? { y: 0, altura: forma.altura };
+    return pt.y >= y + r.y && pt.y <= y + r.y + r.altura;
+  });
 }
 
 /** Distância de um ponto ao retângulo (x, y, largura, altura), sem criar objetos. */
@@ -177,6 +226,13 @@ function distanciaDoPonto(item: Item, forma: Forma, i: number, x: number, y: num
   return d;
 }
 
+/** Todos os pontos do bloco com o canto em (x, y) ficam à distância do pino (o bloco encostado a eles). */
+function encostado(item: Item, forma: Forma, x: number, y: number, p: Parametros): boolean {
+  for (let i = 0; i < item.pontos.length; i++)
+    if (distanciaDoPonto(item, forma, i, x, y) > p.pino + 1) return false;
+  return true;
+}
+
 /** O que já está colocado: a caixa de tudo (pontos e blocos) e quanto ela passa do ecrã. */
 interface Conjunto {
   caixa: Retangulo | null;
@@ -186,6 +242,11 @@ interface Conjunto {
    * (PESO_RESERVA por sítio inteiro): um bloco grande não cerca o ponto de um pequeno que vem depois.
    */
   reservas?: readonly Retangulo[];
+  /**
+   * Orientação do bloco do outro lado (`lado.par`), se já estiver posto: este fica virado para o mesmo
+   * lado (os dois a descer dos pontos, ou os dois a subir; nunca em diagonal).
+   */
+  orientacaoDoPar?: number;
 }
 
 /** Custo de ocupar por inteiro o sítio ideal de um bloco que ainda falta pôr. */
@@ -204,8 +265,9 @@ function custoProprio(x: number, y: number, item: Item, forma: Forma, p: Paramet
   let d = 0;
   for (let i = 0; i < item.pontos.length; i++) d += distanciaDoPonto(item, forma, i, x, y);
   d /= Math.max(1, item.pontos.length);
-  const porBaixo = y >= ref.y ? CUSTO_POR_BAIXO : 0;
-  const deLado = y < ref.y && y + altura > ref.y ? CUSTO_DE_LADO : 0;
+  // Um bloco com lado está sempre de lado: nem por cima nem por baixo contam.
+  const porBaixo = !item.lado && y >= ref.y ? CUSTO_POR_BAIXO : 0;
+  const deLado = !item.lado && y < ref.y && y + altura > ref.y ? CUSTO_DE_LADO : 0;
   const disperso = Math.hypot(x + largura / 2 - ref.x, y + altura / 2 - ref.y) * p.pesoDispersao;
   let rotulo = 0;
   forma.rotulos.forEach((r, i) => {
@@ -280,6 +342,8 @@ function coordenadas(
     ys.add(Math.round(c.y + c.altura - p.ecra.altura));
     ys.add(Math.round(c.y + p.ecra.altura - altura));
   }
+  // Encostado à vertical do seu lado.
+  if (item.lado) xs.add(item.lado.lado === 'esquerda' ? item.lado.x - largura : item.lado.x);
   return { xs: [...xs], ys: [...ys] };
 }
 
@@ -296,6 +360,33 @@ function melhorPosicao(
   conjunto: Conjunto,
   p: Parametros,
 ): Candidato {
+  const encontrada = procurarPosicao(item, obstaculos, conjunto, p, false);
+  if (encontrada) return encontrada;
+  // Nunca devia chegar aqui; por segurança, fora de tudo (do seu lado, se tiver um).
+  const forma = item.formas[0] as Forma;
+  const r = {
+    x:
+      item.lado?.lado === 'esquerda'
+        ? Math.min(item.lado.x, ...obstaculos.map((o) => o.r.x - o.margem)) - forma.largura
+        : Math.max(item.lado?.x ?? 0, ...obstaculos.map((o) => o.r.x + o.r.largura + o.margem)),
+    y: item.ref.y - Math.floor(forma.altura / 2),
+    largura: forma.largura,
+    altura: forma.altura,
+  };
+  return { r, forma: 0, c: custo(r.x, r.y, item, forma, conjunto, p) };
+}
+
+/**
+ * A procura de melhorPosicao. `soEncostado`: só posições com o bloco encostado aos seus pontos (null se
+ * não houver nenhuma livre).
+ */
+function procurarPosicao(
+  item: Item,
+  obstaculos: readonly Obstaculo[],
+  conjunto: Conjunto,
+  p: Parametros,
+  soEncostado: boolean,
+): Candidato | null {
   // Primeiro só com os obstáculos perto do ponto (as posições longe custam mais do que qualquer
   // posição livre perto); se nenhuma servir, com todos.
   const alcance = Math.max(...item.formas.map((f) => f.largura + f.altura)) + 4 * p.pino;
@@ -322,24 +413,24 @@ function melhorPosicao(
       }
     });
     chaves.sort();
-    for (const chave of chaves) {
-      const i = chave % BITS_INDICE;
-      const forma = item.formas[cf[i] as number] as Forma;
-      const r = { x: cx[i] as number, y: cy[i] as number, largura: forma.largura, altura: forma.altura };
-      if (livre(r, obstaculos))
-        return { r, forma: cf[i] as number, c: custo(r.x, r.y, item, forma, conjunto, p) };
+    // Um bloco com lado (locais vizinhos) fica encostado ao seu ponto sempre que houver sítio livre, mesmo
+    // que o conjunto passe mais do ecrã: afastado para o lado, outro bloco metia-se entre os dois vizinhos
+    // e o nome da rua ficava longe do ponto (ex.: só carrinhas, um passo de zoom acima da vista inicial).
+    const passagens = soEncostado ? [true] : item.lado ? [true, false] : [false];
+    for (const encostar of passagens) {
+      for (const chave of chaves) {
+        const i = chave % BITS_INDICE;
+        const forma = item.formas[cf[i] as number] as Forma;
+        const r = { x: cx[i] as number, y: cy[i] as number, largura: forma.largura, altura: forma.altura };
+        if (encostar && !encostado(item, forma, r.x, r.y, p)) continue;
+        const virado =
+          !conjunto.orientacaoDoPar || orientacao(item, forma, r.y) * conjunto.orientacaoDoPar >= 0;
+        if (virado && noLado(item, forma, r.x, r.y) && livre(r, obstaculos))
+          return { r, forma: cf[i] as number, c: custo(r.x, r.y, item, forma, conjunto, p) };
+      }
     }
   }
-  // Nunca devia chegar aqui; por segurança, à direita de tudo.
-  const forma = item.formas[0] as Forma;
-  const direita = Math.max(...obstaculos.map((o) => o.r.x + o.r.largura + o.margem));
-  const r = {
-    x: direita,
-    y: item.ref.y - Math.floor(forma.altura / 2),
-    largura: forma.largura,
-    altura: forma.altura,
-  };
-  return { r, forma: 0, c: custo(r.x, r.y, item, forma, conjunto, p) };
+  return null;
 }
 
 function compararTexto(a: string, b: string): number {
@@ -403,7 +494,8 @@ function blocosFixos(
     return { r, forma: f.forma, custo: custoProprio(r.x, r.y, item, forma, p) };
   });
   return cols.map((c, i) => {
-    if (!c) return undefined;
+    const item = itens[i] as Item;
+    if (!c || !noLado(item, item.formas[c.forma] as Forma, c.r.x, c.r.y)) return undefined;
     const outros = cols.flatMap((o, j) => (o && j !== i ? [{ r: o.r, margem: p.margem }] : []));
     return livre(c.r, [...pontosObstaculo(itens, i, p), ...outros]) ? c : undefined;
   });
@@ -420,18 +512,73 @@ function colocarPorOrdem(
   const cols: (Colocacao | undefined)[] = itens.map((_, i) => fixas[i]);
   const colocadas: Obstaculo[] = cols.flatMap((c) => (c ? [{ r: c.r, margem: p.margem }] : []));
   let caixa = uniao([...caixaDosPontos(itens, p), ...colocadas.map((o) => o.r)]);
-  for (const i of ordem) {
-    if (cols[i]) continue;
-    const item = itens[i] as Item;
-    const obstaculos = [...colocadas, ...pontosObstaculo(itens, i, p)];
-    // Os sítios ideais dos que ainda faltam (os já postos e os fixos não contam).
-    const reservas = ordem.filter((j) => j !== i && !cols[j] && ideais[j]).map((j) => ideais[j] as Retangulo);
-    const escolhido = melhorPosicao(item, obstaculos, { caixa, excesso: excesso(caixa, p), reservas }, p);
+  // Os sítios ideais dos que ainda faltam, tirando estes (os já postos e os fixos não contam).
+  const reservasSem = (...fora: number[]) =>
+    ordem.filter((j) => !fora.includes(j) && !cols[j] && ideais[j]).map((j) => ideais[j] as Retangulo);
+  const conjuntoAtual = (reservas: readonly Retangulo[], orientacaoDoPar: number): Conjunto => ({
+    caixa,
+    excesso: excesso(caixa, p),
+    reservas,
+    orientacaoDoPar,
+  });
+  const por = (i: number, escolhido: Candidato) => {
     const { r } = escolhido;
     colocadas.push({ r, margem: p.margem });
     caixa = caixa ? uniao([caixa, r]) : r;
+    const item = itens[i] as Item;
     const forma = item.formas[escolhido.forma] as Forma;
     cols[i] = { r, forma: escolhido.forma, custo: custoProprio(r.x, r.y, item, forma, p) };
+  };
+  /**
+   * Os dois blocos de locais vizinhos (lado a lado) põem-se juntos: os dois a descer dos pontos ou os dois a
+   * subir, cada um encostado ao seu ponto, na orientação mais barata. Um a um, o primeiro escolhia a
+   * orientação sozinho e o segundo podia já não ter sítio junto do seu ponto nessa orientação (ficava
+   * afastado, com outro bloco no meio). Devolve false se em nenhuma orientação os dois ficarem encostados.
+   */
+  const porPar = (a: number, b: number): boolean => {
+    let melhor: [Candidato, Candidato] | null = null;
+    for (const orientacaoDoPar of [1, -1]) {
+      const reservas = reservasSem(a, b);
+      const ca = procurarPosicao(
+        itens[a] as Item,
+        [...colocadas, ...pontosObstaculo(itens, a, p)],
+        conjuntoAtual(reservas, orientacaoDoPar),
+        p,
+        true,
+      );
+      if (!ca) continue;
+      const caixaComA = caixa ? uniao([caixa, ca.r]) : ca.r;
+      const cb = procurarPosicao(
+        itens[b] as Item,
+        [...colocadas, { r: ca.r, margem: p.margem }, ...pontosObstaculo(itens, b, p)],
+        { caixa: caixaComA, excesso: excesso(caixaComA, p), reservas, orientacaoDoPar },
+        p,
+        true,
+      );
+      if (cb && (!melhor || ca.c + cb.c < melhor[0].c + melhor[1].c)) melhor = [ca, cb];
+    }
+    if (!melhor) return false;
+    por(a, melhor[0]);
+    por(b, melhor[1]);
+    return true;
+  };
+  for (const i of ordem) {
+    if (cols[i]) continue;
+    const item = itens[i] as Item;
+    const j = item.par;
+    if (item.lado && j !== null && !cols[j] && (itens[j] as Item).lado && porPar(i, j)) continue;
+    const par = j !== null ? (itens[j] as Item) : undefined;
+    const doPar = j !== null ? cols[j] : undefined;
+    const orientacaoDoPar = par && doPar ? orientacao(par, par.formas[doPar.forma] as Forma, doPar.r.y) : 0;
+    por(
+      i,
+      melhorPosicao(
+        item,
+        [...colocadas, ...pontosObstaculo(itens, i, p)],
+        conjuntoAtual(reservasSem(i), orientacaoDoPar),
+        p,
+      ),
+    );
   }
   return cols as Colocacao[];
 }
@@ -535,10 +682,28 @@ export function colocarBlocos(
       custoExtra: f.custoExtra ?? 0,
     }));
     if (formas.length === 0) throw new Error(`O bloco ${caixa.chave} não tem formas.`);
-    return { chave: caixa.chave, indice, pontos, formas, ref, vizinho: null as Ponto | null };
+    const lado = caixa.lado
+      ? { lado: caixa.lado.lado, x: Math.round(caixa.lado.x), par: caixa.lado.par ?? null }
+      : null;
+    return {
+      chave: caixa.chave,
+      indice,
+      pontos,
+      formas,
+      ref,
+      vizinho: null as Ponto | null,
+      lado,
+      par: null,
+    };
   });
   if (itens.length === 0) return [];
+  const porChave = new Map(itens.map((it) => [it.chave, it.indice]));
   for (const item of itens) {
+    const par = item.lado?.par ? porChave.get(item.lado.par) : undefined;
+    item.par = par ?? null;
+  }
+  for (const item of itens) {
+    if (item.lado) continue;
     let melhor = DISTANCIA_VIZINHO;
     for (const outro of itens) {
       if (outro === item) continue;

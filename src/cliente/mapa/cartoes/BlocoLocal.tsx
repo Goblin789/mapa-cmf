@@ -1,6 +1,7 @@
-// Um bloco no mapa: as casas, carrinhas e obras de um local (ou de locais vizinhos, como as duas ruas de
-// Himeling), na arrumação calculada (layout/arrumacao.ts), desenhado em píxeis base e escalado com
-// transform: scale(escala). Sem fundo: vê-se o mapa entre os cartões.
+// Um bloco no mapa: as casas, carrinhas e obras de um local (ou de locais muito perto, abertos à mão a
+// partir da mesma pastilha do resumo), na arrumação calculada (layout/arrumacao.ts), desenhado em píxeis
+// base e escalado com transform: scale(escala). Sem fundo: vê-se o mapa entre os cartões. Os locais
+// vizinhos (as duas ruas de Himeling) têm cada um o seu bloco, lado a lado (layout/disposicao.ts).
 // No resumo (ou no compacto), um bloco aberto à mão tem um botão para voltar a fechar.
 
 import type { CSSProperties } from 'react';
@@ -8,7 +9,7 @@ import type { Id } from '../../../dominio/tipos';
 import { useLoja } from '../../estado/loja';
 import type { RotuloArrumado } from '../layout/arrumacao';
 import type { GrupoDisposto } from '../layout/disposicao';
-import { type CarrinhaNoMapa, chaveGrupo } from '../layout/grupos';
+import type { CarrinhaNoMapa } from '../layout/grupos';
 import { CartaoCarrinha } from './CartaoCarrinha';
 import { CartaoCasa } from './CartaoCasa';
 import { CartaoObra } from './CartaoObra';
@@ -39,12 +40,28 @@ function posicaoRotulo(r: RotuloArrumado, larguraBloco: number): CSSProperties {
 export function BlocoLocal({ disposto, esquerda, topo, aberto, destaqueDe }: Props) {
   const expandidos = useLoja((s) => s.expandidos);
   const alternarExpandido = useLoja((s) => s.alternarExpandido);
+  const indices = useLoja((s) => s.indices);
   const { arrumacao: a, escala, locais } = disposto;
   const carrinhas = new Map<Id, CarrinhaNoMapa>(locais.flatMap((l) => l.carrinhas.map((c) => [c.id, c])));
+  // O botão de fechar vai para o canto de cima sem o nome do local (num bloco à esquerda do ponto, o
+  // nome fica em cima à direita, junto do ponto).
+  const cantoDoBotao = a.rotulos.some((r) => r.alinhamento === 'direita' && r.retangulo.y === 0)
+    ? '-left-2'
+    : '-right-2';
+  // Fecha todos os que o abriram (os locais vizinhos e os da mesma pastilha abrem e fecham juntos).
   const fechar = () => {
-    for (const l of locais)
-      if (expandidos.has(chaveGrupo(l.localId))) alternarExpandido(chaveGrupo(l.localId));
+    for (const chave of disposto.chavesAbertura) if (expandidos.has(chave)) alternarExpandido(chave);
   };
+  // O rótulo do botão diz tudo o que fecha (ex.: as duas ruas de Himeling), não só os locais deste bloco.
+  const nomesAFechar = [
+    ...new Set([
+      ...locais.map((l) => l.nome),
+      ...disposto.chavesAbertura.flatMap((chave) => {
+        const nome = indices?.locais.get(chave.slice(chave.indexOf(':') + 1))?.nome;
+        return nome ? [nome] : [];
+      }),
+    ]),
+  ];
 
   return (
     <div
@@ -103,9 +120,9 @@ export function BlocoLocal({ disposto, esquerda, topo, aberto, destaqueDe }: Pro
       {aberto && (
         <button
           type="button"
-          className={`absolute -top-2 -right-2 z-[2] grid size-5 cursor-pointer place-items-center rounded-full border border-slate-400 bg-white text-xs leading-none text-slate-700 shadow hover:bg-slate-100 ${CLASSE_FOCO_TECLADO}`}
+          className={`absolute -top-2 ${cantoDoBotao} z-[2] grid size-5 cursor-pointer place-items-center rounded-full border border-slate-400 bg-white text-xs leading-none text-slate-700 shadow hover:bg-slate-100 ${CLASSE_FOCO_TECLADO}`}
           title="Fechar (voltar à vista resumida)"
-          aria-label={`Fechar ${locais.map((l) => l.nome).join(' e ')} (voltar à vista resumida)`}
+          aria-label={`Fechar ${nomesAFechar.join(' e ')} (voltar à vista resumida)`}
           onClick={fechar}
         >
           ×

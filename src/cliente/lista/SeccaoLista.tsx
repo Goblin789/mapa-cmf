@@ -1,12 +1,15 @@
 // Uma secção da lista lateral: uma casa, uma carrinha, uma obra, um cliente ou um grupo "fora/sem".
 // Cabeçalho neutro (só a pastilha da lotação tem cor), nomes por baixo e os lugares vazios tracejados.
 // No modo de edição as secções com alvo recebem nomes largados (data-alvo, ver arrastar/motor.ts).
+// Quem conduz leva o volante ao lado do nome (em todas as vistas); nas carrinhas o condutor vem primeiro
+// e as que levam gente sem condutor dizem-no, discretamente.
 
 import { useId, useMemo } from 'react';
 import type { Indices } from '../../dominio/indices';
 import { type NivelLotacao, ocupacaoCarrinha, ocupacaoCasa } from '../../dominio/ocupacao';
 import { chaveAlvo } from '../../dominio/operacoes';
 import type { Pessoa } from '../../dominio/tipos';
+import { IconeVolante } from '../comum/IconeVolante';
 import { ESTILO_AVISO_CONTRATO, ESTILO_NIVEL } from '../comum/lotacao';
 import { Matricula } from '../comum/Matricula';
 import { NomeChip } from '../comum/NomeChip';
@@ -14,6 +17,7 @@ import { ContextoOrdemPessoas } from '../comum/ordemPessoas';
 import { useLoja } from '../estado/loja';
 import { agruparPorCliente } from '../paineis/agrupar';
 import { FOCO_VISIVEL } from '../paineis/classes';
+import { ehCondutor, ROTULO_SEM_CONDUTOR, semCondutor } from '../paineis/condutor';
 import { coordenadasDoLocal, destinoNoMapa, ZOOM_DESTINO } from '../paineis/fichas';
 import { MarcaCliente } from '../paineis/pecas';
 import { comPlural, textoDormida, textoLotacao } from '../paineis/textos';
@@ -69,14 +73,14 @@ function Contagem({ n }: { n: number }) {
   );
 }
 
-function ListaNomes({ pessoas, vazios }: { pessoas: Pessoa[]; vazios: number }) {
+function ListaNomes({ pessoas, vazios, indices }: { pessoas: Pessoa[]; vazios: number; indices: Indices }) {
   return (
     // Colunas de nomes conforme a largura da secção: 1 nas colunas do painel alargado, 2 no painel normal,
     // mais nos grupos que ocupam a linha toda.
     <ul className="grid grid-cols-1 gap-1 @min-[17rem]:grid-cols-2 @min-[34rem]:grid-cols-3 @min-[46rem]:grid-cols-4 @min-[58rem]:grid-cols-5">
       {pessoas.map((p) => (
         <li key={p.id} className="min-w-0">
-          <NomeChip pessoa={p} />
+          <NomeChip pessoa={p} condutor={ehCondutor(p, indices)} />
         </li>
       ))}
       {Array.from({ length: vazios }, (_, i) => (
@@ -107,11 +111,11 @@ function CorpoSeccao({ seccao, indices, vazios }: { seccao: Seccao; indices: Ind
               <span className="min-w-0 flex-1 truncate">{g.cliente?.nome ?? 'Cliente desconhecido'}</span>
               <span className="font-normal tabular-nums">{g.pessoas.length}</span>
             </p>
-            <ListaNomes pessoas={g.pessoas} vazios={0} />
+            <ListaNomes pessoas={g.pessoas} vazios={0} indices={indices} />
           </div>
         ))
       ) : (
-        <ListaNomes pessoas={seccao.pessoas} vazios={vazios} />
+        <ListaNomes pessoas={seccao.pessoas} vazios={vazios} indices={indices} />
       )}
     </ContextoOrdemPessoas.Provider>
   );
@@ -145,6 +149,8 @@ export function SeccaoLista({ seccao: s, soCabecalho, recolhida, aoAlternar, com
   const dormidaCarrinha = carrinha ? dormidas?.get(carrinha.id) : undefined;
   const dormida = carrinha && dormidas ? textoDormida(dormidaCarrinha, indices) : null;
   const dormidaSugerida = dormidaCarrinha?.confianca === 'sugerida';
+  const faltaCondutor = carrinha ? semCondutor(carrinha, indices) : false;
+  const sempreCheia = casa?.sempreCheia === true;
 
   // Destino no mapa (pino): a casa, onde dorme a carrinha, o local da obra.
   const destino = casa
@@ -248,7 +254,7 @@ export function SeccaoLista({ seccao: s, soCabecalho, recolhida, aoAlternar, com
         )}
       </div>
 
-      {(aviso || dormida || soCabecalho) && (
+      {(aviso || dormida || soCabecalho || faltaCondutor || sempreCheia) && (
         <p className="-mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 px-2 pb-1.5 pl-[1.625rem] text-[11px] text-slate-600">
           {aviso && ocCasa && casa && (
             <span
@@ -272,6 +278,23 @@ export function SeccaoLista({ seccao: s, soCabecalho, recolhida, aoAlternar, com
                   · sugerido
                 </span>
               )}
+            </span>
+          )}
+          {faltaCondutor && (
+            <span
+              className="inline-flex items-center gap-1 text-slate-500 italic"
+              title="Leva passageiros e ninguém está marcado como condutor"
+            >
+              <IconeVolante tamanho={11} className="text-slate-400" />
+              {ROTULO_SEM_CONDUTOR}
+            </span>
+          )}
+          {sempreCheia && (
+            <span
+              className="text-slate-500 italic"
+              title="Não tem lugares livres: os lugares são os moradores"
+            >
+              conta sempre como cheia
             </span>
           )}
           {soCabecalho && <span className="text-slate-500 italic">Ninguém com estes filtros.</span>}

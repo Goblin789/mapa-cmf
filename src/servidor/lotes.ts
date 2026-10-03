@@ -1,8 +1,10 @@
 // Gravação das edições num lote com histórico (POST /api/lotes) e leitura do histórico (GET /api/historico).
 // As regras (compactar, validar, conflitos, aplicar) são as de src/dominio/operacoes.ts, as mesmas que o
 // browser usa na simulação; aqui só se acrescenta a gravação atómica. As frases são funções puras.
+// Um lote pode mudar pessoas (casa, carrinha, obra) e o condutor das carrinhas: cada campo que muda
+// fica numa linha de `alteracoes` (entidade 'pessoa' ou 'carrinha').
 
-import { asc, desc, eq, inArray } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, inArray } from 'drizzle-orm';
 import type { AlteracaoHistorico, ConflitoServidor, EntradaHistorico } from '../dominio/api';
 import {
   aplicarOperacoes,
@@ -15,10 +17,10 @@ import {
   type Operacao,
   validarOperacoes,
 } from '../dominio/operacoes';
-import type { Estado, Id, Pessoa } from '../dominio/tipos';
+import type { Carrinha, Estado, Id, Pessoa } from '../dominio/tipos';
 import * as esquema from './db/esquema';
 import type { Bd } from './db/ligacao';
-import { lerEstado, lerVersao } from './estado';
+import { type Leitor, lerEstado, lerVersao } from './estado';
 import { limitarErros } from './pedidos';
 
 /** Campos da pessoa que uma gravação pode mudar, pela ordem em que ficam no histórico. */
@@ -36,6 +38,9 @@ const SEM_VALOR: Record<CampoMovivel, string> = {
   obraId: 'sem obra',
 };
 
+/** Campo do condutor na tabela `alteracoes` (entidade 'carrinha'). */
+export const CAMPO_CONDUTOR = 'condutorId';
+
 const NOME_MARCA: Record<string, string> = {
   casaAConfirmar: 'casa a confirmar',
   carrinhaAConfirmar: 'carrinha a confirmar',
@@ -52,6 +57,13 @@ export interface AlteracaoPessoa {
   depois: Pessoa[CampoGravado];
 }
 
+/** Uma mudança do condutor de uma carrinha (entidade 'carrinha', campo 'condutorId'). */
+export interface AlteracaoCondutor {
+  carrinhaId: Id;
+  antes: Carrinha['condutorId'];
+  depois: Carrinha['condutorId'];
+}
+
 /**
  * Campos que mudam ao aplicar as operações (com `aplicarOperacoes`, a mesma função da simulação),
  * pessoa a pessoa pela ordem das operações. Inclui as marcas "a confirmar" que a mudança limpa.
@@ -60,7 +72,8 @@ export function alteracoesDasOperacoes(estado: Estado, ops: readonly Operacao[])
   const antes = new Map(estado.pessoas.map((p) => [p.id, p]));
   const depois = new Map(aplicarOperacoes(estado, ops).pessoas.map((p) => [p.id, p]));
   const resultado: AlteracaoPessoa[] = [];
-  for (const pessoaId of new Set(ops.map((op) => op.pessoaId))) {
+  const pessoaIds = new Set(ops.flatMap((op) => (op.tipo === 'mover' ? [op.pessoaId] : [])));
+  for (const pessoaId of pessoaIds) {
     const a = antes.get(pessoaId);
     const d = depois.get(pessoaId);
     if (!a || !d) continue;
@@ -71,12 +84,37 @@ export function alteracoesDasOperacoes(estado: Estado, ops: readonly Operacao[])
   return resultado;
 }
 
+/** Condutores que mudam ao aplicar as operações, carrinha a carrinha pela ordem das operações. */
+export function alteracoesDeCondutor(estado: Estado, ops: readonly Operacao[]): AlteracaoCondutor[] {
+  const antes = new Map(estado.carrinhas.map((c) => [c.id, c]));
+  const depois = new Map(aplicarOperacoes(estado, ops).carrinhas.map((c) => [c.id, c]));
+  const resultado: AlteracaoCondutor[] = [];
+  const carrinhaIds = new Set(ops.flatMap((op) => (op.tipo === 'condutor' ? [op.carrinhaId] : [])));
+  for (const carrinhaId of carrinhaIds) {
+    const a = antes.get(carrinhaId);
+    const d = depois.get(carrinhaId);
+    if (!a || !d || a.condutorId === d.condutorId) continue;
+    resultado.push({ carrinhaId, antes: a.condutorId, depois: d.condutorId });
+  }
+  return resultado;
+}
+
 function nomeDaPessoa(estado: Estado, id: Id): string {
   return estado.pessoas.find((p) => p.id === id)?.nomeCurto ?? id;
 }
 
-/** Ex.: "Ana T. — carrinha: esperavas ZZ1002, mas agora está em ZZ1001 (alguém mudou entretanto)". */
+/**
+ * Ex.: "Ana T. — carrinha: esperavas ZZ 1002, mas agora está em ZZ 1001 (alguém mudou entretanto)";
+ * "ZZ 1001 — condutor: esperavas Ana T., mas agora é Rui S. (alguém mudou entretanto)".
+ */
 export function descreverConflito(estado: Estado, conflito: Conflito): string {
+  if (conflito.tipo === 'condutor') {
+    const carrinha = nomeDoValor(estado, 'carrinhaId', conflito.carrinhaId);
+    const esperado =
+      conflito.esperado === null ? 'que não tivesse condutor' : nomeDaPessoa(estado, conflito.esperado);
+    const agora = conflito.atual === null ? 'não tem condutor' : `é ${nomeDaPessoa(estado, conflito.atual)}`;
+    return `${carrinha} — condutor: esperavas ${esperado}, mas agora ${agora} (alguém mudou entretanto)`;
+  }
   const { campo, esperado, atual } = conflito;
   const agora = atual === null ? SEM_VALOR[campo] : `em ${nomeDoValor(estado, campo, atual)}`;
   return (
@@ -116,9 +154,18 @@ interface LinhaAlteracao {
 
 /**
  * Frase legível de uma alteração, com os nomes ATUAIS (casa, carrinha, obra, pessoa).
- * Ex.: "Gil N. — casa: Fora das casas CMF → Casa Três"; "Gil N. — casa a confirmar: sim → não".
+ * Ex.: "Gil N. — casa: Fora das casas CMF → Casa Três"; "Gil N. — casa a confirmar: sim → não";
+ * "ZZ 1001 — condutor: sem condutor → Gil N.".
  */
 export function descreverAlteracao(estado: Estado, a: LinhaAlteracao): string {
+  if (a.entidade === 'carrinha' && a.campo === CAMPO_CONDUTOR) {
+    return descreverOperacao(estado, {
+      tipo: 'condutor',
+      carrinhaId: a.entidadeId,
+      de: comoId(lerJson(a.antes)),
+      para: comoId(lerJson(a.depois)),
+    });
+  }
   if (a.entidade === 'pessoa' && CAMPOS_MOVIVEIS.has(a.campo)) {
     return descreverOperacao(estado, {
       tipo: 'mover',
@@ -142,6 +189,93 @@ export interface PedidoLote {
   comentario: string | null;
   autor: string;
   agora: Date;
+  /**
+   * Versão sobre a qual o rascunho foi feito. Só serve para os conflitos escondidos pela regra do
+   * condutor (ver conflitosDoCondutor); os outros vêm do `de` de cada operação.
+   */
+  versaoBase?: number;
+}
+
+/**
+ * Valor de um campo na versão `versao`: o `antes` da primeira alteração desse campo gravada depois dela.
+ * undefined se o campo não mudou depois dessa versão.
+ */
+function valorNaVersao(
+  tx: Leitor,
+  versao: number,
+  entidade: string,
+  entidadeId: Id,
+  campo: string,
+): Id | null | undefined {
+  const linha = tx
+    .select({ antes: esquema.alteracoes.antes })
+    .from(esquema.alteracoes)
+    .where(
+      and(
+        gt(esquema.alteracoes.loteId, versao),
+        eq(esquema.alteracoes.entidade, entidade),
+        eq(esquema.alteracoes.entidadeId, entidadeId),
+        eq(esquema.alteracoes.campo, campo),
+      ),
+    )
+    .orderBy(asc(esquema.alteracoes.id))
+    .limit(1)
+    .get();
+  return linha ? comoId(lerJson(linha.antes)) : undefined;
+}
+
+/**
+ * Conflitos que o `de` das operações não mostra, por causa da regra do condutor. O browser junta sozinho a
+ * operação que tira o condutor a quem sai da carrinha que conduz, e só deixa escolher o condutor entre os
+ * passageiros; por isso, num rascunho feito sobre a versão `versaoBase`:
+ * - tirar alguém da carrinha sem mexer no condutor dela quer dizer que, nessa versão, não era o condutor.
+ *   Se entretanto passou a ser, é um conflito do condutor (antes dava 400: "X não vai na carrinha…");
+ * - escolher um condutor sem o mudar de carrinha quer dizer que, nessa versão, ia nessa carrinha. Se
+ *   entretanto mudou de carrinha, é um conflito da carrinha dessa pessoa.
+ * O que o rascunho via vem do histórico (`alteracoes` dos lotes depois de `versaoBase`). Quando o histórico
+ * não mostra nenhuma mudança (ex.: um pedido feito à mão sobre a versão atual), fica o erro de validação.
+ */
+export function conflitosDoCondutor(
+  tx: Leitor,
+  estado: Estado,
+  ops: readonly Operacao[],
+  versaoBase: number,
+): Conflito[] {
+  const pessoas = new Map(estado.pessoas.map((p) => [p.id, p]));
+  const carrinhas = new Map(estado.carrinhas.map((c) => [c.id, c]));
+  const condutorMexido = new Set<Id>();
+  const carrinhaMexida = new Set<Id>();
+  for (const op of ops) {
+    if (op.tipo === 'condutor') condutorMexido.add(op.carrinhaId);
+    else if (op.campo === 'carrinhaId') carrinhaMexida.add(op.pessoaId);
+  }
+  const conflitos: Conflito[] = [];
+  for (const op of ops) {
+    if (op.tipo === 'mover') {
+      if (op.campo !== 'carrinhaId' || op.de === null || condutorMexido.has(op.de)) continue;
+      const atual = carrinhas.get(op.de)?.condutorId ?? null;
+      if (atual !== op.pessoaId) continue;
+      const esperado = valorNaVersao(tx, versaoBase, 'carrinha', op.de, CAMPO_CONDUTOR);
+      if (esperado !== undefined && esperado !== atual) {
+        conflitos.push({ tipo: 'condutor', carrinhaId: op.de, esperado, atual });
+      }
+      continue;
+    }
+    if (op.para === null || carrinhaMexida.has(op.para)) continue;
+    const atual = pessoas.get(op.para)?.carrinhaId;
+    if (atual === undefined || atual === op.carrinhaId) continue;
+    const antes = valorNaVersao(tx, versaoBase, 'pessoa', op.para, 'carrinhaId');
+    if (antes === op.carrinhaId) {
+      conflitos.push({
+        tipo: 'mover',
+        pessoaId: op.para,
+        campo: 'carrinhaId',
+        esperado: op.carrinhaId,
+        atual,
+      });
+    }
+  }
+  return conflitos;
 }
 
 export type ResultadoGravacao =
@@ -149,7 +283,7 @@ export type ResultadoGravacao =
   /** As operações anulam-se umas às outras (ex.: A → B → A): não se grava nada. */
   | { tipo: 'vazio' }
   | { tipo: 'invalido'; erros: string[] }
-  /** Alguém mudou entretanto as mesmas pessoas: não se grava nada. */
+  /** Alguém mudou entretanto as mesmas pessoas (ou o condutor das mesmas carrinhas): não se grava nada. */
   | { tipo: 'conflito'; conflitos: ConflitoServidor[] };
 
 function blocos<T>(lista: T[]): T[][] {
@@ -162,6 +296,11 @@ function blocos<T>(lista: T[]): T[][] {
  * Grava as operações num lote, tudo ou nada. Verificação e escrita correm na mesma transação
  * (IMMEDIATE: o bloqueio de escrita é pedido logo ao abrir, por isso ninguém grava pelo meio,
  * nem outro processo como a importação).
+ *
+ * Os conflitos vêm antes da validação: se alguém mudou entretanto as mesmas pessoas ou carrinhas, a
+ * resposta certa é "recarrega" (409), mesmo que o rascunho, sobre o estado novo, também deixasse de ser
+ * válido (ex.: o condutor escolhido já não vai naquela carrinha). Com `versaoBase`, contam também os
+ * conflitos escondidos pela regra do condutor (conflitosDoCondutor).
  */
 export function gravarLote(bd: Bd, pedido: PedidoLote): ResultadoGravacao {
   return bd.transaction(
@@ -170,10 +309,10 @@ export function gravarLote(bd: Bd, pedido: PedidoLote): ResultadoGravacao {
       const ops = compactarOperacoes(pedido.operacoes);
       if (ops.length === 0) return { tipo: 'vazio' };
 
-      const erros = validarOperacoes(estado, ops);
-      if (erros.length > 0) return { tipo: 'invalido', erros: limitarErros(erros) };
-
-      const conflitos = encontrarConflitos(estado, ops);
+      const conflitos = [
+        ...encontrarConflitos(estado, ops),
+        ...(pedido.versaoBase === undefined ? [] : conflitosDoCondutor(tx, estado, ops, pedido.versaoBase)),
+      ];
       if (conflitos.length > 0) {
         return {
           tipo: 'conflito',
@@ -181,7 +320,11 @@ export function gravarLote(bd: Bd, pedido: PedidoLote): ResultadoGravacao {
         };
       }
 
+      const erros = validarOperacoes(estado, ops);
+      if (erros.length > 0) return { tipo: 'invalido', erros: limitarErros(erros) };
+
       const alteracoes = alteracoesDasOperacoes(estado, ops);
+      const condutores = alteracoesDeCondutor(estado, ops);
       const quando = pedido.agora.toISOString();
       const { id: loteId } = tx
         .insert(esquema.lotes)
@@ -206,18 +349,34 @@ export function gravarLote(bd: Bd, pedido: PedidoLote): ResultadoGravacao {
       for (const [id, valores] of porPessoa) {
         tx.update(esquema.pessoas).set(valores).where(eq(esquema.pessoas.id, id)).run();
       }
+      for (const c of condutores) {
+        tx.update(esquema.carrinhas)
+          .set({ condutorId: c.depois })
+          .where(eq(esquema.carrinhas.id, c.carrinhaId))
+          .run();
+      }
 
-      const linhas = alteracoes.map((a) => ({
-        loteId,
-        entidade: 'pessoa',
-        entidadeId: a.pessoaId,
-        campo: a.campo,
-        antes: JSON.stringify(a.antes),
-        depois: JSON.stringify(a.depois),
-      }));
+      const linhas = [
+        ...alteracoes.map((a) => ({
+          loteId,
+          entidade: 'pessoa',
+          entidadeId: a.pessoaId,
+          campo: a.campo,
+          antes: JSON.stringify(a.antes),
+          depois: JSON.stringify(a.depois),
+        })),
+        ...condutores.map((c) => ({
+          loteId,
+          entidade: 'carrinha',
+          entidadeId: c.carrinhaId,
+          campo: CAMPO_CONDUTOR,
+          antes: JSON.stringify(c.antes),
+          depois: JSON.stringify(c.depois),
+        })),
+      ];
       for (const b of blocos(linhas)) tx.insert(esquema.alteracoes).values(b).run();
 
-      return { tipo: 'gravado', loteId, versao: lerVersao(tx), alteracoes: alteracoes.length };
+      return { tipo: 'gravado', loteId, versao: lerVersao(tx), alteracoes: linhas.length };
     },
     { behavior: 'immediate' },
   );

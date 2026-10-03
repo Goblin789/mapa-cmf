@@ -1,27 +1,45 @@
 import { describe, expect, it } from 'vitest';
-import { aplicarOperacoes, type Operacao, operacoesParaAlvo } from '../../dominio/operacoes';
+import {
+  aplicarOperacoes,
+  type CampoMovivel,
+  type Operacao,
+  operacaoCondutor,
+  operacoesParaAlvo,
+} from '../../dominio/operacoes';
 import { criarCasa, criarEstado, criarPessoa, estadoExemplo } from '../../dominio/teste-fabrica';
+import type { Estado } from '../../dominio/tipos';
 import {
   agruparAlteracoes,
+  agruparCondutores,
   alteracoesDaPessoa,
   calcularAvisos,
+  condutorPendente,
   movimentosDoSitio,
+  pessoaTemAlteracoes,
   resumirPasso,
+  sitioTemAlteracoes,
   valorAnterior,
 } from './resumo';
 
-const mover = (
-  pessoaId: string,
-  campo: Operacao['campo'],
-  de: string | null,
-  para: string | null,
-): Operacao => ({
+const mover = (pessoaId: string, campo: CampoMovivel, de: string | null, para: string | null): Operacao => ({
   tipo: 'mover',
   pessoaId,
   campo,
   de,
   para,
 });
+
+const condutor = (carrinhaId: string, de: string | null, para: string | null): Operacao => ({
+  tipo: 'condutor',
+  carrinhaId,
+  de,
+  para,
+});
+
+/** estadoExemplo com a Ana a conduzir a ZZ 1001 (onde vai). */
+function comCondutor(): Estado {
+  return aplicarOperacoes(estadoExemplo(), [condutor('zz1001', null, 'p-ana')]);
+}
 
 describe('agruparAlteracoes', () => {
   it('agrupa por pessoa, por ordem alfabética, e ordena os campos casa → carrinha → obra', () => {
@@ -44,8 +62,38 @@ describe('agruparAlteracoes', () => {
     });
   });
 
-  it('sem alterações devolve lista vazia', () => {
+  it('sem alterações devolve lista vazia; as de condutor não entram nos grupos de pessoas', () => {
     expect(agruparAlteracoes(estadoExemplo(), [])).toEqual([]);
+    expect(agruparAlteracoes(estadoExemplo(), [condutor('zz1001', null, 'p-ana')])).toEqual([]);
+  });
+});
+
+describe('agruparCondutores', () => {
+  it('agrupa por carrinha, pela ordem das carrinhas, com a frase do histórico', () => {
+    const estado = comCondutor();
+    const grupos = agruparCondutores(estado, [
+      mover('p-gil', 'carrinhaId', 'zz1001', null),
+      condutor('zz1002', null, 'p-celia'),
+      condutor('zz1001', 'p-ana', 'p-bruno'),
+    ]);
+    expect(grupos).toEqual([
+      {
+        carrinhaId: 'zz1001',
+        matricula: 'ZZ 1001',
+        alteracoes: [{ de: 'Ana T.', para: 'Bruno E.', descricao: 'ZZ 1001 — condutor: Ana T. → Bruno E.' }],
+      },
+      {
+        carrinhaId: 'zz1002',
+        matricula: 'ZZ 1002',
+        alteracoes: [
+          { de: 'sem condutor', para: 'Célia F.', descricao: 'ZZ 1002 — condutor: sem condutor → Célia F.' },
+        ],
+      },
+    ]);
+  });
+
+  it('sem mudanças de condutor devolve lista vazia', () => {
+    expect(agruparCondutores(estadoExemplo(), [mover('p-gil', 'carrinhaId', 'zz1001', null)])).toEqual([]);
   });
 });
 
@@ -109,6 +157,88 @@ describe('calcularAvisos', () => {
     ]);
   });
 
+  it('avisa quando o condutor escolhido não tem carta (forte); carta desconhecida não avisa', () => {
+    const servidor = estadoExemplo();
+    const semCarta = {
+      ...servidor,
+      pessoas: servidor.pessoas.map((p) => (p.id === 'p-bruno' ? { ...p, temCarta: false } : p)),
+    };
+    const ops = [condutor('zz1001', null, 'p-bruno')];
+    expect(calcularAvisos(semCarta, aplicarOperacoes(semCarta, ops), ops)).toEqual([
+      {
+        chave: 'condutor-sem-carta:zz1001',
+        gravidade: 'forte',
+        texto: 'Bruno E. fica a conduzir a ZZ 1001, mas não tem carta.',
+      },
+    ]);
+    // A Ana tem temCarta = null (desconhecido): sem aviso.
+    const opsAna = [condutor('zz1001', null, 'p-ana')];
+    expect(calcularAvisos(servidor, aplicarOperacoes(servidor, opsAna), opsAna)).toEqual([]);
+  });
+
+  it('carta caducada só avisa quando se sabe a data de hoje (aviso simples)', () => {
+    const servidor = estadoExemplo();
+    const caducada = {
+      ...servidor,
+      pessoas: servidor.pessoas.map((p) =>
+        p.id === 'p-ana' ? { ...p, temCarta: true, cartaValidade: '2026-01-31' } : p,
+      ),
+    };
+    const ops = [condutor('zz1001', null, 'p-ana')];
+    const visivel = aplicarOperacoes(caducada, ops);
+    expect(calcularAvisos(caducada, visivel, ops)).toEqual([]);
+    expect(calcularAvisos(caducada, visivel, ops, undefined, undefined, '2026-10-03')).toEqual([
+      {
+        chave: 'condutor-carta-caducada:zz1001',
+        gravidade: 'simples',
+        texto: 'Ana T. fica a conduzir a ZZ 1001, mas a carta caducou a 31/01/2026.',
+      },
+    ]);
+    expect(calcularAvisos(caducada, visivel, ops, undefined, undefined, '2026-01-31')).toEqual([]);
+  });
+
+  it('avisa quando uma carrinha que tinha condutor fica com passageiros e sem condutor', () => {
+    const servidor = comCondutor();
+    // A Ana sai da ZZ 1001 (operacoesParaAlvo tira-a de condutor): ficam 3 passageiros sem condutor.
+    const ops = operacoesParaAlvo(servidor, ['p-ana'], { tipo: 'carrinha', id: 'zz1003' });
+    expect(ops).toHaveLength(2);
+    expect(calcularAvisos(servidor, aplicarOperacoes(servidor, ops), ops)).toEqual([
+      {
+        chave: 'carrinha-sem-condutor:zz1001',
+        gravidade: 'simples',
+        texto: 'ZZ 1001 fica sem condutor (3 passageiros).',
+      },
+    ]);
+    // Tirar o condutor à mão também.
+    const tirar = [condutor('zz1001', 'p-ana', null)];
+    expect(calcularAvisos(servidor, aplicarOperacoes(servidor, tirar), tirar).map((a) => a.texto)).toEqual([
+      'ZZ 1001 fica sem condutor (4 passageiros).',
+    ]);
+    // Trocar de condutor não avisa; carrinhas que nunca tiveram condutor também não.
+    const trocar = [condutor('zz1001', 'p-ana', 'p-gil')];
+    expect(calcularAvisos(servidor, aplicarOperacoes(servidor, trocar), trocar)).toEqual([]);
+    const entrar = [mover('p-helena', 'carrinhaId', null, 'zz1003')];
+    expect(calcularAvisos(servidor, aplicarOperacoes(servidor, entrar), entrar)).toEqual([]);
+  });
+
+  it('um condutor que não vai na carrinha (ex.: inativo) já era "sem condutor": não avisa', () => {
+    // A ZZ 1002 tem como condutor o Ivo, inativo (e noutra carrinha): a lista e a ficha dizem "sem condutor".
+    const base = estadoExemplo();
+    const servidor = {
+      ...base,
+      carrinhas: base.carrinhas.map((c) => (c.id === 'zz1002' ? { ...c, condutorId: 'p-ivo' } : c)),
+    };
+    const ops = operacoesParaAlvo(servidor, ['p-duarte'], { tipo: 'sem-transporte' });
+    const avisos = calcularAvisos(servidor, aplicarOperacoes(servidor, ops), ops);
+    expect(avisos.filter((a) => a.chave.startsWith('carrinha-sem-condutor'))).toEqual([]);
+  });
+
+  it('a carrinha que fica vazia não precisa de condutor', () => {
+    const servidor = aplicarOperacoes(estadoExemplo(), [condutor('zz1002', null, 'p-celia')]);
+    const ops = operacoesParaAlvo(servidor, ['p-celia', 'p-duarte'], { tipo: 'carrinha', id: 'zz1003' });
+    expect(calcularAvisos(servidor, aplicarOperacoes(servidor, ops), ops)).toEqual([]);
+  });
+
   it('avisa quem fica fora das casas ou sem transporte, depois dos avisos fortes', () => {
     const avisos = simular([
       mover('p-bruno', 'carrinhaId', 'zz1001', null),
@@ -142,6 +272,39 @@ describe('alteracoesDaPessoa e movimentosDoSitio', () => {
     expect(m.saem.map((op) => op.pessoaId)).toEqual(['p-ana']);
     expect(movimentosDoSitio(pendentes, 'carrinhaId', 'casa-1')).toEqual({ entram: [], saem: [] });
   });
+
+  it('as mudanças de condutor não são movimentos de pessoas', () => {
+    const comCondutores = [...pendentes, condutor('zz1003', null, 'p-ana')];
+    expect([...alteracoesDaPessoa(comCondutores, 'p-ana').keys()]).toEqual(['casaId', 'carrinhaId']);
+    expect(movimentosDoSitio(comCondutores, 'carrinhaId', 'zz1003').entram.map((op) => op.pessoaId)).toEqual([
+      'p-ana',
+    ]);
+  });
+});
+
+describe('condutorPendente, pessoaTemAlteracoes e sitioTemAlteracoes', () => {
+  const pendentes = [mover('p-gil', 'casaId', null, 'casa-3'), condutor('zz1001', 'p-ana', 'p-bruno')];
+
+  it('a mudança de condutor de uma carrinha', () => {
+    expect(condutorPendente(pendentes, 'zz1001')).toEqual(condutor('zz1001', 'p-ana', 'p-bruno'));
+    expect(condutorPendente(pendentes, 'zz1002')).toBeNull();
+  });
+
+  it('quem deixa de conduzir e quem passa a conduzir também tem alterações', () => {
+    expect(['p-gil', 'p-ana', 'p-bruno', 'p-celia'].map((id) => pessoaTemAlteracoes(pendentes, id))).toEqual([
+      true,
+      true,
+      true,
+      false,
+    ]);
+  });
+
+  it('a carrinha cujo condutor muda tem alterações (como sítio de carrinhas, não de casas)', () => {
+    expect(sitioTemAlteracoes(pendentes, 'carrinhaId', 'zz1001')).toBe(true);
+    expect(sitioTemAlteracoes(pendentes, 'carrinhaId', 'zz1002')).toBe(false);
+    expect(sitioTemAlteracoes(pendentes, 'casaId', 'casa-3')).toBe(true);
+    expect(sitioTemAlteracoes(pendentes, 'casaId', 'zz1001')).toBe(false);
+  });
 });
 
 describe('resumirPasso', () => {
@@ -171,6 +334,35 @@ describe('resumirPasso', () => {
       ]),
     ).toBe('2 alterações');
     expect(resumirPasso(estado, [])).toBe('nada');
+  });
+
+  it('só o condutor: a frase do histórico', () => {
+    const op = operacaoCondutor(estado, 'zz1001', 'p-ana');
+    expect(op && resumirPasso(estado, [op])).toBe('ZZ 1001 — condutor: sem condutor → Ana T.');
+    expect(resumirPasso(estado, [condutor('zz1001', 'p-ana', null)])).toBe(
+      'ZZ 1001 — condutor: Ana T. → sem condutor',
+    );
+    expect(
+      resumirPasso(estado, [condutor('zz1001', null, 'p-ana'), condutor('zz1002', null, 'p-celia')]),
+    ).toBe('2 alterações');
+  });
+
+  it('quem sai da carrinha que conduzia: a mudança e a consequência', () => {
+    const servidor = comCondutor();
+    const passo = operacoesParaAlvo(servidor, ['p-ana'], { tipo: 'carrinha', id: 'zz1003' });
+    expect(resumirPasso(servidor, passo)).toBe(
+      'Ana T. — carrinha: ZZ 1001 → ZZ 1003 · ZZ 1001 fica sem condutor',
+    );
+    const dois = operacoesParaAlvo(servidor, ['p-ana', 'p-bruno'], { tipo: 'sem-transporte' });
+    expect(resumirPasso(servidor, dois)).toBe(
+      '2 pessoas → Sem transporte da empresa · ZZ 1001 fica sem condutor',
+    );
+    expect(
+      resumirPasso(servidor, [
+        mover('p-gil', 'carrinhaId', null, 'zz1002'),
+        condutor('zz1002', null, 'p-gil'),
+      ]),
+    ).toBe('Gil N. — carrinha: Sem transporte da empresa → ZZ 1002 · Gil N. passa a conduzir a ZZ 1002');
   });
 });
 

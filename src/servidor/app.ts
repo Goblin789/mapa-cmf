@@ -115,8 +115,8 @@ export function criarApp({ bd, pastaCliente, anfitrioes, agora = () => new Date(
       const pedido = lerPedidoGuardar(corpo);
       if (!pedido.ok) return c.json({ erro: 'Pedido inválido.', erros: pedido.erros }, 400);
 
-      const { operacoes, comentario } = pedido.valor;
-      const r = gravarLote(bd, { operacoes, comentario, autor: AUTOR_SEM_LOGIN, agora: agora() });
+      const { operacoes, comentario, versaoBase } = pedido.valor;
+      const r = gravarLote(bd, { operacoes, comentario, versaoBase, autor: AUTOR_SEM_LOGIN, agora: agora() });
       switch (r.tipo) {
         case 'gravado':
           return c.json({ loteId: r.loteId, versao: r.versao }, 201);
@@ -130,7 +130,9 @@ export function criarApp({ bd, pastaCliente, anfitrioes, agora = () => new Date(
         case 'conflito':
           return c.json(
             {
-              erro: 'Alguém mudou entretanto algumas destas pessoas. Nada foi gravado.',
+              erro: r.conflitos.some((cf) => cf.tipo === 'condutor')
+                ? 'Alguém mudou entretanto algumas destas pessoas ou carrinhas. Nada foi gravado.'
+                : 'Alguém mudou entretanto algumas destas pessoas. Nada foi gravado.',
               conflitos: r.conflitos,
             },
             409,

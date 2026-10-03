@@ -1,7 +1,8 @@
 // Ficha rápida do que está em foco (pessoa, casa ou carrinha), sobre o canto superior esquerdo do mapa.
 // Fecha com o botão ou com Esc. As casas, carrinhas e nomes da ficha mudam o foco.
 // No modo de edição: marca "alterado — por guardar", mostra o valor gravado ao lado do que mudou,
-// quem entra e sai, e os botões "Mudar casa/carrinha/obra" (abrem o "Mover para…").
+// quem entra e sai, os botões "Mudar casa/carrinha/obra" (abrem o "Mover para…") e os de condutor
+// ("Tornar condutor" / "Tirar condutor"). O condutor aparece sempre em primeiro, com o volante.
 
 import { type ReactNode, useEffect, useId } from 'react';
 import { clienteEfetivoId } from '../../dominio/cores';
@@ -9,18 +10,22 @@ import type { Dormida } from '../../dominio/dormidas';
 import type { Indices } from '../../dominio/indices';
 import { ocupacaoCarrinha, ocupacaoCasa } from '../../dominio/ocupacao';
 import type { Carrinha, Casa, Id, Pessoa } from '../../dominio/tipos';
+import { IconeVolante } from '../comum/IconeVolante';
 import { ESTILO_AVISO_CONTRATO } from '../comum/lotacao';
 import { formatarMatricula } from '../comum/Matricula';
 import {
   AcoesPessoa,
+  CondutorGravado,
   MarcaAlterado,
   MovimentosPendentes,
+  PassageirosEmEdicao,
   usePessoaAlterada,
   useSitioAlterado,
   ValorGravado,
 } from '../edicao/PecasFoco';
 import { type Foco, useLoja } from '../estado/loja';
 import { alturaMaximaPainelFoco, FOCO_VISIVEL, Z_SOBRE_MAPA } from './classes';
+import { carrinhaConduzida, condutorDaCarrinha, ROTULO_SEM_CONDUTOR } from './condutor';
 import { cadeiaDaPessoa, carrinhasDasPessoas, carrinhasQueDormemEm, casasDasPessoas } from './fichas';
 import { useAlturaLegenda } from './ganchos';
 import { GrelhaNomes, IconeFechar, MarcaAConfirmar, MarcaCliente, PastilhaLotacao } from './pecas';
@@ -134,6 +139,7 @@ function FichaPessoa({ pessoa, indices }: { pessoa: Pessoa; indices: Indices }) 
   const nome = nomeCompleto(pessoa);
   const hoje = hojeISO();
   const alterada = usePessoaAlterada(pessoa.id);
+  const conduz = carrinhaConduzida(pessoa, indices);
   const subtitulo = [
     pessoa.numero ? `Nº ${pessoa.numero}` : 'Sem Nº',
     pessoa.nomeCurto !== nome ? `no mapa: ${pessoa.nomeCurto}` : null,
@@ -178,6 +184,18 @@ function FichaPessoa({ pessoa, indices }: { pessoa: Pessoa; indices: Indices }) 
             </li>
           ))}
         </ol>
+        {conduz && (
+          <p className="mt-1.5 flex items-center gap-1.5 text-sm font-medium text-slate-900">
+            <IconeVolante tamanho={14} className="text-slate-700" />
+            Condutor da {formatarMatricula(conduz.matricula)}
+          </p>
+        )}
+        {conduz && pessoa.temCarta === false && (
+          <p className="mt-1 rounded border border-red-500 bg-red-100 px-2 py-1 text-xs font-medium text-red-900">
+            <span aria-hidden="true">▲ </span>
+            Conduz, mas não tem carta.
+          </p>
+        )}
       </Secao>
       <dl className="mt-3 border-t border-slate-200 pt-2">
         <Linha rotulo="Telefone">
@@ -297,6 +315,8 @@ function FichaCarrinha({
     ? `também ${carrinha.matriculasAlternativas.join(', ')}`
     : null;
   const alterada = useSitioAlterado('carrinhaId', carrinha.id);
+  const modoEdicao = useLoja((s) => s.modoEdicao);
+  const condutor = condutorDaCarrinha(carrinha, indices);
 
   return (
     <Moldura
@@ -309,6 +329,17 @@ function FichaCarrinha({
         <Linha rotulo="Modelo">{carrinha.modelo ?? <Vazio>desconhecido</Vazio>}</Linha>
         <Linha rotulo="Ocupação">
           <PastilhaLotacao ocupados={oc.ocupados} lugares={oc.lugares} nivel={oc.nivel} />
+        </Linha>
+        <Linha rotulo="Condutor">
+          <span className="flex flex-wrap items-center gap-1.5">
+            <IconeVolante tamanho={14} className={condutor ? 'text-slate-700' : 'text-slate-400'} />
+            {condutor ? (
+              <BotaoFoco foco={{ tipo: 'pessoa', id: condutor.id }}>{condutor.nomeCurto}</BotaoFoco>
+            ) : (
+              <Vazio>{ROTULO_SEM_CONDUTOR}</Vazio>
+            )}
+            <CondutorGravado carrinhaId={carrinha.id} />
+          </span>
         </Linha>
         <Linha rotulo="Onde dorme">
           {dorme.casaId ? (
@@ -325,7 +356,11 @@ function FichaCarrinha({
       <MovimentosPendentes campo="carrinhaId" id={carrinha.id} />
 
       <Secao titulo={`Passageiros (${passageiros.length})`}>
-        <GrelhaNomes pessoas={passageiros} vazio="Sem passageiros." />
+        {modoEdicao ? (
+          <PassageirosEmEdicao carrinha={carrinha} passageiros={passageiros} />
+        ) : (
+          <GrelhaNomes pessoas={passageiros} vazio="Sem passageiros." />
+        )}
       </Secao>
 
       {passageiros.length > 0 && (

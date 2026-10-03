@@ -1,0 +1,112 @@
+/* Tema da marca CMF: cores e letras do manual de marca (pasta "01 Marca", tokens.css de 01/09/2026).
+   Importado em main.tsx depois de estilos.css, por isso ganha aos valores por omissão.
+   As letras estão alojadas no próprio site (@fontsource), nunca no Google Fonts. */
+
+:root {
+  /* --- marca (não se alteram) --- */
+  --cmf-laranja: #f39200; /* CMYK 0/50/100/0. NUNCA para texto sobre branco (2,35:1). */
+  --cmf-cinzento: #575756; /* CMYK 0/0/0/80. Texto principal (7,23:1 sobre branco). */
+  --cmf-cinzento-claro: #70706f; /* o "SARL" do logótipo. Texto secundário (4,96:1). */
+
+  /* --- derivadas, para cumprir o contraste mínimo --- */
+  --cmf-laranja-texto: #b35f00; /* laranja escurecido: 4,61:1 sobre branco (ligações, texto laranja) */
+  --cmf-preto: #1c1c1b; /* títulos e texto sobre laranja (7,25:1 sobre #f39200) */
+
+  /* --- neutros --- */
+  --cmf-fundo: #ffffff;
+  --cmf-fundo-alt: #f4f4f2; /* faixas alternadas */
+  --cmf-linha: #dcdcd8; /* separadores */
+
+  /* --- tipografia --- */
+  /* O pacote variável do Archivo regista-se como "Archivo Variable". */
+  --cmf-titulos: "Archivo Variable", "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --cmf-texto: "IBM Plex Sans", "Helvetica Neue", Arial, sans-serif;
+
+  /* O Tailwind usa --font-sans no html e na classe font-sans (ex.: cartões do mapa). */
+  --font-sans: var(--cmf-texto);
+}
+
+body {
+  font-family: var(--cmf-texto);
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+.fonte-titulos {
+  font-family: var(--cmf-titulos);
+}
+
+/* --- Marca no cabeçalho (comum/Marca.tsx) --------------------------------------------------- */
+/* O manual pede à volta do logótipo uma margem livre de 1/3 da altura do símbolo (o símbolo ocupa
+   a altura toda do logótipo) e nunca menos de 120 px de largura. Logótipo: 120 × 45 px → margem
+   15 px. Sem espaço para ele: só o símbolo, 30 px de altura → margem 10 px. O cabeçalho já dá 8 px
+   por cima e por baixo e 12 px à esquerda; o que falta vem daqui.
+
+   O logótipo inteiro (209 px com a margem e o filete, contra 85 px do símbolo) só aparece a partir de
+   1680 px de largura: abaixo disso o cabeçalho deixava de caber numa linha (medido: de 1340 a 1659 px
+   passava de 51 para 118 px de altura, 67 px a menos de mapa em portáteis de 1366, 1440, 1536 e
+   1600 px). Se os contadores ou os botões do cabeçalho crescerem, voltar a medir este limite. */
+.marca {
+  --marca-altura: 30px;
+  --marca-margem: 10px;
+  padding-block: calc(var(--marca-margem) - 8px);
+  padding-left: max(0px, calc(var(--marca-margem) - 12px));
+  gap: var(--marca-margem);
+  color: var(--cmf-preto);
+}
+
+.marca-logotipo {
+  display: none;
+  width: 120px;
+  height: 45px;
+}
+
+.marca-simbolo {
+  display: block;
+  height: var(--marca-altura);
+  width: auto;
+}
+
+/* Filete entre o logótipo e a palavra "Mapa", fora da margem livre. */
+.marca-filete {
+  display: none;
+  width: 1px;
+  align-self: stretch;
+  margin-block: 6px;
+  background: var(--cmf-linha);
+}
+
+.marca-titulo {
+  font-family: var(--cmf-titulos);
+  font-size: 1.125rem;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -0.01em;
+}
+
+@media (min-width: 40rem) {
+  .marca-titulo {
+    font-size: 1.375rem;
+  }
+}
+
+/* 105rem = 1680 px: o logótipo inteiro já cabe na mesma linha que os contadores e a pesquisa. */
+@media (min-width: 105rem) {
+  .marca {
+    --marca-altura: 45px;
+    --marca-margem: 15px;
+  }
+
+  .marca-logotipo,
+  .marca-filete {
+    display: block;
+  }
+
+  .marca-simbolo {
+    display: none;
+  }
+}

@@ -25,6 +25,9 @@ export const BOTAO_BARRA_PRIMARIO = `${BASE_BARRA} border-slate-900 bg-slate-900
 /** Botões pequenos dentro do painel de foco. */
 export const BOTAO_PEQUENO = `${BASE} ${FOCO_VISIVEL} border-slate-300 bg-white px-2 py-1 text-xs text-slate-800 hover:bg-slate-50`;
 
+/** Botão mínimo ao lado de um nome (ex.: "Tornar condutor" na lista de passageiros). */
+export const BOTAO_MINI = `inline-flex shrink-0 items-center justify-center gap-1 rounded border border-slate-300 bg-white px-1.5 py-0.5 text-[11px] leading-4 font-medium whitespace-nowrap text-slate-800 transition-colors hover:bg-slate-50 ${FOCO_VISIVEL}`;
+
 /** Marca "alterado — por guardar" (âmbar, com um ponto além da cor). */
 export const MARCA_ALTERADO =
   'inline-flex shrink-0 items-center gap-1 rounded border border-amber-400 bg-amber-100 px-1.5 text-[11px] leading-4 font-semibold text-amber-900';

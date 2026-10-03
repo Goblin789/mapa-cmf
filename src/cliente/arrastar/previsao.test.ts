@@ -1,12 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { indexar } from '../../dominio/indices';
+import { aplicarOperacoes } from '../../dominio/operacoes';
 import { estadoExemplo } from '../../dominio/teste-fabrica';
 import {
   descricaoArrastados,
   partesArrastados,
   partesPrevisao,
+  pessoasQueMudam,
   preverLargada,
   textoArrastados,
+  textoCondutoresQueSaem,
   textoLargado,
   textoPrevisao,
 } from './previsao';
@@ -87,6 +90,36 @@ describe('preverLargada', () => {
     expect(preverLargada(estado, ind, ['p-ana'], { tipo: 'casa', id: 'nao-existe' })).toBeNull();
     expect(preverLargada(estado, ind, ['p-ana'], { tipo: 'carrinha', id: 'nao-existe' })).toBeNull();
     expect(preverLargada(estado, ind, ['p-ana'], { tipo: 'obra', id: 'nao-existe' })).toBeNull();
+  });
+});
+
+describe('condutor que sai da carrinha que conduz', () => {
+  // Ana conduz a ZZ 1001 e Célia a ZZ 1002.
+  const comCondutores = aplicarOperacoes(estado, [
+    { tipo: 'condutor', carrinhaId: 'zz1001', de: null, para: 'p-ana' },
+    { tipo: 'condutor', carrinhaId: 'zz1002', de: null, para: 'p-celia' },
+  ]);
+  const indC = indexar(comCondutores);
+
+  it('a operação do condutor que vem junto não conta como pessoa a entrar', () => {
+    const p = preverLargada(comCondutores, indC, ['p-ana'], { tipo: 'carrinha', id: 'zz1003' });
+    expect(p).toMatchObject({ antes: 0, entram: 1, depois: 1 });
+    expect(pessoasQueMudam(comCondutores, ['p-ana', 'p-bruno', 'p-ana'], { tipo: 'sem-transporte' })).toEqual(
+      ['p-ana', 'p-bruno'],
+    );
+  });
+
+  it('diz que carrinhas ficam sem condutor (só quando o condutor sai mesmo)', () => {
+    expect(textoCondutoresQueSaem(comCondutores, ['p-ana'], { tipo: 'carrinha', id: 'zz1003' })).toBe(
+      'ZZ 1001 fica sem condutor.',
+    );
+    expect(textoCondutoresQueSaem(comCondutores, ['p-ana', 'p-celia'], { tipo: 'sem-transporte' })).toBe(
+      'ZZ 1001, ZZ 1002 ficam sem condutor.',
+    );
+    // Mudar de casa ou ficar na mesma carrinha não mexe no condutor.
+    expect(textoCondutoresQueSaem(comCondutores, ['p-ana'], { tipo: 'casa', id: 'casa-3' })).toBeNull();
+    expect(textoCondutoresQueSaem(comCondutores, ['p-ana'], { tipo: 'carrinha', id: 'zz1001' })).toBeNull();
+    expect(textoCondutoresQueSaem(comCondutores, ['p-bruno'], { tipo: 'sem-transporte' })).toBeNull();
   });
 });
 

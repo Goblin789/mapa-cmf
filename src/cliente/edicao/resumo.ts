@@ -1,12 +1,21 @@
-// Resumo do rascunho: alterações agrupadas por pessoa, avisos antes de guardar, o que mudou numa
-// pessoa/casa/carrinha (painel de foco) e a frase de um passo (Desfeito: …). Funções puras.
+// Resumo do rascunho: alterações agrupadas por pessoa (e as de condutor por carrinha), avisos antes de
+// guardar, o que mudou numa pessoa/casa/carrinha (painel de foco) e a frase de um passo (Desfeito: …).
+// Funções puras.
 
 import { type Indices, indexar } from '../../dominio/indices';
 import { type AvisoContrato, ocupacaoCarrinha, ocupacaoCasa } from '../../dominio/ocupacao';
-import { type CampoMovivel, descreverOperacao, nomeDoValor, type Operacao } from '../../dominio/operacoes';
+import {
+  type CampoMovivel,
+  descreverOperacao,
+  nomeDoValor,
+  type Operacao,
+  type OperacaoCondutor,
+  type OperacaoMover,
+} from '../../dominio/operacoes';
 import type { Estado, Id, Pessoa } from '../../dominio/tipos';
 import { formatarMatricula } from '../comum/Matricula';
-import { comPlural, textoContrato } from '../paineis/textos';
+import { condutorDaCarrinha } from '../paineis/condutor';
+import { comPlural, formatarData, textoContrato } from '../paineis/textos';
 
 export const ROTULO_CAMPO: Record<CampoMovivel, string> = {
   casaId: 'Casa',
@@ -18,8 +27,27 @@ const ORDEM_CAMPO: Record<CampoMovivel, number> = { casaId: 0, carrinhaId: 1, ob
 
 const comparadorNomes = new Intl.Collator('pt', { sensitivity: 'base', numeric: true });
 
+/** Só as mudanças de pessoas (casa, carrinha, obra). */
+export function soMovimentos(ops: readonly Operacao[]): OperacaoMover[] {
+  return ops.filter((op): op is OperacaoMover => op.tipo === 'mover');
+}
+
+/** Só as mudanças de condutor. */
+export function soCondutores(ops: readonly Operacao[]): OperacaoCondutor[] {
+  return ops.filter((op): op is OperacaoCondutor => op.tipo === 'condutor');
+}
+
 function nomeDaPessoa(estado: Estado, id: Id): string {
   return estado.pessoas.find((p) => p.id === id)?.nomeCurto ?? id;
+}
+
+function matriculaDe(estado: Estado, carrinhaId: Id): string {
+  return nomeDoValor(estado, 'carrinhaId', carrinhaId);
+}
+
+/** Nome do condutor ou "sem condutor". */
+export function rotuloDoCondutor(estado: Estado, pessoaId: Id | null): string {
+  return pessoaId === null ? 'sem condutor' : nomeDaPessoa(estado, pessoaId);
 }
 
 /** Nome a mostrar para um valor de campo; as matrículas vêm formatadas ("ZZ 1001"). */
@@ -44,15 +72,16 @@ export interface AlteracoesDaPessoa {
 }
 
 /**
- * Alterações por guardar, agrupadas por pessoa (por ordem alfabética) e, em cada pessoa, pela ordem
- * casa → carrinha → obra. Os nomes vêm do estado gravado (é sobre ele que as alterações se aplicam).
+ * Mudanças de pessoas por guardar, agrupadas por pessoa (por ordem alfabética) e, em cada pessoa, pela
+ * ordem casa → carrinha → obra. Os nomes vêm do estado gravado (é sobre ele que as alterações se aplicam).
+ * As mudanças de condutor ficam de fora: ver agruparCondutores.
  */
 export function agruparAlteracoes(
   estadoServidor: Estado,
   pendentes: readonly Operacao[],
 ): AlteracoesDaPessoa[] {
   const grupos = new Map<Id, AlteracoesDaPessoa>();
-  for (const op of pendentes) {
+  for (const op of soMovimentos(pendentes)) {
     let grupo = grupos.get(op.pessoaId);
     if (!grupo) {
       grupo = { pessoaId: op.pessoaId, nome: nomeDaPessoa(estadoServidor, op.pessoaId), alteracoes: [] };
@@ -68,6 +97,51 @@ export function agruparAlteracoes(
   }
   for (const g of grupos.values()) g.alteracoes.sort((a, b) => ORDEM_CAMPO[a.campo] - ORDEM_CAMPO[b.campo]);
   return [...grupos.values()].sort((a, b) => comparadorNomes.compare(a.nome, b.nome));
+}
+
+export interface AlteracaoDeCondutor {
+  /** Condutor antes e depois ("Ana T.", "sem condutor"). */
+  de: string;
+  para: string;
+  /** Frase inteira, como no histórico ("ZZ 1001 — condutor: Ana T. → Rui S."). */
+  descricao: string;
+}
+
+export interface CondutoresDaCarrinha {
+  carrinhaId: Id;
+  /** Matrícula formatada ("ZZ 1001"). */
+  matricula: string;
+  alteracoes: AlteracaoDeCondutor[];
+}
+
+/** Mudanças de condutor por guardar, agrupadas por carrinha (pela ordem das carrinhas). */
+export function agruparCondutores(
+  estadoServidor: Estado,
+  pendentes: readonly Operacao[],
+): CondutoresDaCarrinha[] {
+  const grupos = new Map<Id, CondutoresDaCarrinha>();
+  for (const op of soCondutores(pendentes)) {
+    let grupo = grupos.get(op.carrinhaId);
+    if (!grupo) {
+      grupo = {
+        carrinhaId: op.carrinhaId,
+        matricula: matriculaDe(estadoServidor, op.carrinhaId),
+        alteracoes: [],
+      };
+      grupos.set(op.carrinhaId, grupo);
+    }
+    grupo.alteracoes.push({
+      de: rotuloDoCondutor(estadoServidor, op.de),
+      para: rotuloDoCondutor(estadoServidor, op.para),
+      descricao: descreverOperacao(estadoServidor, op),
+    });
+  }
+  const ordem = new Map(estadoServidor.carrinhas.map((c) => [c.id, c.ordem]));
+  const posicao = (id: Id) => ordem.get(id) ?? Number.MAX_SAFE_INTEGER;
+  return [...grupos.values()].sort(
+    (a, b) =>
+      posicao(a.carrinhaId) - posicao(b.carrinhaId) || comparadorNomes.compare(a.matricula, b.matricula),
+  );
 }
 
 export type GravidadeAviso = 'forte' | 'simples';
@@ -87,7 +161,20 @@ const PESO_CONTRATO: Record<AvisoContrato, number> = {
 
 function destinos(pendentes: readonly Operacao[], campo: CampoMovivel): Id[] {
   const ids = new Set<Id>();
-  for (const op of pendentes) if (op.campo === campo && op.para !== null) ids.add(op.para);
+  for (const op of soMovimentos(pendentes)) if (op.campo === campo && op.para !== null) ids.add(op.para);
+  return [...ids];
+}
+
+/** Carrinhas em que as alterações mexem: entra ou sai alguém, ou muda o condutor. */
+function carrinhasMexidas(pendentes: readonly Operacao[]): Id[] {
+  const ids = new Set<Id>();
+  for (const op of pendentes) {
+    if (op.tipo === 'condutor') ids.add(op.carrinhaId);
+    else if (op.campo === 'carrinhaId') {
+      if (op.de !== null) ids.add(op.de);
+      if (op.para !== null) ids.add(op.para);
+    }
+  }
   return [...ids];
 }
 
@@ -95,8 +182,11 @@ function destinos(pendentes: readonly Operacao[], campo: CampoMovivel): Id[] {
  * Avisos a mostrar antes de guardar, só sobre o que as alterações pioram:
  * - casas e carrinhas que recebem gente e ficam com gente a mais (mais do que tinham);
  * - casas que recebem gente e passam (ou passam mais) o máximo/tolerado do contrato;
+ * - condutores escolhidos sem carta (forte) ou com a carta caducada (só se `hoje` for dado);
+ *   carta desconhecida (temCarta null) não dá aviso;
+ * - carrinhas que tinham condutor e ficam com passageiros e sem condutor;
  * - pessoas que ficam fora das casas CMF ou sem transporte da empresa.
- * Primeiro os fortes (gente a mais, acima do tolerado), depois os simples.
+ * Primeiro os fortes (gente a mais, acima do tolerado, condutor sem carta), depois os simples.
  */
 export function calcularAvisos(
   estadoServidor: Estado,
@@ -104,6 +194,7 @@ export function calcularAvisos(
   pendentes: readonly Operacao[],
   indServidor: Indices = indexar(estadoServidor),
   indVisivel: Indices = indexar(estadoVisivel),
+  hoje: string | null = null,
 ): AvisoGuardar[] {
   const avisos: AvisoGuardar[] = [];
 
@@ -158,9 +249,52 @@ export function calcularAvisos(
     }
   }
 
+  // Condutores escolhidos nas alterações (só os que ficam mesmo a conduzir no fim).
+  for (const op of soCondutores(pendentes)) {
+    if (op.para === null) continue;
+    const carrinha = indVisivel.carrinhas.get(op.carrinhaId);
+    const p = indVisivel.pessoas.get(op.para);
+    if (!carrinha || !p || carrinha.condutorId !== p.id) continue;
+    const matricula = formatarMatricula(carrinha.matricula);
+    if (p.temCarta === false) {
+      avisos.push({
+        chave: `condutor-sem-carta:${carrinha.id}`,
+        gravidade: 'forte',
+        texto: `${p.nomeCurto} fica a conduzir a ${matricula}, mas não tem carta.`,
+      });
+    } else if (p.temCarta === true && hoje !== null && p.cartaValidade !== null && p.cartaValidade < hoje) {
+      avisos.push({
+        chave: `condutor-carta-caducada:${carrinha.id}`,
+        gravidade: 'simples',
+        texto: `${p.nomeCurto} fica a conduzir a ${matricula}, mas a carta caducou a ${formatarData(
+          p.cartaValidade,
+        )}.`,
+      });
+    }
+  }
+
+  // Carrinhas que tinham condutor e ficam com gente e sem ninguém a conduzir. Como no resto do ecrã, só conta
+  // um condutor que vai na carrinha (um inativo ou que já não vai nela é "sem condutor" antes e depois).
+  for (const id of carrinhasMexidas(pendentes)) {
+    const antes = indServidor.carrinhas.get(id);
+    const depois = indVisivel.carrinhas.get(id);
+    if (!antes || !depois || condutorDaCarrinha(antes, indServidor) === null) continue;
+    const passageiros = indVisivel.passageiros.get(id) ?? [];
+    if (passageiros.length === 0 || condutorDaCarrinha(depois, indVisivel) !== null) continue;
+    avisos.push({
+      chave: `carrinha-sem-condutor:${id}`,
+      gravidade: 'simples',
+      texto: `${formatarMatricula(depois.matricula)} fica sem condutor (${comPlural(
+        passageiros.length,
+        'passageiro',
+        'passageiros',
+      )}).`,
+    });
+  }
+
   const semCasa: Pessoa[] = [];
   const semCarrinha: Pessoa[] = [];
-  for (const op of pendentes) {
+  for (const op of soMovimentos(pendentes)) {
     if (op.para !== null || op.de === null) continue;
     const p = indVisivel.pessoas.get(op.pessoaId);
     if (!p?.ativa) continue;
@@ -184,25 +318,46 @@ export function calcularAvisos(
     });
   }
 
-  // sort é estável: dentro de cada gravidade fica a ordem casas → carrinhas → pessoas.
+  // sort é estável: dentro de cada gravidade fica a ordem casas → carrinhas → condutores → pessoas.
   return avisos.sort((a, b) => (a.gravidade === b.gravidade ? 0 : a.gravidade === 'forte' ? -1 : 1));
 }
 
-/** Alterações por guardar de uma pessoa, por campo. */
+/** Mudanças por guardar de uma pessoa, por campo. */
 export function alteracoesDaPessoa(
   pendentes: readonly Operacao[],
   pessoaId: Id,
-): Map<CampoMovivel, Operacao> {
-  const resultado = new Map<CampoMovivel, Operacao>();
-  for (const op of pendentes) if (op.pessoaId === pessoaId) resultado.set(op.campo, op);
+): Map<CampoMovivel, OperacaoMover> {
+  const resultado = new Map<CampoMovivel, OperacaoMover>();
+  for (const op of soMovimentos(pendentes)) if (op.pessoaId === pessoaId) resultado.set(op.campo, op);
   return resultado;
+}
+
+/** Mudança de condutor por guardar de uma carrinha (a última, se houver mais do que uma). */
+export function condutorPendente(pendentes: readonly Operacao[], carrinhaId: Id): OperacaoCondutor | null {
+  return soCondutores(pendentes).findLast((op) => op.carrinhaId === carrinhaId) ?? null;
+}
+
+/** A pessoa tem alterações por guardar: muda de casa, carrinha ou obra, ou passa a (ou deixa de) conduzir. */
+export function pessoaTemAlteracoes(pendentes: readonly Operacao[], pessoaId: Id): boolean {
+  return pendentes.some((op) =>
+    op.tipo === 'condutor' ? op.de === pessoaId || op.para === pessoaId : op.pessoaId === pessoaId,
+  );
+}
+
+/** A casa ou carrinha tem alterações por guardar: entra ou sai alguém (ou, numa carrinha, muda o condutor). */
+export function sitioTemAlteracoes(pendentes: readonly Operacao[], campo: CampoMovivel, id: Id): boolean {
+  return pendentes.some((op) =>
+    op.tipo === 'condutor'
+      ? campo === 'carrinhaId' && op.carrinhaId === id
+      : op.campo === campo && (op.de === id || op.para === id),
+  );
 }
 
 export interface MovimentosDoSitio {
   /** Quem passa a estar aqui (com o `de` de onde vem). */
-  entram: Operacao[];
+  entram: OperacaoMover[];
   /** Quem deixa de estar aqui (com o `para` para onde vai). */
-  saem: Operacao[];
+  saem: OperacaoMover[];
 }
 
 /** Quem entra e quem sai de uma casa ou carrinha nas alterações por guardar. */
@@ -211,21 +366,18 @@ export function movimentosDoSitio(
   campo: CampoMovivel,
   id: Id,
 ): MovimentosDoSitio {
+  const movimentos = soMovimentos(pendentes);
   return {
-    entram: pendentes.filter((op) => op.campo === campo && op.para === id),
-    saem: pendentes.filter((op) => op.campo === campo && op.de === id),
+    entram: movimentos.filter((op) => op.campo === campo && op.para === id),
+    saem: movimentos.filter((op) => op.campo === campo && op.de === id),
   };
 }
 
-/**
- * Frase curta de um passo do rascunho, para o aviso depois de desfazer/refazer/mover.
- * Uma pessoa: "Ana — casa: Casa Um → Casa Dois". Várias para o mesmo sítio: "3 pessoas → Casa Dois".
- * Outros casos: "4 alterações".
- */
-export function resumirPasso(estado: Estado, passo: readonly Operacao[]): string {
-  const [primeira] = passo;
+/** "Ana T. — casa: Casa Um → Casa Dois", "3 pessoas → Casa Dois" ou "4 alterações". */
+function resumirMovimentos(estado: Estado, movimentos: readonly OperacaoMover[]): string {
+  const [primeira] = movimentos;
   if (!primeira) return 'nada';
-  if (passo.length === 1) {
+  if (movimentos.length === 1) {
     // Como descreverOperacao, mas com as matrículas formatadas como no resto do ecrã ("ZZ 1001").
     const { campo, de, para } = primeira;
     return `${nomeDaPessoa(estado, primeira.pessoaId)} — ${ROTULO_CAMPO[campo].toLowerCase()}: ${rotuloDoValor(
@@ -234,12 +386,42 @@ export function resumirPasso(estado: Estado, passo: readonly Operacao[]): string
       de,
     )} → ${rotuloDoValor(estado, campo, para)}`;
   }
-  const mesmoDestino = passo.every((op) => op.campo === primeira.campo && op.para === primeira.para);
+  const mesmoDestino = movimentos.every((op) => op.campo === primeira.campo && op.para === primeira.para);
   if (mesmoDestino) {
-    const pessoas = new Set(passo.map((op) => op.pessoaId)).size;
+    const pessoas = new Set(movimentos.map((op) => op.pessoaId)).size;
     return `${comPlural(pessoas, 'pessoa', 'pessoas')} → ${rotuloDoValor(estado, primeira.campo, primeira.para)}`;
   }
-  return comPlural(passo.length, 'alteração', 'alterações');
+  return comPlural(movimentos.length, 'alteração', 'alterações');
+}
+
+/** Consequência de uma mudança de condutor que vem junto de mudanças de pessoas. */
+function efeitoNoCondutor(estado: Estado, op: OperacaoCondutor): string {
+  const matricula = matriculaDe(estado, op.carrinhaId);
+  return op.para === null
+    ? `${matricula} fica sem condutor`
+    : `${nomeDaPessoa(estado, op.para)} passa a conduzir a ${matricula}`;
+}
+
+/**
+ * Frase curta de um passo do rascunho, para o aviso depois de desfazer/refazer/mover.
+ * Uma pessoa: "Ana — casa: Casa Um → Casa Dois". Várias para o mesmo sítio: "3 pessoas → Casa Dois".
+ * Só o condutor: "ZZ 1001 — condutor: sem condutor → Ana". Quem sai da carrinha que conduzia:
+ * "Ana — carrinha: ZZ 1001 → ZZ 1002 · ZZ 1001 fica sem condutor". Outros casos: "4 alterações".
+ */
+export function resumirPasso(estado: Estado, passo: readonly Operacao[]): string {
+  const movimentos = soMovimentos(passo);
+  const condutores = soCondutores(passo);
+  if (movimentos.length === 0) {
+    const [unica] = condutores;
+    if (!unica) return 'nada';
+    return condutores.length === 1
+      ? descreverOperacao(estado, unica)
+      : comPlural(condutores.length, 'alteração', 'alterações');
+  }
+  return [
+    resumirMovimentos(estado, movimentos),
+    ...condutores.map((op) => efeitoNoCondutor(estado, op)),
+  ].join(' · ');
 }
 
 /** O valor gravado de um contador, quando é diferente do que se vê (só no modo de edição). */

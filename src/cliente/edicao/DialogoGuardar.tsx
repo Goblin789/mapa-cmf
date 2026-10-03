@@ -1,17 +1,20 @@
-// "Guardar…": revê as alterações (por pessoa) e os avisos, aceita um comentário e grava num lote.
-// Se o servidor recusar por conflito (alguém mudou entretanto as mesmas pessoas), nada foi gravado:
-// mostra o que mudou e oferece deitar fora o rascunho e recarregar, ou voltar à edição.
+// "Guardar…": revê as alterações (por pessoa, e as de condutor por carrinha) e os avisos, aceita um
+// comentário e grava num lote. Se o servidor recusar por conflito (alguém mudou entretanto as mesmas
+// pessoas ou o condutor das mesmas carrinhas), nada foi gravado: mostra o que mudou e oferece deitar fora
+// o rascunho e recarregar, ou voltar à edição.
 
 import { useEffect, useId, useRef, useState } from 'react';
 import { clienteEfetivoId } from '../../dominio/cores';
+import { IconeVolante } from '../comum/IconeVolante';
+import { Matricula } from '../comum/Matricula';
 import { useLoja } from '../estado/loja';
 import { MarcaCliente } from '../paineis/pecas';
-import { comPlural } from '../paineis/textos';
+import { comPlural, hojeISO } from '../paineis/textos';
 import { BOTAO_PERIGO, BOTAO_PRIMARIO, BOTAO_SECUNDARIO } from './classes';
 import { Dialogo } from './Dialogo';
 import { textoDoErro } from './erros';
 import { IconeAviso, IconeGuardar, IconeRodar } from './icones';
-import { agruparAlteracoes, calcularAvisos } from './resumo';
+import { agruparAlteracoes, agruparCondutores, calcularAvisos } from './resumo';
 import { useUiEdicao } from './ui';
 
 const LIMITE_COMENTARIO = 500;
@@ -24,8 +27,10 @@ function useInstantaneo() {
     return {
       n: pendentes.length,
       grupos: agruparAlteracoes(estadoServidor, pendentes),
-      avisos: calcularAvisos(estadoServidor, estado, pendentes, undefined, indices),
+      condutores: agruparCondutores(estadoServidor, pendentes),
+      avisos: calcularAvisos(estadoServidor, estado, pendentes, undefined, indices, hojeISO()),
       indices,
+      matriculas: new Map(estadoServidor.carrinhas.map((c) => [c.id, c.matricula])),
     };
   });
   return instantaneo;
@@ -42,11 +47,15 @@ function Conflitos({ aoVoltar, aoDescartar }: { aoVoltar: () => void; aoDescarta
       <div className="rounded-md border border-red-300 bg-red-50 px-3 py-2.5 text-sm text-red-950">
         <p className="flex items-start gap-2 font-semibold">
           <IconeAviso className="mt-0.5 h-4 w-4 text-red-700" />
-          {erroGuardar ?? 'Alguém mudou entretanto algumas destas pessoas. Nada foi gravado.'}
+          {conflitos.some((c) => c.tipo === 'condutor')
+            ? 'Alguém mudou entretanto algumas destas pessoas ou carrinhas. Nada foi gravado.'
+            : (erroGuardar ?? 'Alguém mudou entretanto algumas destas pessoas. Nada foi gravado.')}
         </p>
         <ul className="mt-2 list-disc space-y-1 pl-9">
           {conflitos.map((c) => (
-            <li key={`${c.pessoaId}:${c.campo}`}>{c.descricao}</li>
+            <li key={c.tipo === 'condutor' ? `condutor:${c.carrinhaId}` : `${c.pessoaId}:${c.campo}`}>
+              {c.descricao}
+            </li>
           ))}
         </ul>
       </div>
@@ -81,9 +90,18 @@ export function DialogoGuardar({ aoFechar }: { aoFechar: () => void }) {
   const idAvisos = useId();
 
   if (!instantaneo) return null;
-  const { n, grupos, avisos, indices } = instantaneo;
+  const { n, grupos, condutores, avisos, indices, matriculas } = instantaneo;
   const ocupado = aGuardar || aRecarregar;
   const emConflito = tentou && conflitos !== null && conflitos.length > 0;
+  const conflitoDeCondutor = conflitos?.some((c) => c.tipo === 'condutor') ?? false;
+  const resumo = [
+    grupos.length > 0 ? comPlural(grupos.length, 'pessoa muda', 'pessoas mudam') : null,
+    condutores.length > 0
+      ? comPlural(condutores.length, 'carrinha muda de condutor', 'carrinhas mudam de condutor')
+      : null,
+  ]
+    .filter(Boolean)
+    .join(', ');
 
   const aoGuardar = async () => {
     setTentou(true);
@@ -108,8 +126,10 @@ export function DialogoGuardar({ aoFechar }: { aoFechar: () => void }) {
       titulo={emConflito ? 'Não foi possível guardar' : `Guardar ${comPlural(n, 'alteração', 'alterações')}`}
       descricao={
         emConflito
-          ? 'Houve uma gravação entretanto que mexe nas mesmas pessoas.'
-          : `${comPlural(grupos.length, 'pessoa muda', 'pessoas mudam')}. Revê antes de gravar.`
+          ? `Houve uma gravação entretanto que mexe nas mesmas ${
+              conflitoDeCondutor ? 'pessoas ou carrinhas' : 'pessoas'
+            }.`
+          : `${resumo}. Revê antes de gravar.`
       }
       aoFechar={aoFechar}
       bloqueado={ocupado}
@@ -189,41 +209,76 @@ export function DialogoGuardar({ aoFechar }: { aoFechar: () => void }) {
             <h3 className="mb-1.5 text-xs font-semibold tracking-wide text-slate-600 uppercase">
               Alterações ({n})
             </h3>
-            <ul className="divide-y divide-slate-200 rounded-md border border-slate-200">
-              {grupos.map((g) => {
-                const pessoa = indices.pessoas.get(g.pessoaId);
-                const cliente = pessoa
-                  ? (indices.clientes.get(clienteEfetivoId(pessoa, indices.obras)) ?? null)
-                  : null;
-                return (
-                  <li key={g.pessoaId} className="px-3 py-2">
-                    <p className="flex items-center gap-2 text-sm font-semibold text-slate-900">
-                      <MarcaCliente cliente={cliente} />
-                      {g.nome}
-                    </p>
-                    <ul className="mt-1 space-y-0.5">
-                      {g.alteracoes.map((a) => (
-                        <li key={a.campo} className="flex items-baseline gap-2 text-sm">
-                          <span className="w-16 shrink-0 text-xs text-slate-600">{a.rotuloCampo}</span>
-                          <span className="min-w-0 flex-1">
-                            <span className="text-slate-600">{a.de}</span>
-                            <span aria-hidden="true" className="px-1.5 text-slate-400">
-                              →
+            {grupos.length > 0 && (
+              <ul className="divide-y divide-slate-200 rounded-md border border-slate-200">
+                {grupos.map((g) => {
+                  const pessoa = indices.pessoas.get(g.pessoaId);
+                  const cliente = pessoa
+                    ? (indices.clientes.get(clienteEfetivoId(pessoa, indices.obras)) ?? null)
+                    : null;
+                  return (
+                    <li key={g.pessoaId} className="px-3 py-2">
+                      <p className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                        <MarcaCliente cliente={cliente} />
+                        {g.nome}
+                      </p>
+                      <ul className="mt-1 space-y-0.5">
+                        {g.alteracoes.map((a) => (
+                          <li key={a.campo} className="flex items-baseline gap-2 text-sm">
+                            <span className="w-16 shrink-0 text-xs text-slate-600">{a.rotuloCampo}</span>
+                            <span className="min-w-0 flex-1">
+                              <span className="text-slate-600">{a.de}</span>
+                              <span aria-hidden="true" className="px-1.5 text-slate-400">
+                                →
+                              </span>
+                              <span className="sr-only"> passa para </span>
+                              <strong className="font-semibold text-slate-900">{a.para}</strong>
                             </span>
-                            <span className="sr-only"> passa para </span>
-                            <strong className="font-semibold text-slate-900">{a.para}</strong>
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  </li>
-                );
-              })}
-            </ul>
+                          </li>
+                        ))}
+                      </ul>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+            {condutores.length > 0 && (
+              <>
+                <h4 className="mt-3 mb-1.5 flex items-center gap-1.5 text-xs font-semibold tracking-wide text-slate-600 uppercase">
+                  <IconeVolante tamanho={13} />
+                  Condutores ({condutores.length})
+                </h4>
+                <ul className="divide-y divide-slate-200 rounded-md border border-slate-200">
+                  {condutores.map((g) => (
+                    <li key={g.carrinhaId} className="px-3 py-2">
+                      <p className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                        <Matricula matricula={matriculas.get(g.carrinhaId) ?? g.matricula} altura={16} />
+                        <span className="sr-only">Carrinha {g.matricula}</span>
+                      </p>
+                      <ul className="mt-1 space-y-0.5">
+                        {g.alteracoes.map((a) => (
+                          <li key={a.descricao} className="flex items-baseline gap-2 text-sm">
+                            <span className="w-16 shrink-0 text-xs text-slate-600">Condutor</span>
+                            <span className="min-w-0 flex-1">
+                              <span className="text-slate-600">{a.de}</span>
+                              <span aria-hidden="true" className="px-1.5 text-slate-400">
+                                →
+                              </span>
+                              <span className="sr-only"> passa para </span>
+                              <strong className="font-semibold text-slate-900">{a.para}</strong>
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
             {avisos.length === 0 && (
               <p className="mt-2 flex items-center gap-2 text-sm text-slate-700">
                 <IconeGuardar className="h-4 w-4 text-emerald-700" />
-                Sem avisos de lotação, de contrato ou de pessoas sem casa ou sem transporte.
+                Sem avisos de lotação, de contrato, de condutores ou de pessoas sem casa ou sem transporte.
               </p>
             )}
           </section>

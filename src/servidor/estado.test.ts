@@ -113,6 +113,7 @@ describe('carregarEstado', () => {
       notaContrato: null,
       senhorio: null,
       equipamento: null,
+      sempreCheia: false,
       ordem: 1,
     });
     expect(estado.casas.find((c) => c.id === 'casa-ribeira')).toMatchObject({ maxContrato: 6, tolerado: 8 });
@@ -127,6 +128,7 @@ describe('carregarEstado', () => {
         dormeCasaId: null,
         dormeLocalId: 'loc-parque',
         temporaria: false,
+        condutorId: null,
         nota: null,
         ordem: 1,
       },
@@ -139,6 +141,7 @@ describe('carregarEstado', () => {
         dormeCasaId: 'casa-monte',
         dormeLocalId: null,
         temporaria: true,
+        condutorId: null,
         nota: 'Substituição',
         ordem: 2,
       },
@@ -154,6 +157,28 @@ describe('carregarEstado', () => {
         origem: 'manual',
       },
     ]);
+  });
+
+  it('lê o condutor da carrinha e as casas que contam sempre como cheias', () => {
+    inserirDadosFicticios(bd);
+    bd.$client.prepare("UPDATE carrinhas SET condutor_id = 'p-ze' WHERE id = 'car-2'").run();
+    bd.$client.prepare("UPDATE casas SET sempre_cheia = 1 WHERE id = 'casa-monte'").run();
+    const estado = carregarEstado(bd);
+    expect(estado.carrinhas.map((c) => [c.id, c.condutorId])).toStrictEqual([
+      ['car-1', null],
+      ['car-2', 'p-ze'],
+    ]);
+    expect(estado.casas.map((c) => [c.id, c.sempreCheia])).toStrictEqual([
+      ['casa-monte', true],
+      ['casa-ribeira', false],
+    ]);
+  });
+
+  it('o condutor tem de ser uma pessoa que existe (chave estrangeira)', () => {
+    inserirDadosFicticios(bd);
+    expect(() =>
+      bd.$client.prepare("UPDATE carrinhas SET condutor_id = 'p-nada' WHERE id = 'car-2'").run(),
+    ).toThrow(/FOREIGN KEY/);
   });
 
   it('ordena clientes, casas e carrinhas por ordem, locais por id e pessoas por nome curto', () => {

@@ -23,8 +23,13 @@ const CASA = {
 } as const;
 
 const CARRINHA = {
-  /** Os espelhos saem do corpo para os lados. */
-  espelho: 3,
+  /** Quanto as rodas saem da carroçaria para cada lado. */
+  roda: 3,
+  /** Comprimento das rodas (no sentido do comprimento da carrinha); na compacta, um pouco mais curtas. */
+  comprimentoRoda: 16,
+  comprimentoRodaCompacta: 11,
+  /** Distância das rodas à frente e à traseira da carroçaria. */
+  recuoRoda: 6,
   borda: 1,
   lado: 4,
   topo: 3,
@@ -61,13 +66,13 @@ export interface GeometriaCarrinha {
   compacta: boolean;
   largura: number;
   altura: number;
-  /** Carroçaria (sem os espelhos). */
+  /** Carroçaria (sem as rodas). */
   corpo: Retangulo;
   /** Faixa da frente onde vai a matrícula (centrada). */
   placa: Retangulo;
   parabrisas: Retangulo;
-  /** Espelhos laterais (fora da carroçaria). */
-  espelhos: [Retangulo, Retangulo];
+  /** Quatro rodas, de fora da carroçaria: frente esquerda, frente direita, trás esquerda, trás direita. */
+  rodas: [Retangulo, Retangulo, Retangulo, Retangulo];
   /** Um lugar por linha. */
   lugares: Retangulo[];
   /** Traseira: marca "sugerido" à esquerda, pastilha da lotação à direita. */
@@ -153,22 +158,23 @@ export function geometriaCasa(nLugares: number): GeometriaCasa {
 const CORPO_COMPACTA = 76;
 
 /**
- * Carrinha vista de cima, frente para cima: matrícula, para-brisas, um lugar por linha, traseira.
+ * Carrinha vista de cima, frente para cima: matrícula, para-brisas, um lugar por linha, traseira, e as
+ * quatro rodas a sair um pouco dos lados (compridas, como se veem de cima).
  * Compacta (modo compacto do mapa): mais estreita, sem os lugares, só a matrícula e a lotação.
  */
 export function geometriaCarrinha(nLugares: number, compacta = false): GeometriaCarrinha {
   const m = CARRINHA;
   const larguraCorpo = compacta ? CORPO_COMPACTA : 2 * (m.borda + m.lado) + NOME.largura;
-  const largura = larguraCorpo + 2 * m.espelho;
-  const placa = { x: m.espelho + 6, y: m.topo, largura: larguraCorpo - 12, altura: m.placa };
+  const largura = larguraCorpo + 2 * m.roda;
+  const placa = { x: m.roda + 6, y: m.topo, largura: larguraCorpo - 12, altura: m.placa };
   const parabrisas = {
-    x: m.espelho + 4,
+    x: m.roda + 4,
     y: placa.y + placa.altura + 2,
     largura: larguraCorpo - 8,
     altura: m.parabrisas,
   };
   const y0 = parabrisas.y + parabrisas.altura + m.folga;
-  const xNomes = m.espelho + m.borda + m.lado;
+  const xNomes = m.roda + m.borda + m.lado;
   const estado = {
     x: xNomes,
     y: compacta ? y0 + 1 : y0 + alturaLinhas(nLugares) + 1,
@@ -176,16 +182,20 @@ export function geometriaCarrinha(nLugares: number, compacta = false): Geometria
     altura: LINHA_ESTADO,
   };
   const altura = estado.y + estado.altura + m.fundo + (compacta ? 1 : 0);
-  const espelho = (x: number) => ({ x, y: parabrisas.y + 1, largura: m.espelho + 2, altura: 7 });
+  // Cada roda entra 2 px por baixo da carroçaria (só se vê o que sai para o lado).
+  const comprimento = compacta ? m.comprimentoRodaCompacta : m.comprimentoRoda;
+  const roda = (x: number, y: number) => ({ x, y, largura: m.roda + 2, altura: comprimento });
+  const xDireita = largura - m.roda - 2;
+  const yTras = altura - m.recuoRoda - comprimento;
   return {
     tipo: 'carrinha',
     compacta,
     largura,
     altura,
-    corpo: { x: m.espelho, y: 0, largura: larguraCorpo, altura },
+    corpo: { x: m.roda, y: 0, largura: larguraCorpo, altura },
     placa,
     parabrisas,
-    espelhos: [espelho(0), espelho(largura - m.espelho - 2)],
+    rodas: [roda(0, m.recuoRoda), roda(xDireita, m.recuoRoda), roda(0, yTras), roda(xDireita, yTras)],
     lugares: compacta ? [] : grelhaNomes(nLugares, 1, xNomes, y0),
     estado,
   };

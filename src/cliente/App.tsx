@@ -3,6 +3,7 @@
 // contorno âmbar: o que se vê é uma simulação até se carregar em Guardar.
 
 import { useEffect } from 'react';
+import { Marca } from './comum/Marca';
 import { BarraEdicao } from './edicao/BarraEdicao';
 import { BotoesCabecalho, ContornoEdicao, Edicao } from './edicao/Edicao';
 import { textoDoErro } from './edicao/erros';
@@ -52,7 +53,7 @@ export function App() {
       {/* Telemóvel: título e botões na 1.ª linha, contadores, pesquisa. PC: título, contadores e, à direita,
           a pesquisa com os botões (se não couberem, passam juntos para a linha de baixo). */}
       <header className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-slate-200 bg-white px-3 py-2">
-        <h1 className="order-1 text-base font-bold tracking-tight">Mapa CMF</h1>
+        <Marca className="order-1" />
         <div className="order-3 w-full sm:order-2 sm:w-auto">
           <Contadores />
         </div>

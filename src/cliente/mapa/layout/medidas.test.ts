@@ -82,14 +82,33 @@ describe('carrinha', () => {
     }
   });
 
-  it('é estreita e comprida: a matrícula à frente, os espelhos de fora da carroçaria', () => {
+  it('é estreita e comprida: a matrícula à frente', () => {
     const g = geometriaCarrinha(9);
     expect(g.altura).toBeGreaterThan(g.largura);
     expect(g.placa.y).toBeLessThan(g.parabrisas.y);
-    const [esq, dir] = g.espelhos;
-    expect(esq.x).toBeLessThan(g.corpo.x);
-    expect(dir.x + dir.largura).toBeGreaterThan(g.corpo.x + g.corpo.largura);
     expect(geometriaCarrinha(9).altura - geometriaCarrinha(5).altura).toBe(4 * NOME.passo);
+  });
+
+  it('tem quatro rodas compridas a sair dos lados: duas à frente e duas atrás', () => {
+    for (const g of [geometriaCarrinha(5), geometriaCarrinha(9), geometriaCarrinha(9, true)]) {
+      const [fe, fd, te, td] = g.rodas;
+      // Saem da carroçaria para os lados (a largura das rodas não mudou: 3 px de fora).
+      for (const r of [fe, te]) expect(g.corpo.x - r.x).toBe(3);
+      for (const r of [fd, td]) expect(r.x + r.largura - (g.corpo.x + g.corpo.largura)).toBe(3);
+      // Mais compridas do que largas, dentro da altura da carrinha.
+      for (const r of g.rodas) {
+        expect(r.altura).toBeGreaterThanOrEqual(2 * r.largura);
+        expect(r.y).toBeGreaterThan(0);
+        expect(r.y + r.altura).toBeLessThan(g.altura);
+      }
+      // As da frente na metade da frente, as de trás na de trás, à mesma altura dos dois lados.
+      expect(fe.y).toBe(fd.y);
+      expect(te.y).toBe(td.y);
+      expect(fe.y + fe.altura).toBeLessThan(g.altura / 2);
+      expect(te.y).toBeGreaterThan(g.altura / 2);
+    }
+    // Mais compridas do que os antigos 7 px.
+    expect(geometriaCarrinha(9).rodas[0].altura).toBeGreaterThan(14);
   });
 });
 

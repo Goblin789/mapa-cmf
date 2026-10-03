@@ -47,6 +47,18 @@ describe('montarEntidades', () => {
     expect(entidades.obras).toEqual([]);
   });
 
+  it('lê "sempreCheia" de casas.json (por omissão, false) e as carrinhas entram sem condutor', () => {
+    const dados = dadosFicticios();
+    const b = dados.casas.find((c) => c.id === 'casa-b');
+    if (b) b.sempreCheia = true;
+    const { entidades } = montar(undefined, dados);
+    expect(entidades.casas.map((c) => [c.id, c.sempreCheia])).toEqual([
+      ['casa-1-foret', false],
+      ['casa-b', true],
+    ]);
+    expect(entidades.carrinhas.every((c) => c.condutorId === null)).toBe(true);
+  });
+
   it('valores especiais e casas/carrinhas pelo nome do Excel ou matrícula alternativa', () => {
     const { entidades } = montar();
     const porNome = new Map(entidades.pessoas.map((p) => [p.nomeCurto, p]));

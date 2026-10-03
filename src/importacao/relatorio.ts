@@ -8,7 +8,8 @@ import type { Pessoa } from '../dominio/tipos';
 import { type ResultadoImportacao, type Resumo, resumir } from './processar';
 import type { CampoComparado, LinhaContagem, TipoNormalizacao } from './tipos';
 
-export type ModoRelatorio = 'ensaio' | 'aplicado' | 'recusado' | 'falhou';
+/** protegido = a base de dados tem gravações feitas no programa e não se usou --forcar. */
+export type ModoRelatorio = 'ensaio' | 'aplicado' | 'recusado' | 'protegido' | 'falhou';
 
 export interface FicheiroLido {
   nome: string;
@@ -24,7 +25,7 @@ export interface MetaRelatorio {
   /** Caminho da base de dados (quando se tentou gravar). */
   bd: string | null;
   loteId: number | null;
-  /** Mensagem do erro quando a gravação falhou. */
+  /** Mensagem do erro quando a gravação falhou (ou foi recusada por proteger as gravações do programa). */
   falha: string | null;
   ficheiros: FicheiroLido[];
 }
@@ -116,6 +117,10 @@ function caixaEstado(meta: MetaRelatorio, s: Resumo): string {
     case 'recusado':
       return `<div class="caixa erro"><b>Não foi gravado.</b> ${e(
         `Há ${s.errosBloqueantes} erro(s) bloqueante(s). A base de dados ficou como estava.`,
+      )}</div>`;
+    case 'protegido':
+      return `<div class="caixa erro"><b>Não foi gravado: a base de dados ficou como estava.</b> ${e(
+        meta.falha ?? '',
       )}</div>`;
     case 'falhou':
       return `<div class="caixa erro"><b>A gravação falhou; a base de dados ficou como estava.</b> ${e(

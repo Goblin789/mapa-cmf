@@ -1,11 +1,14 @@
 // Lista lateral organizada como as folhas do Michael: uma secção por casa, por carrinha, por obra ou
 // por cliente, com os nomes por baixo. Funções puras: agrupar, filtrar e ordenar.
+// Nas carrinhas, o condutor aparece sempre em primeiro. Nas casas que contam sempre como cheias
+// (ex.: Walferdange), os lugares são os moradores: não há lugares livres.
 
 import { clienteEfetivoId } from '../../dominio/cores';
 import { compararPessoas, type Indices } from '../../dominio/indices';
+import { lotacaoEfetiva } from '../../dominio/ocupacao';
 import type { Alvo } from '../../dominio/operacoes';
 import { compactar, normalizarTexto } from '../../dominio/pesquisa';
-import type { Estado, Id, Pessoa } from '../../dominio/tipos';
+import type { Carrinha, Estado, Id, Pessoa } from '../../dominio/tipos';
 import { clientesPorOrdem } from '../paineis/agrupar';
 import { ROTULO_FORA_DAS_CASAS, ROTULO_SEM_TRANSPORTE } from '../paineis/textos';
 
@@ -78,6 +81,16 @@ export function ordenarPorClienteENome(
   return [...pessoas].sort((a, b) => ordemCliente(a) - ordemCliente(b) || compararPessoas(a, b));
 }
 
+/** O condutor (se estiver na lista) passa para o início; os outros ficam pela ordem que traziam. */
+export function condutorPrimeiro(
+  pessoas: readonly Pessoa[],
+  carrinha: Pick<Carrinha, 'condutorId'>,
+): Pessoa[] {
+  const i = carrinha.condutorId === null ? -1 : pessoas.findIndex((p) => p.id === carrinha.condutorId);
+  if (i <= 0) return [...pessoas];
+  return [pessoas[i] as Pessoa, ...pessoas.slice(0, i), ...pessoas.slice(i + 1)];
+}
+
 // --- Secções --------------------------------------------------------------------------------------
 
 export type TipoSeccao = 'casa' | 'fora' | 'carrinha' | 'sem-transporte' | 'obra' | 'sem-obra' | 'cliente';
@@ -97,7 +110,10 @@ export interface Seccao {
   pessoas: Pessoa[];
   /** Pessoas ativas na secção, sem filtros (é o que conta para a lotação). */
   total: number;
-  /** Lugares (lotação da casa, lugares da carrinha); null onde não há lugares. */
+  /**
+   * Lugares (lotação da casa, lugares da carrinha); null onde não há lugares. Numa casa que conta sempre
+   * como cheia, são os moradores.
+   */
   lugares: number | null;
   /** Secção grande sem lugares: os nomes vão por cliente, com um subtítulo por cliente. */
   porCliente: boolean;
@@ -133,6 +149,7 @@ function seccoesCasas(estado: Estado, ind: Indices, filtro: (p: Pessoa) => boole
         ? { chave: `morada:${primeira.localId}`, titulo: local?.nome ?? 'Mesma morada' }
         : null;
     for (const casa of daMorada) {
+      const moradores = ind.moradores.get(casa.id) ?? [];
       resultado.push(
         criarSeccao(
           {
@@ -141,10 +158,10 @@ function seccoesCasas(estado: Estado, ind: Indices, filtro: (p: Pessoa) => boole
             id: casa.id,
             alvo: { tipo: 'casa', id: casa.id },
             titulo: casa.nome,
-            lugares: casa.lotacao,
+            lugares: lotacaoEfetiva(casa, moradores.length),
             grupo,
           },
-          ind.moradores.get(casa.id) ?? [],
+          moradores,
           filtro,
           ind,
         ),
@@ -173,8 +190,8 @@ function seccoesCasas(estado: Estado, ind: Indices, filtro: (p: Pessoa) => boole
 function seccoesCarrinhas(estado: Estado, ind: Indices, filtro: (p: Pessoa) => boolean): Seccao[] {
   const resultado = [...estado.carrinhas]
     .sort((a, b) => a.ordem - b.ordem || a.matricula.localeCompare(b.matricula))
-    .map((carrinha) =>
-      criarSeccao(
+    .map((carrinha) => {
+      const seccao = criarSeccao(
         {
           chave: `carrinha:${carrinha.id}`,
           tipo: 'carrinha',
@@ -186,8 +203,9 @@ function seccoesCarrinhas(estado: Estado, ind: Indices, filtro: (p: Pessoa) => b
         ind.passageiros.get(carrinha.id) ?? [],
         filtro,
         ind,
-      ),
-    );
+      );
+      return { ...seccao, pessoas: condutorPrimeiro(seccao.pessoas, carrinha) };
+    });
   resultado.push(
     criarSeccao(
       {

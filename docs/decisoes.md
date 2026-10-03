@@ -2,6 +2,17 @@
 
 Registo das decisões do Rafael e das escolhas por omissão. Mais recentes primeiro.
 
+## 03/10/2026 — segundo feedback do Rafael
+
+- **Himeling**: as 4 casas da Rue de la Forêt sempre à esquerda e as 4 da Rue de la Grotte sempre à direita (nunca um grupo em cima e outro em baixo). O mesmo para as carrinhas.
+- **Cores dos clientes**: escolhidas por nós, de preferência a partir das cores das próprias empresas (ver `docs/cores.md`). O Enquadramento (pessoal da CMF) usa uma cor da marca CMF.
+- **Condutor**: cada carrinha pode ter um condutor, que aparece sempre em primeiro na lista, com um volante. Muda-se no modo de edição e fica no histórico. O condutor tem de ir nessa carrinha; se sair dela, deixa de ser condutor. Por agora guarda-se só o condutor atual (coluna em `carrinhas`); o histórico das alterações diz quem conduzia e desde quando.
+- **Desenho da carrinha**: 4 rodas, mais compridas.
+- **Walferdange e Schifflange** contam sempre como cheias (`sempreCheia`): os lugares são os moradores, sem vagas.
+- **Marca**: logótipo, favicon e letras da CMF (Archivo e IBM Plex Sans, alojadas no próprio site), conforme o manual de marca em `01 Marca`.
+- **Matrícula**: a verdadeira é **YT7579**; VD6376 (como aparece nos Excel) fica como alternativa.
+- A importação passa a recusar apagar a base de dados se já houver gravações feitas no programa (só com `--forcar`).
+
 ## 03/10/2026 — modo de edição e cartões novos (no PC)
 
 - Um POST cujas mudanças se anulam todas (A→B→A) não cria lote (400): nem versão nova nem entrada vazia no histórico.

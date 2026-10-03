@@ -221,6 +221,7 @@ function ResumoCasas({ total, fechar }: { total: number; fechar: () => void }) {
   const indices = useLoja((s) => s.indices);
   if (!estado || !indices) return null;
   const { comLivres, acimaContrato } = resumoDasCasas(estado.casas, indices);
+  const sempreCheias = estado.casas.filter((c) => c.sempreCheia).sort((x, y) => x.ordem - y.ordem);
   return (
     <>
       <p className="mb-1 font-semibold text-slate-900">Lugares livres nas casas: {total}</p>
@@ -235,6 +236,11 @@ function ResumoCasas({ total, fechar }: { total: number; fechar: () => void }) {
             </li>
           ))}
         </ul>
+      )}
+      {sempreCheias.length > 0 && (
+        <p className="mt-1 text-slate-600">
+          Não contam (sempre cheias): {sempreCheias.map((c) => c.nome).join(', ')}.
+        </p>
       )}
       {acimaContrato.length > 0 && (
         <>

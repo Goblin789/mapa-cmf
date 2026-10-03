@@ -1,9 +1,10 @@
-// Carrinha vista de cima, frente para cima: carroçaria clara e arredondada à frente, matrícula
-// luxemburguesa no nariz, para-brisas escuro, espelhos, calhas do tejadilho e um nome por linha (um por
-// lugar). Atrás: "≈" quando o sítio onde dorme é só sugerido, e a pastilha "ocupados/lugares" (a única
-// coisa com a cor do nível). Clicar põe a carrinha em foco; no modo de edição é um alvo (data-alvo).
+// Carrinha vista de cima, frente para cima: carroçaria clara e arredondada à frente, quatro rodas a sair
+// dos lados, matrícula luxemburguesa no nariz, para-brisas escuro, calhas do tejadilho e um nome por linha
+// (um por lugar), com o condutor sempre em primeiro e um volante. Atrás: "≈" quando o sítio onde dorme é
+// só sugerido, e a pastilha "ocupados/lugares" (a única coisa com a cor do nível). Clicar põe a carrinha
+// em foco; no modo de edição é um alvo (data-alvo).
 // Compacta (modo compacto do mapa): mais curta e estreita, só a matrícula e a lotação; quem vai lá
-// dentro fica no tooltip e na ficha do foco.
+// dentro (o condutor primeiro) fica no tooltip e na ficha do foco.
 
 import type { ConfiancaDormida } from '../../../dominio/dormidas';
 import { ocupacaoCarrinha } from '../../../dominio/ocupacao';
@@ -71,8 +72,17 @@ function Silhueta({ g, destaque }: { g: GeometriaCarrinha; destaque: Destaque })
       viewBox={`0 0 ${g.largura} ${g.altura}`}
       aria-hidden="true"
     >
-      {g.espelhos.map((e) => (
-        <rect key={e.x} x={e.x} y={e.y} width={e.largura} height={e.altura} rx={1.5} fill="#475569" />
+      {/* Rodas por baixo da carroçaria: só se vê o que sai para os lados. */}
+      {g.rodas.map((r) => (
+        <rect
+          key={`${r.x}:${r.y}`}
+          x={r.x}
+          y={r.y}
+          width={r.largura}
+          height={r.altura}
+          rx={1.75}
+          fill="#1e293b"
+        />
       ))}
       <path
         className="forma-corpo"
@@ -104,7 +114,9 @@ export function CartaoCarrinha({ carrinhaId, geometria: g, x, y, confianca, dest
   const carrinha = indices?.carrinhas.get(carrinhaId);
   if (!indices || !carrinha) return null;
 
+  // O condutor vem sempre em primeiro (indices.passageiros).
   const passageiros = indices.passageiros.get(carrinhaId) ?? [];
+  const condutorId = passageiros.some((p) => p.id === carrinha.condutorId) ? carrinha.condutorId : null;
   const oc = ocupacaoCarrinha(carrinha, passageiros.length);
   const estilo = ESTILO_NIVEL[oc.nivel];
   const emFoco = destaque === 'foco';
@@ -116,8 +128,10 @@ export function CartaoCarrinha({ carrinhaId, geometria: g, x, y, confianca, dest
     estilo.rotulo,
     sugerida ? TEXTO_SUGERIDO : null,
     carrinha.nota,
-    // Compacta (sem os nomes à vista): quem vai lá dentro fica no tooltip.
-    g.compacta && passageiros.length > 0 ? `Vão: ${passageiros.map((p) => p.nomeCurto).join(', ')}` : null,
+    // Compacta (sem os nomes à vista): quem vai lá dentro fica no tooltip, a começar pelo condutor.
+    g.compacta && passageiros.length > 0
+      ? `Vão: ${passageiros.map((p) => (p.id === condutorId ? `${p.nomeCurto} (condutor)` : p.nomeCurto)).join(', ')}`
+      : null,
   ]
     .filter(Boolean)
     .join(' · ');
@@ -144,7 +158,14 @@ export function CartaoCarrinha({ carrinhaId, geometria: g, x, y, confianca, dest
       >
         <Matricula matricula={carrinha.matricula} altura={g.placa.altura} />
       </span>
-      {!g.compacta && <Lugares pessoas={passageiros} lugares={g.lugares} capacidade={carrinha.lugares} />}
+      {!g.compacta && (
+        <Lugares
+          pessoas={passageiros}
+          lugares={g.lugares}
+          capacidade={carrinha.lugares}
+          condutorId={condutorId}
+        />
+      )}
       <div className="pointer-events-none absolute flex items-center gap-1" style={posicao(g.estado)}>
         {sugerida && (
           <span className="text-[11px] font-bold leading-3 text-slate-500" title={TEXTO_SUGERIDO}>

@@ -5,19 +5,23 @@ import {
   areaDesenhada,
   areaPrevista,
   chavesPrincipais,
+  DISTANCIA_VIZINHOS_M,
   type Disposicao,
   disporMapa,
+  distanciaMetros,
+  type GrupoDisposto,
   limiteDoEcra,
   linhasChamada,
   retanguloDoLocal,
   rotuloDoLocal,
   rotuloNoMapa,
+  vizinhancas,
 } from './disposicao';
 import { ESCALA_MINIMA } from './escala';
 import { contextoFicticio } from './estadoFicticioTeste';
 import { type Retangulo, sobrepoem } from './geometria';
 import { chaveGrupo, type GrupoNoMapa, montarModelo } from './grupos';
-import { desprojetar } from './projecao';
+import { desprojetar, type Ponto, projetarArredondado } from './projecao';
 
 const ZOOMS = [9, 10, 10.25, 10.5, 10.75, 11, 12, 13, 14];
 const TAMANHOS = [
@@ -196,40 +200,42 @@ describe('modos e cartões (estado fictício)', () => {
       if (!g || !rotulo) throw new Error(`falta ${id}`);
       expect(distanciaAoRetangulo(g.pontos[0] as never, rotulo)).toBeLessThanOrEqual(PINO + 1);
     }
-    // A rua mais a norte (Forêt) fica por cima da outra.
+    // A rua mais a oeste (Forêt) fica à esquerda da outra, mesmo sendo a mais a norte.
     const foret = d.grupos.find((x) => x.locais[0]?.localId === 'himeling-foret');
     const grotte = d.grupos.find((x) => x.locais[0]?.localId === 'himeling-grotte');
-    expect((foret?.y ?? 0) + (foret?.altura ?? 0)).toBeLessThanOrEqual(grotte?.y ?? 0);
+    expect((foret?.x ?? 0) + (foret?.largura ?? 0)).toBeLessThan(grotte?.x ?? 0);
   });
 
   it('modo de edição: com a disposição anterior, uma casa que cresce uma linha não faz saltar os outros blocos', () => {
-    const opcoes = { zoom: 11, larguraMapa: 1568, alturaMapa: 1030 };
+    // Ecrã inteiro (mapa de 1568×1004, vista inicial no zoom 10,75).
+    const opcoes = { zoom: 10.75, larguraMapa: 1568, alturaMapa: 1004 };
     const antes = gruposReais('tipica');
-    // Alguém largado em Steinsel (12/12): a casa passa a desenhar 13 lugares (mais uma linha).
+    // Alguém largado em Walferdange (sempre cheia, 4/4): a casa passa a desenhar 5 lugares (mais uma linha).
     const depois = antes.map((g) =>
-      g.localId === 'steinsel' ? { ...g, casas: g.casas.map((c) => ({ ...c, nLugares: 13 })) } : g,
+      g.localId === 'walferdange' ? { ...g, casas: g.casas.map((c) => ({ ...c, nLugares: 5 })) } : g,
     );
     const d0 = disporMapa(antes, opcoes);
     const sitio = (d: Disposicao) => new Map(d.grupos.map((g) => [g.chave, `${g.x},${g.y}`]));
     // Sem a anterior, a colocação refaz-se toda e outros blocos mudam de sítio (era o que acontecia).
     const refeita = sitio(disporMapa(depois, opcoes));
-    const mudaram = [...sitio(d0)].filter(([k, v]) => k !== 'grupo:steinsel' && refeita.get(k) !== v);
+    const mudaram = [...sitio(d0)].filter(([k, v]) => k !== 'grupo:walferdange' && refeita.get(k) !== v);
     expect(mudaram.length).toBeGreaterThan(0);
-    // Com a anterior, só Steinsel pode mudar; o resto fica exatamente onde estava, sem sobreposições.
+    // Com a anterior, só Walferdange pode mudar; o resto fica exatamente onde estava, sem sobreposições.
     const d1 = disporMapa(depois, { ...opcoes, anterior: d0 });
     verificar(d1);
     const s1 = sitio(d1);
-    for (const [k, v] of sitio(d0)) if (k !== 'grupo:steinsel') expect(s1.get(k), k).toBe(v);
-    expect(d1.cartoes.get('casa:steinsel')?.lugares?.length).toBe(13);
+    for (const [k, v] of sitio(d0)) if (k !== 'grupo:walferdange') expect(s1.get(k), k).toBe(v);
+    expect(d1.cartoes.get('casa:walferdange')?.lugares?.length).toBe(5);
     // Nada mudou: fica tudo igual (também é o que se vê ao entrar no modo de edição).
     expect(sitio(disporMapa(antes, { ...opcoes, anterior: d0 }))).toEqual(sitio(d0));
   });
 
   it('modo de edição: a barra da edição (mapa 45 px mais baixo) não faz saltar os blocos', () => {
+    // Ecrã inteiro (1920×1080): o mapa tem 1568×1004 e a vista inicial fica no zoom 10,75.
     const antes = gruposReais('tipica');
-    const d0 = disporMapa(antes, { zoom: 11, larguraMapa: 1568, alturaMapa: 1029 });
+    const d0 = disporMapa(antes, { zoom: 10.75, larguraMapa: 1568, alturaMapa: 1004 });
     const sitio = (d: Disposicao) => new Map(d.grupos.map((g) => [g.chave, `${g.x},${g.y}`]));
-    const maisBaixo = { zoom: 11, larguraMapa: 1568, alturaMapa: 984 };
+    const maisBaixo = { zoom: 10.75, larguraMapa: 1568, alturaMapa: 959 };
     // Refeita para a nova altura, vários blocos mudavam de sítio (alguns mais de 100 px).
     expect(sitio(disporMapa(antes, maisBaixo))).not.toEqual(sitio(d0));
     expect(sitio(disporMapa(antes, { ...maisBaixo, anterior: d0 }))).toEqual(sitio(d0));
@@ -329,5 +335,206 @@ describe('modos e cartões (estado fictício)', () => {
     const b = disporMapa(modelo.grupos, { zoom: 11.5, larguraMapa: 900, alturaMapa: 700 });
     expect(b).toBe(a);
     expect(disporMapa(modelo.grupos, { zoom: 11.75, larguraMapa: 900, alturaMapa: 700 })).not.toBe(a);
+  });
+});
+
+/** O bloco do local (ou a pastilha onde está). */
+function blocoDe(d: Disposicao, localId: string): GrupoDisposto {
+  const g = d.grupos.find((x) => x.locais.some((l) => l.localId === localId));
+  if (!g) throw new Error(`falta ${localId}`);
+  return g;
+}
+
+/**
+ * A Rue de la Forêt toda à esquerda dos dois pontos e a Rue de la Grotte toda à direita, cada uma à
+ * altura do seu ponto (com o nome da rua mesmo ao lado do ponto) e viradas para o mesmo lado; nunca uma
+ * por cima da outra. Devolve false se as duas ainda forem uma só pastilha (resumo).
+ */
+function ruasLadoALado(d: Disposicao, contexto: string): boolean {
+  const foret = blocoDe(d, 'himeling-foret');
+  const grotte = blocoDe(d, 'himeling-grotte');
+  if (foret === grotte) {
+    expect(foret.modo, contexto).toBe('resumo');
+    return false;
+  }
+  const pF = foret.pontos[0] as Ponto;
+  const pG = grotte.pontos[0] as Ponto;
+  // Cada bloco todo do seu lado dos DOIS pontos.
+  expect(foret.x + foret.largura, `Forêt à esquerda, ${contexto}`).toBeLessThanOrEqual(Math.min(pF.x, pG.x));
+  expect(grotte.x, `Grotte à direita, ${contexto}`).toBeGreaterThanOrEqual(Math.max(pF.x, pG.x));
+  // Lado a lado: cada um à altura do seu ponto e os dois com uma faixa de altura em comum.
+  for (const [g, p, id] of [
+    [foret, pF, 'himeling-foret'],
+    [grotte, pG, 'himeling-grotte'],
+  ] as const) {
+    expect(p.y, `${id} à altura do ponto, ${contexto}`).toBeGreaterThanOrEqual(g.y);
+    expect(p.y, `${id} à altura do ponto, ${contexto}`).toBeLessThanOrEqual(g.y + g.altura);
+    const r = rotuloNoMapa(g, id);
+    if (r) {
+      // O nome da rua na linha do ponto, do lado de dentro (entre os dois blocos), mesmo ao lado dele:
+      // um bloco afastado para o lado deixava outro meter-se entre as duas ruas.
+      expect(p.y, `${id}: rótulo na linha do ponto, ${contexto}`).toBeGreaterThanOrEqual(r.y - 1);
+      expect(p.y, `${id}: rótulo na linha do ponto, ${contexto}`).toBeLessThanOrEqual(r.y + r.altura + 1);
+      expect(distanciaAoRetangulo(p, r), `${id}: rótulo junto do ponto, ${contexto}`).toBeLessThanOrEqual(
+        PINO + 1,
+      );
+    }
+  }
+  expect(
+    Math.min(foret.y + foret.altura, grotte.y + grotte.altura) - Math.max(foret.y, grotte.y),
+    `uma por cima da outra, ${contexto}`,
+  ).toBeGreaterThan(0);
+  // Viradas para o mesmo lado (as duas a descer dos pontos, ou as duas a subir): nunca em diagonal.
+  const rF = rotuloNoMapa(foret, 'himeling-foret');
+  const rG = rotuloNoMapa(grotte, 'himeling-grotte');
+  if (rF && rG) {
+    const emCima = (g: GrupoDisposto, r: Retangulo) => r.y + r.altura / 2 < g.y + g.altura / 2;
+    expect(emCima(foret, rF), `viradas para o mesmo lado, ${contexto}`).toBe(emCima(grotte, rG));
+  }
+  return true;
+}
+
+describe('locais vizinhos lado a lado: Himeling (Forêt à esquerda, Grotte à direita)', () => {
+  const ZOOMS_9_A_15 = Array.from({ length: 25 }, (_, i) => 9 + i * 0.25);
+  const CAMADAS = {
+    todas: { casas: true, carrinhas: true, obras: true },
+    'só casas': { casas: true, carrinhas: false, obras: true },
+    'só carrinhas': { casas: false, carrinhas: true, obras: true },
+  } as const;
+
+  it('as duas ruas (a 360 m) são vizinhas; mais nenhum local tem vizinhos', () => {
+    const grupos = gruposReais('tipica');
+    const pontos = grupos.map((g) => projetarArredondado(g.lat, g.lng, 11));
+    const viz = vizinhancas(grupos, pontos);
+    expect([...viz.keys()].sort()).toEqual(['himeling-foret', 'himeling-grotte']);
+    const foret = grupos.find((g) => g.localId === 'himeling-foret') as GrupoNoMapa;
+    const grotte = grupos.find((g) => g.localId === 'himeling-grotte') as GrupoNoMapa;
+    expect(distanciaMetros(foret, grotte)).toBeLessThan(DISTANCIA_VIZINHOS_M);
+    // A Forêt é a mais a norte, mas também a mais a oeste: fica à esquerda.
+    expect(foret.lat).toBeGreaterThan(grotte.lat);
+    expect(viz.get('himeling-foret')).toMatchObject({
+      vizinhos: ['himeling-grotte'],
+      lado: { lado: 'esquerda' },
+    });
+    expect(viz.get('himeling-grotte')).toMatchObject({
+      vizinhos: ['himeling-foret'],
+      lado: { lado: 'direita' },
+    });
+  });
+
+  it('com a mesma longitude, o mais a norte fica à esquerda', () => {
+    const local = (localId: string, lat: number): GrupoNoMapa => ({
+      localId,
+      nome: localId,
+      lat,
+      lng: 6,
+      casas: [{ id: localId, nLugares: 4 }],
+      carrinhas: [],
+      obras: [],
+    });
+    const grupos = [local('sul', 49.5), local('norte', 49.502)];
+    const viz = vizinhancas(
+      grupos,
+      grupos.map((g) => projetarArredondado(g.lat, g.lng, 12)),
+    );
+    expect(viz.get('norte')?.lado?.lado).toBe('esquerda');
+    expect(viz.get('sul')?.lado?.lado).toBe('direita');
+  });
+
+  for (const [nome, camadas] of Object.entries(CAMADAS)) {
+    it(`${nome}: em todos os zooms de 9 a 15, cada rua do seu lado dos dois pontos (coordenadas reais)`, () => {
+      const grupos = gruposReais('tipica', camadas);
+      let ladoALado = 0;
+      for (const zoom of ZOOMS_9_A_15) {
+        for (const tamanho of [
+          { larguraMapa: 1568, alturaMapa: 1004 },
+          { larguraMapa: 1568, alturaMapa: 871 },
+          { larguraMapa: 375, alturaMapa: 600 },
+        ]) {
+          if (ruasLadoALado(disporMapa(grupos, { zoom, ...tamanho }), `zoom ${zoom}, ${tamanho.larguraMapa}`))
+            ladoALado++;
+        }
+      }
+      // Afastado (resumo) são uma só pastilha; com os nomes, sempre lado a lado.
+      expect(ladoALado).toBeGreaterThan(50);
+    });
+  }
+
+  it('abertas à mão (resumo e compacto), cada rua tem o seu bloco, do seu lado (abrem e fecham juntas)', () => {
+    for (const camadas of Object.values(CAMADAS)) {
+      const grupos = gruposReais('tipica', camadas);
+      for (const zoom of [9, 9.5, 10, 10.25]) {
+        for (const chave of ['grupo:himeling-foret', 'grupo:himeling-grotte']) {
+          const d = disporMapa(grupos, {
+            zoom,
+            larguraMapa: 1568,
+            alturaMapa: 1004,
+            expandidos: new Set([chave]),
+          });
+          expect(d.modo).not.toBe('completo');
+          expect(ruasLadoALado(d, `aberto ${chave}, zoom ${zoom}`)).toBe(true);
+          verificar(d);
+          for (const id of ['himeling-foret', 'himeling-grotte']) {
+            expect(blocoDe(d, id).chavesAbertura.sort()).toEqual([
+              'grupo:himeling-foret',
+              'grupo:himeling-grotte',
+            ]);
+          }
+        }
+      }
+    }
+  });
+
+  it('só carrinhas, um passo de zoom acima da vista inicial: as duas ruas encostadas aos pontos, nada no meio', () => {
+    // Weiler fica logo acima e à esquerda de Himeling: as duas ruas não cabem a subir dos pontos. Antes,
+    // a primeira a pôr-se subia sozinha e a outra ficava afastada (até ~120 px), com as carrinhas de
+    // Weiler entre as duas; agora as duas descem juntas dos pontos (colisoes.ts, porPar).
+    const grupos = gruposReais('tipica', { casas: false, carrinhas: true, obras: true });
+    for (const [zoom, larguraMapa, alturaMapa] of [
+      [11.25, 1568, 1004],
+      [11, 1568, 871],
+      [10.5, 1280, 620],
+      [10.75, 900, 700],
+    ] as const) {
+      const d = disporMapa(grupos, { zoom, larguraMapa, alturaMapa });
+      const contexto = `zoom ${zoom}, ${larguraMapa}×${alturaMapa}`;
+      expect(ruasLadoALado(d, contexto)).toBe(true);
+      verificar(d);
+      const foret = blocoDe(d, 'himeling-foret');
+      const grotte = blocoDe(d, 'himeling-grotte');
+      const meio = {
+        x: foret.x + foret.largura,
+        y: Math.max(foret.y, grotte.y),
+        largura: grotte.x - (foret.x + foret.largura),
+        altura: Math.min(foret.y + foret.altura, grotte.y + grotte.altura) - Math.max(foret.y, grotte.y),
+      };
+      for (const g of d.grupos) {
+        if (g === foret || g === grotte) continue;
+        expect(sobrepoem(retangulo(g), meio), `${g.chave} entre as duas ruas, ${contexto}`).toBe(false);
+      }
+    }
+  });
+
+  it('também com todas as carrinhas em Himeling (o pior caso)', () => {
+    for (const distribuicao of ['himeling', 'grotte'] as const) {
+      const grupos = gruposReais(distribuicao);
+      for (const zoom of [10.5, 11, 12, 13, 14, 15]) {
+        const d = disporMapa(grupos, { zoom, larguraMapa: 1568, alturaMapa: 1004 });
+        expect(ruasLadoALado(d, `${distribuicao}, zoom ${zoom}`)).toBe(true);
+        verificar(d);
+      }
+    }
+  });
+
+  it('as casas de cada rua ficam numa grelha 2×2', () => {
+    const d = disporMapa(gruposReais('tipica'), { zoom: 11, larguraMapa: 1568, alturaMapa: 1004 });
+    for (const id of ['himeling-foret', 'himeling-grotte']) {
+      const g = blocoDe(d, id);
+      if (g.modo !== 'completo') throw new Error('sem cartões');
+      const casas = g.arrumacao.cartoes.filter((c) => c.geometria.tipo === 'casa');
+      expect(casas).toHaveLength(4);
+      expect(new Set(casas.map((c) => c.x)).size).toBe(2);
+      expect(new Set(casas.map((c) => c.y + c.geometria.altura)).size).toBe(2);
+    }
   });
 });

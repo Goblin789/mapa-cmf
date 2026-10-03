@@ -12,7 +12,6 @@ import { PastilhaResumo } from './cartoes/PastilhaResumo';
 import { LinhasFoco, Pinos } from './LinhasFoco';
 import { chavesDoLocal, type Disposicao, linhasChamada } from './layout/disposicao';
 import { linhasFoco, relacoesFoco } from './layout/foco';
-import { chaveGrupo } from './layout/grupos';
 import { useVistaMapa } from './useVistaMapa';
 
 interface Props {
@@ -71,8 +70,7 @@ export function CartoesNoMapa({ camada, disposicao }: Props) {
             );
           }
           // Aberto à mão no resumo (ou no compacto, com as carrinhas inteiras): leva o botão de fechar.
-          const aberto =
-            disposicao.modo !== 'completo' && g.locais.some((l) => expandidos.has(chaveGrupo(l.localId)));
+          const aberto = disposicao.modo !== 'completo' && g.chavesAbertura.some((k) => expandidos.has(k));
           return (
             <BlocoLocal
               key={g.chave}

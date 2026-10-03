@@ -15,7 +15,7 @@ const mensagensPt = z.locales.pt().localeError;
 
 const id = z.string().min(1).max(200);
 
-const operacao = z.object({
+const operacaoMover = z.object({
   tipo: z.literal('mover'),
   pessoaId: id,
   campo: z.enum(['casaId', 'carrinhaId', 'obraId']),
@@ -23,8 +23,21 @@ const operacao = z.object({
   para: id.nullable(),
 });
 
+/** Definir (para = pessoa) ou tirar (para = null) o condutor de uma carrinha. */
+const operacaoCondutor = z.object({
+  tipo: z.literal('condutor'),
+  carrinhaId: id,
+  de: id.nullable(),
+  para: id.nullable(),
+});
+
+const operacao = z.discriminatedUnion('tipo', [operacaoMover, operacaoCondutor]);
+
 const pedidoGuardar = z.object({
-  /** Informativa: os conflitos detetam-se pelo `de` de cada operação. */
+  /**
+   * Os conflitos detetam-se pelo `de` de cada operação; a versão só serve para os que a regra do condutor
+   * esconde (ver conflitosDoCondutor em lotes.ts).
+   */
   versaoBase: z.number().int().nonnegative(),
   operacoes: z
     .array(operacao)

@@ -33,6 +33,35 @@ describe('indexar', () => {
     expect(nomes(ind.semTransporte)).toEqual(['Elsa I.', 'Helena Z.']);
   });
 
+  it('o condutor vem em primeiro nos passageiros; os outros por nome', () => {
+    const estado = estadoExemplo();
+    const comCondutor = {
+      ...estado,
+      carrinhas: estado.carrinhas.map((c) => (c.id === 'zz1001' ? { ...c, condutorId: 'p-gil' } : c)),
+    };
+    const ind = indexar(comCondutor);
+    expect(nomes(ind.passageiros.get('zz1001'))).toEqual(['Gil N.', 'Ana T.', 'Bruno E.', 'Filipe Q.']);
+    // As outras listas não mudam.
+    expect(nomes(ind.trabalhadores.get('obra-b'))).toEqual(['Ana T.', 'Gil N.']);
+  });
+
+  it('condutor inativo ou que não vai na carrinha: a lista fica por nome', () => {
+    const estado = estadoExemplo();
+    const incoerente = {
+      ...estado,
+      carrinhas: estado.carrinhas.map((c) =>
+        c.id === 'zz1001'
+          ? { ...c, condutorId: 'p-helena' }
+          : c.id === 'zz1003'
+            ? { ...c, condutorId: 'p-ivo' }
+            : c,
+      ),
+    };
+    const ind = indexar(incoerente);
+    expect(nomes(ind.passageiros.get('zz1001'))).toEqual(['Ana T.', 'Bruno E.', 'Filipe Q.', 'Gil N.']);
+    expect(ind.passageiros.get('zz1003')).toEqual([]);
+  });
+
   it('pessoas inativas não aparecem em nenhuma lista, mas continuam no mapa de pessoas', () => {
     const estado = criarEstado({
       casas: [criarCasa({ id: 'c1' })],
