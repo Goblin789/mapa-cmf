@@ -1,0 +1,12 @@
+[
+  {"id":"himeling-grotte","tipo":"casa","nome":"Himeling, Rue de la Grotte","morada":"27 Rue de la Grotte, 57570 Himeling (Puttelange-lès-Thionville)","consulta":"27 Rue de la Grotte, 57570 Puttelange-lès-Thionville","pais":"FR","lat":49.491988,"lng":6.242419,"fonte":"IGN Géoplateforme"},
+  {"id":"himeling-foret","tipo":"casa","nome":"Himeling, Rue de la Forêt","morada":"14 Rue de la Forêt, 57570 Himeling (Puttelange-lès-Thionville)","consulta":"14 Rue de la Forêt, 57570 Puttelange-lès-Thionville","pais":"FR","lat":49.494843,"lng":6.240074,"fonte":"IGN Géoplateforme"},
+  {"id":"eischen","tipo":"casa","nome":"Eischen","morada":"28 Rue de Hobscheid, L-8473 Eischen","consulta":"28 Rue de Hobscheid L-8473 Eischen","pais":"LU","lat":49.687659,"lng":5.882475,"fonte":"geoportail.lu"},
+  {"id":"steinsel","tipo":"casa","nome":"Steinsel","morada":"4A Rue de Hunsdorf, L-7324 Müllendorf","consulta":"4A Rue de Hunsdorf L-7324 Müllendorf","pais":"LU","lat":49.679889,"lng":6.128577,"fonte":"geoportail.lu"},
+  {"id":"wasserbillig","tipo":"casa","nome":"Wasserbillig","morada":"43 Route de Luxembourg, L-6633 Wasserbillig","consulta":"43 Route de Luxembourg L-6633 Wasserbillig","pais":"LU","lat":49.710149,"lng":6.492429,"fonte":"geoportail.lu"},
+  {"id":"weiler","tipo":"casa","nome":"Weiler","morada":"37 Rue du Schlammestee, L-5770 Weiler-la-Tour","consulta":"37 Rue du Schlammestee L-5770 Weiler-la-Tour","pais":"LU","lat":49.539167,"lng":6.194213,"fonte":"geoportail.lu"},
+  {"id":"michelbouch","tipo":"casa","nome":"Michelbouch","morada":"7 Route de Mertzig, L-9173 Michelbouch","consulta":"7 Route de Mertzig L-9173 Michelbouch","pais":"LU","lat":49.820182,"lng":6.018334,"fonte":"geoportail.lu"},
+  {"id":"walferdange","tipo":"casa","nome":"Walferdange","morada":"45 Route de Diekirch, L-7220 Walferdange","consulta":"45 Route de Diekirch L-7220 Walferdange","pais":"LU","lat":49.662216,"lng":6.132827,"fonte":"geoportail.lu"},
+  {"id":"schifflange","tipo":"casa","nome":"Schifflange","morada":"91 Rue de Hédange, L-3841 Schifflange","consulta":"91 Rue de Hédange L-3841 Schifflange","pais":"LU","lat":49.513603,"lng":6.011216,"fonte":"geoportail.lu"},
+  {"id":"drusenheim","tipo":"estacionamento","nome":"Estacionamento Rue de Drusenheim","morada":"7 Rue de Drusenheim, L-3884 Schifflange","consulta":"7 Rue de Drusenheim L-3884 Schifflange","pais":"LU","lat":49.507726,"lng":6.010284,"fonte":"geoportail.lu"}
+]

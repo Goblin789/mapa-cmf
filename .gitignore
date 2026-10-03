@@ -1,0 +1,10 @@
+node_modules/
+dist/
+dados/
+.env
+*.xlsx
+*.xls
+*.csv
+*.db
+*.db-*
+*.log

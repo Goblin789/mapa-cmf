@@ -1,0 +1,9 @@
+[
+  { "id": "costantini", "nome": "Costantini", "nomeExcel": "COSTANTINI", "cor": "#ED7D31", "sigla": "CO", "interno": false, "pessoasDoc": 58 },
+  { "id": "galere", "nome": "Galère", "nomeExcel": "GALÈRE", "cor": "#808080", "sigla": "GA", "interno": false, "pessoasDoc": 24 },
+  { "id": "ap-kieffer", "nome": "A+P Kieffer", "nomeExcel": "A+P KIEFFER", "cor": "#B4C6E7", "sigla": "AK", "interno": false, "pessoasDoc": 22 },
+  { "id": "phillipe-btp", "nome": "Phillipe BTP", "nomeExcel": "PHILLIPE BTP", "cor": "#C6E0B4", "sigla": "PB", "interno": false, "pessoasDoc": 18 },
+  { "id": "kisch", "nome": "Kisch", "nomeExcel": "KISCH", "cor": "#A3DBFF", "sigla": "KI", "interno": false, "pessoasDoc": 5 },
+  { "id": "enquadramento", "nome": "Enquadramento", "nomeExcel": "ENQUADRAMENTO", "nomesAlternativos": ["NÃO PRODUTIVOS"], "cor": "#00B0F0", "sigla": "EN", "interno": true, "pessoasDoc": 5 },
+  { "id": "mersch", "nome": "Mersch", "nomeExcel": "MERSCH", "cor": "#FFD966", "sigla": "ME", "interno": false, "pessoasDoc": 4 }
+]

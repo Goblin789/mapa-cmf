@@ -1,0 +1,18 @@
+{
+  "ficheiroListaMestra": "CMF_Pessoal_lista_mestra.xlsx",
+  "folhaPessoal": "Pessoal",
+  "folhaExtra": "Não estão na lista",
+  "extrasAIncluir": ["Deolinda Cardoso"],
+  "ficheiroMichael": "CMF SARL - Casas, Viaturas e Obras (ATUAL FORMA DE GERIR DO MICHAEL).xlsx",
+  "valoresEspeciais": { "foraDasCasas": "Fora das casas CMF", "semTransporte": "Sem transporte da empresa" },
+  "nomesAlternativos": { "Nélson Esteves": ["Nélson Mendes"] },
+  "aliasesMichael": {
+    "Franisco Vieira": "Francisco Vieira",
+    "Eugeniun Serban": "Eugeniu Serban",
+    "Luís Mendez": "Luís Mendes",
+    "Issa Balde": "Issa Baldé",
+    "José Amarildo Teixeira": "Amarildo Teixeira",
+    "Nélson Mendes": "Nélson Esteves",
+    "Rui Ferreira": "Rui Mendes Ferreira"
+  }
+}
