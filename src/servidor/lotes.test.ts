@@ -7,6 +7,7 @@ import {
   encontrarConflitos,
   type Operacao,
   operacaoCondutor,
+  operacaoDormida,
   operacoesParaAlvo,
 } from '../dominio/operacoes';
 import { estadoExemplo } from '../dominio/teste-fabrica';
@@ -18,6 +19,8 @@ import { carregarEstado } from './estado';
 import {
   alteracoesDasOperacoes,
   alteracoesDeCondutor,
+  alteracoesDeDormida,
+  colunasDaDormida,
   descreverAlteracao,
   descreverConflito,
   gravarLote,
@@ -32,6 +35,10 @@ function mover(pessoaId: string, campo: CampoMovivel, de: string | null, para: s
 
 function condutor(carrinhaId: string, de: string | null, para: string | null): Operacao {
   return { tipo: 'condutor', carrinhaId, de, para };
+}
+
+function dormida(carrinhaId: string, de: string | null, para: string | null): Operacao {
+  return { tipo: 'dormida', carrinhaId, de, para };
 }
 
 describe('alteracoesDasOperacoes', () => {
@@ -210,6 +217,68 @@ describe('alteracoesDeCondutor', () => {
   });
 });
 
+describe('alteracoesDeDormida', () => {
+  const estado = estadoExemplo();
+
+  it('uma linha por carrinha cujo sítio muda, com as chaves; as outras operações não contam', () => {
+    expect(
+      alteracoesDeDormida(estado, [
+        mover('p-ana', 'carrinhaId', 'zz1001', 'zz1002'),
+        dormida('zz1001', null, 'casa:casa-1'),
+        condutor('zz1003', null, 'p-ivo'),
+        dormida('zz1002', 'local:local-parque', null),
+        dormida('nao-existe', null, 'casa:casa-1'),
+      ]),
+    ).toStrictEqual([
+      { carrinhaId: 'zz1001', antes: null, depois: 'casa:casa-1' },
+      { carrinhaId: 'zz1002', antes: 'local:local-parque', depois: null },
+    ]);
+  });
+
+  it('a última operação da mesma carrinha ganha; voltar ao início não é alteração', () => {
+    expect(
+      alteracoesDeDormida(estado, [
+        dormida('zz1002', 'local:local-parque', 'casa:casa-1'),
+        dormida('zz1002', 'casa:casa-1', 'casa:casa-3'),
+      ]),
+    ).toStrictEqual([{ carrinhaId: 'zz1002', antes: 'local:local-parque', depois: 'casa:casa-3' }]);
+    expect(
+      alteracoesDeDormida(estado, [
+        dormida('zz1002', 'local:local-parque', 'casa:casa-1'),
+        dormida('zz1002', 'casa:casa-1', 'local:local-parque'),
+      ]),
+    ).toStrictEqual([]);
+  });
+
+  it('colunas da tabela: uma das duas, ou nenhuma', () => {
+    expect(colunasDaDormida('casa:casa-1')).toStrictEqual({ dormeCasaId: 'casa-1', dormeLocalId: null });
+    expect(colunasDaDormida('local:x:y')).toStrictEqual({ dormeCasaId: null, dormeLocalId: 'x:y' });
+    expect(colunasDaDormida(null)).toStrictEqual({ dormeCasaId: null, dormeLocalId: null });
+    expect(colunasDaDormida('outro:1')).toStrictEqual({ dormeCasaId: null, dormeLocalId: null });
+  });
+});
+
+describe('descreverConflito — onde dorme', () => {
+  const estado = estadoExemplo();
+  const conflito = (esperado: string | null, atual: string | null, carrinhaId = 'zz1001') =>
+    descreverConflito(estado, { tipo: 'dormida', carrinhaId, esperado, atual });
+
+  it('o que se esperava e onde dorme agora, por palavras quando está por definir', () => {
+    expect(conflito('casa:casa-1', 'local:local-parque')).toBe(
+      'ZZ 1001 — onde dorme: esperavas Casa Um, mas agora dorme em Parque (alguém mudou entretanto)',
+    );
+    expect(conflito(null, 'casa:casa-2')).toBe(
+      'ZZ 1001 — onde dorme: esperavas que estivesse por definir, mas agora dorme em Casa Dois (alguém mudou entretanto)',
+    );
+    expect(conflito('casa:casa-2', null)).toBe(
+      'ZZ 1001 — onde dorme: esperavas Casa Dois, mas agora está por definir (alguém mudou entretanto)',
+    );
+    expect(conflito('casa:casa-x', 'local:local-x', 'zz-x')).toBe(
+      'zz-x — onde dorme: esperavas casa-x, mas agora dorme em local-x (alguém mudou entretanto)',
+    );
+  });
+});
+
 describe('descreverAlteracao', () => {
   const estado = estadoExemplo();
   const linha = (campo: string, antes: string | null, depois: string | null, entidadeId = 'p-gil') => ({
@@ -269,7 +338,26 @@ describe('descreverAlteracao', () => {
     );
   });
 
-  it('outras entidades ou campos: frase genérica com os valores em bruto', () => {
+  it('onde dorme uma carrinha, com a matrícula e os nomes atuais dos sítios', () => {
+    const carrinha = (antes: string | null, depois: string | null, entidadeId = 'zz1001') => ({
+      entidade: 'carrinha',
+      entidadeId,
+      campo: 'dormida',
+      antes,
+      depois,
+    });
+    expect(descreverAlteracao(estado, carrinha('null', '"casa:casa-3"'))).toBe(
+      'ZZ 1001 — onde dorme: por definir → Casa Três',
+    );
+    expect(descreverAlteracao(estado, carrinha('"casa:casa-1"', '"local:local-parque"'))).toBe(
+      'ZZ 1001 — onde dorme: Casa Um → Parque',
+    );
+    expect(descreverAlteracao(estado, carrinha('"local:local-x"', 'null', 'zz-x'))).toBe(
+      'zz-x — onde dorme: local-x → por definir',
+    );
+  });
+
+  it('linhas da sincronização dos dados iniciais: frase legível com os nomes atuais', () => {
     expect(
       descreverAlteracao(estado, {
         entidade: 'casa',
@@ -278,7 +366,19 @@ describe('descreverAlteracao', () => {
         antes: '3',
         depois: null,
       }),
-    ).toBe('casa casa-1 — lotacao: 3 → —');
+    ).toBe('Casa Um — lotação: 3 (saiu)');
+  });
+
+  it('outras entidades ou campos: frase genérica com os valores em bruto', () => {
+    expect(
+      descreverAlteracao(estado, {
+        entidade: 'obra',
+        entidadeId: 'obra-x',
+        campo: 'campoDesconhecido',
+        antes: '3',
+        depois: null,
+      }),
+    ).toBe('obra obra-x — campoDesconhecido: 3 → —');
     expect(descreverAlteracao(estado, linha('telefone', 'null', '"000"'))).toBe(
       'pessoa p-gil — telefone: null → "000"',
     );
@@ -772,6 +872,140 @@ describe('gravarLote e lerHistorico na base de dados', () => {
     }
     expect(resultados).toStrictEqual(new Set(['gravado', 'vazio']));
     expect(comCondutorNoFim).toBeGreaterThan(5);
+  });
+
+  const dormidaDe = (carrinhaId: string, b: Bd = bd) => {
+    const c = carregarEstado(b, AGORA).carrinhas.find((x) => x.id === carrinhaId);
+    return c ? { dormeCasaId: c.dormeCasaId, dormeLocalId: c.dormeLocalId } : null;
+  };
+
+  it('onde dorme: grava as duas colunas, uma linha no histórico (a chave) e sobe a versão', () => {
+    // car-2 dorme na Casa Monte; passa para o Parque (um estacionamento).
+    const r = gravarLote(bd, pedido([dormida('car-2', 'casa:casa-monte', 'local:loc-parque')]));
+    expect(r).toStrictEqual({ tipo: 'gravado', loteId: 2, versao: 2, alteracoes: 1 });
+    expect(dormidaDe('car-2')).toStrictEqual({ dormeCasaId: null, dormeLocalId: 'loc-parque' });
+    expect(lerHistorico(bd, 1)[0]?.alteracoes).toStrictEqual([
+      {
+        entidade: 'carrinha',
+        entidadeId: 'car-2',
+        campo: 'dormida',
+        antes: '"casa:casa-monte"',
+        depois: '"local:loc-parque"',
+        descricao: 'ZZ 0002 — onde dorme: Casa Monte → Parque',
+      },
+    ]);
+
+    // Por definir: as duas colunas ficam vazias (o mapa volta a usar a sugestão).
+    expect(gravarLote(bd, pedido([dormida('car-2', 'local:loc-parque', null)]))).toMatchObject({
+      tipo: 'gravado',
+    });
+    expect(dormidaDe('car-2')).toStrictEqual({ dormeCasaId: null, dormeLocalId: null });
+    // E de por definir para uma casa.
+    expect(gravarLote(bd, pedido([dormida('car-2', null, 'casa:casa-ribeira')]))).toMatchObject({
+      tipo: 'gravado',
+    });
+    expect(dormidaDe('car-2')).toStrictEqual({ dormeCasaId: 'casa-ribeira', dormeLocalId: null });
+    expect(lerHistorico(bd, 2).map((h) => h.alteracoes.map((a) => a.descricao))).toStrictEqual([
+      ['ZZ 0002 — onde dorme: por definir → Casa Ribeira'],
+      ['ZZ 0002 — onde dorme: Parque → por definir'],
+    ]);
+  });
+
+  it('onde dorme num sítio que não existe (ou carrinha que não existe) é inválido e nada fica gravado', () => {
+    const antes = carregarEstado(bd, AGORA);
+    expect(gravarLote(bd, pedido([dormida('car-2', 'casa:casa-monte', 'casa:casa-nada')]))).toStrictEqual({
+      tipo: 'invalido',
+      erros: ['O sítio onde dormir "casa:casa-nada" não existe.'],
+    });
+    // Um local com o id de uma casa (ou o contrário) também não existe.
+    expect(gravarLote(bd, pedido([dormida('car-2', 'casa:casa-monte', 'local:casa-ribeira')]))).toMatchObject(
+      { tipo: 'invalido' },
+    );
+    expect(gravarLote(bd, pedido([dormida('car-9', null, 'casa:casa-monte')]))).toStrictEqual({
+      tipo: 'invalido',
+      erros: ['A carrinha car-9 não existe.'],
+    });
+    expect(carregarEstado(bd, AGORA)).toStrictEqual(antes);
+    expect(bd.select().from(esquema.alteracoes).all()).toStrictEqual([]);
+  });
+
+  it('conflito de onde dorme: alguém mudou entretanto o sítio da mesma carrinha', () => {
+    gravarLote(bd, pedido([dormida('car-1', 'local:loc-parque', 'casa:casa-monte')]));
+    const depois = carregarEstado(bd, AGORA);
+    // Outro browser, com o estado antigo, põe-na por definir.
+    expect(gravarLote(bd, pedido([dormida('car-1', 'local:loc-parque', null)]))).toStrictEqual({
+      tipo: 'conflito',
+      conflitos: [
+        {
+          tipo: 'dormida',
+          carrinhaId: 'car-1',
+          esperado: 'local:loc-parque',
+          atual: 'casa:casa-monte',
+          descricao:
+            'ZZ 0001 — onde dorme: esperavas Parque, mas agora dorme em Casa Monte (alguém mudou entretanto)',
+        },
+      ],
+    });
+    expect(carregarEstado(bd, AGORA)).toStrictEqual(depois);
+    // A mudança dos outros (sobre a versão antiga) não conta como conflito do condutor.
+    expect(
+      gravarLote(bd, {
+        ...pedido([dormida('car-1', 'casa:casa-monte', 'casa:casa-ribeira')]),
+        versaoBase: 1,
+      }),
+    ).toMatchObject({ tipo: 'gravado' });
+  });
+
+  it('pessoas, condutor e onde dorme no mesmo lote: tudo gravado e no histórico, por esta ordem', () => {
+    const ops = [
+      dormida('car-1', 'local:loc-parque', 'casa:casa-ribeira'),
+      mover('p-alvaro', 'carrinhaId', null, 'car-1'),
+      condutor('car-1', null, 'p-alvaro'),
+    ];
+    expect(gravarLote(bd, pedido(ops))).toMatchObject({ tipo: 'gravado', alteracoes: 4 });
+    expect(lerHistorico(bd, 1)[0]?.alteracoes.map((a) => a.descricao)).toStrictEqual([
+      'Álvaro Exemplo — carrinha: Sem transporte da empresa → ZZ 0001',
+      'Álvaro Exemplo — carrinha a confirmar: sim → não',
+      'ZZ 0001 — condutor: sem condutor → Álvaro Exemplo',
+      'ZZ 0001 — onde dorme: Parque → Casa Ribeira',
+    ]);
+  });
+
+  // Como no browser: cada passo parte do estado visível; onde dorme muda com operacaoDormida. O que fica
+  // gravado (pessoas e carrinhas, as duas colunas de onde dorme incluídas) é a simulação compactada.
+  it('em sequências aleatórias com onde dorme, gravado = simulação', () => {
+    const sitios = [null, 'casa:casa-monte', 'casa:casa-ribeira', 'local:loc-parque', 'local:loc-casas'];
+    const resultados = new Set<string>();
+    for (let semente = 1; semente <= 40; semente++) {
+      let s = semente * 31;
+      const sortear = (n: number) => {
+        s = (Math.imul(s, 1103515245) + 12345) >>> 0;
+        return (s >>> 16) % n;
+      };
+      const b = abrirBd(':memory:');
+      inserirDadosFicticios(b);
+      const antes = carregarEstado(b, AGORA);
+      const passos: Operacao[][] = [];
+      for (let i = 0; i < 1 + sortear(6); i++) {
+        const visivel = aplicarOperacoes(antes, passos.flat());
+        if (sortear(3) === 0) {
+          passos.push(operacoesParaAlvo(visivel, ['p-ze'], { tipo: 'carrinha', id: 'car-1' }));
+          continue;
+        }
+        const op = operacaoDormida(visivel, sortear(2) === 0 ? 'car-1' : 'car-2', sitios[sortear(5)] ?? null);
+        if (op) passos.push([op]);
+      }
+      const ops = passos.flat();
+      const r = gravarLote(b, pedido(ops));
+      resultados.add(r.tipo);
+      expect(r.tipo, `semente ${semente}`).not.toBe('invalido');
+      const gravado = carregarEstado(b, AGORA);
+      const simulado = aplicarOperacoes(antes, compactarOperacoes(ops));
+      expect(gravado.carrinhas, `semente ${semente}`).toStrictEqual(simulado.carrinhas);
+      expect(gravado.pessoas, `semente ${semente}`).toStrictEqual(simulado.pessoas);
+      b.$client.close();
+    }
+    expect(resultados).toStrictEqual(new Set(['gravado', 'vazio']));
   });
 
   it('o histórico usa os nomes atuais e respeita o limite', () => {

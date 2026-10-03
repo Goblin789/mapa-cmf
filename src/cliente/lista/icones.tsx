@@ -50,6 +50,44 @@ export function IconeCarrinha(props: Props) {
   );
 }
 
+/**
+ * Tipo de veículo, visto de lado (em ponto pequeno, de lado distinguem-se melhor do que vistos de cima):
+ * carrinha alta e comprida, de frente quase direita.
+ */
+export function IconeCarrinhaLado(props: Props) {
+  return (
+    <Svg {...props}>
+      <path d="M3 11.5H1.5V5a1 1 0 0 1 1-1h8.2l3.3 3.6v3.9H13" />
+      <path d="M6 11.5h4" />
+      <path d="M10.2 4v3.6h3.3" />
+      <circle cx="4.5" cy="11.6" r="1.5" />
+      <circle cx="11.5" cy="11.6" r="1.5" />
+    </Svg>
+  );
+}
+
+/** Carro visto de lado: mais baixo, com capô e mala. */
+export function IconeCarroLado(props: Props) {
+  return (
+    <Svg {...props}>
+      <path d="M3 11.5H1.5V9.4c0-.4.3-.8.7-.9L4.6 8l1.9-2.6a1 1 0 0 1 .8-.4h3.3a1 1 0 0 1 .8.4L13.3 8l.6.2c.4.1.6.5.6.9v2.4H13" />
+      <path d="M6 11.5h4" />
+      <path d="M4.6 8h8.7" />
+      <circle cx="4.5" cy="11.6" r="1.5" />
+      <circle cx="11.5" cy="11.6" r="1.5" />
+    </Svg>
+  );
+}
+
+/** Lua: onde dorme a carrinha. */
+export function IconeDormir(props: Props) {
+  return (
+    <Svg {...props}>
+      <path d="M12.75 10.1A5.25 5.25 0 0 1 6.4 2.75a5.25 5.25 0 1 0 6.35 7.35z" />
+    </Svg>
+  );
+}
+
 /** Capacete de obra. */
 export function IconeObra(props: Props) {
   return (

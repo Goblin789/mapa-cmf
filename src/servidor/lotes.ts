@@ -1,23 +1,28 @@
 // Gravação das edições num lote com histórico (POST /api/lotes) e leitura do histórico (GET /api/historico).
 // As regras (compactar, validar, conflitos, aplicar) são as de src/dominio/operacoes.ts, as mesmas que o
 // browser usa na simulação; aqui só se acrescenta a gravação atómica. As frases são funções puras.
-// Um lote pode mudar pessoas (casa, carrinha, obra) e o condutor das carrinhas: cada campo que muda
-// fica numa linha de `alteracoes` (entidade 'pessoa' ou 'carrinha').
+// Um lote pode mudar pessoas (casa, carrinha, obra), o condutor das carrinhas e onde elas dormem: cada
+// campo que muda fica numa linha de `alteracoes` (entidade 'pessoa' ou 'carrinha').
 
 import { and, asc, desc, eq, gt, inArray } from 'drizzle-orm';
 import type { AlteracaoHistorico, ConflitoServidor, EntradaHistorico } from '../dominio/api';
 import {
   aplicarOperacoes,
   type CampoMovivel,
+  type ChaveDormida,
   type Conflito,
+  chaveDormida,
   compactarOperacoes,
   descreverOperacao,
   encontrarConflitos,
+  lerChaveDormida,
+  nomeDaDormida,
   nomeDoValor,
   type Operacao,
   validarOperacoes,
 } from '../dominio/operacoes';
 import type { Carrinha, Estado, Id, Pessoa } from '../dominio/tipos';
+import { descreverAlteracaoDosDados } from '../importacao/sincronizar';
 import * as esquema from './db/esquema';
 import type { Bd } from './db/ligacao';
 import { type Leitor, lerEstado, lerVersao } from './estado';
@@ -41,6 +46,12 @@ const SEM_VALOR: Record<CampoMovivel, string> = {
 /** Campo do condutor na tabela `alteracoes` (entidade 'carrinha'). */
 export const CAMPO_CONDUTOR = 'condutorId';
 
+/**
+ * Campo de onde dorme a carrinha na tabela `alteracoes` (entidade 'carrinha'). O antes e o depois são a
+ * chave em JSON ("casa:<id>", "local:<id>" ou null = por definir), não as duas colunas da tabela.
+ */
+export const CAMPO_DORMIDA = 'dormida';
+
 const NOME_MARCA: Record<string, string> = {
   casaAConfirmar: 'casa a confirmar',
   carrinhaAConfirmar: 'carrinha a confirmar',
@@ -62,6 +73,13 @@ export interface AlteracaoCondutor {
   carrinhaId: Id;
   antes: Carrinha['condutorId'];
   depois: Carrinha['condutorId'];
+}
+
+/** Uma mudança de onde dorme uma carrinha (entidade 'carrinha', campo 'dormida'). */
+export interface AlteracaoDormida {
+  carrinhaId: Id;
+  antes: ChaveDormida | null;
+  depois: ChaveDormida | null;
 }
 
 /**
@@ -99,15 +117,50 @@ export function alteracoesDeCondutor(estado: Estado, ops: readonly Operacao[]): 
   return resultado;
 }
 
+/** Onde dormem as carrinhas cujo sítio muda ao aplicar as operações, pela ordem das operações. */
+export function alteracoesDeDormida(estado: Estado, ops: readonly Operacao[]): AlteracaoDormida[] {
+  const antes = new Map(estado.carrinhas.map((c) => [c.id, c]));
+  const depois = new Map(aplicarOperacoes(estado, ops).carrinhas.map((c) => [c.id, c]));
+  const resultado: AlteracaoDormida[] = [];
+  const carrinhaIds = new Set(ops.flatMap((op) => (op.tipo === 'dormida' ? [op.carrinhaId] : [])));
+  for (const carrinhaId of carrinhaIds) {
+    const a = antes.get(carrinhaId);
+    const d = depois.get(carrinhaId);
+    if (!a || !d) continue;
+    const chaveAntes = chaveDormida(a);
+    const chaveDepois = chaveDormida(d);
+    if (chaveAntes !== chaveDepois) resultado.push({ carrinhaId, antes: chaveAntes, depois: chaveDepois });
+  }
+  return resultado;
+}
+
+/** Colunas da tabela `carrinhas` para uma chave de onde dorme (uma delas ou nenhuma). */
+export function colunasDaDormida(chave: ChaveDormida | null): Pick<Carrinha, 'dormeCasaId' | 'dormeLocalId'> {
+  const lida = chave === null ? null : lerChaveDormida(chave);
+  return {
+    dormeCasaId: lida?.tipo === 'casa' ? lida.id : null,
+    dormeLocalId: lida?.tipo === 'local' ? lida.id : null,
+  };
+}
+
 function nomeDaPessoa(estado: Estado, id: Id): string {
   return estado.pessoas.find((p) => p.id === id)?.nomeCurto ?? id;
 }
 
 /**
  * Ex.: "Ana T. — carrinha: esperavas ZZ 1002, mas agora está em ZZ 1001 (alguém mudou entretanto)";
- * "ZZ 1001 — condutor: esperavas Ana T., mas agora é Rui S. (alguém mudou entretanto)".
+ * "ZZ 1001 — condutor: esperavas Ana T., mas agora é Rui S. (alguém mudou entretanto)";
+ * "ZZ 1001 — onde dorme: esperavas Casa Um, mas agora dorme em Parque (alguém mudou entretanto)".
  */
 export function descreverConflito(estado: Estado, conflito: Conflito): string {
+  if (conflito.tipo === 'dormida') {
+    const carrinha = nomeDoValor(estado, 'carrinhaId', conflito.carrinhaId);
+    const esperado =
+      conflito.esperado === null ? 'que estivesse por definir' : nomeDaDormida(estado, conflito.esperado);
+    const agora =
+      conflito.atual === null ? 'está por definir' : `dorme em ${nomeDaDormida(estado, conflito.atual)}`;
+    return `${carrinha} — onde dorme: esperavas ${esperado}, mas agora ${agora} (alguém mudou entretanto)`;
+  }
   if (conflito.tipo === 'condutor') {
     const carrinha = nomeDoValor(estado, 'carrinhaId', conflito.carrinhaId);
     const esperado =
@@ -155,9 +208,17 @@ interface LinhaAlteracao {
 /**
  * Frase legível de uma alteração, com os nomes ATUAIS (casa, carrinha, obra, pessoa).
  * Ex.: "Gil N. — casa: Fora das casas CMF → Casa Três"; "Gil N. — casa a confirmar: sim → não";
- * "ZZ 1001 — condutor: sem condutor → Gil N.".
+ * "ZZ 1001 — condutor: sem condutor → Gil N."; "ZZ 1001 — onde dorme: por definir → Casa Três".
  */
 export function descreverAlteracao(estado: Estado, a: LinhaAlteracao): string {
+  if (a.entidade === 'carrinha' && a.campo === CAMPO_DORMIDA) {
+    return descreverOperacao(estado, {
+      tipo: 'dormida',
+      carrinhaId: a.entidadeId,
+      de: comoId(lerJson(a.antes)),
+      para: comoId(lerJson(a.depois)),
+    });
+  }
   if (a.entidade === 'carrinha' && a.campo === CAMPO_CONDUTOR) {
     return descreverOperacao(estado, {
       tipo: 'condutor',
@@ -175,6 +236,9 @@ export function descreverAlteracao(estado: Estado, a: LinhaAlteracao): string {
       para: comoId(lerJson(a.depois)),
     });
   }
+  // Clientes, casas, veículos e locais mudados pela sincronização dos dados iniciais.
+  const dosDados = descreverAlteracaoDosDados(estado, a);
+  if (dosDados) return dosDados;
   const marca = NOME_MARCA[a.campo];
   if (a.entidade === 'pessoa' && marca) {
     const nome = nomeDaPessoa(estado, a.entidadeId);
@@ -247,7 +311,7 @@ export function conflitosDoCondutor(
   const carrinhaMexida = new Set<Id>();
   for (const op of ops) {
     if (op.tipo === 'condutor') condutorMexido.add(op.carrinhaId);
-    else if (op.campo === 'carrinhaId') carrinhaMexida.add(op.pessoaId);
+    else if (op.tipo === 'mover' && op.campo === 'carrinhaId') carrinhaMexida.add(op.pessoaId);
   }
   const conflitos: Conflito[] = [];
   for (const op of ops) {
@@ -261,6 +325,8 @@ export function conflitosDoCondutor(
       }
       continue;
     }
+    // Onde dorme não depende de quem vai na carrinha: os conflitos vêm só do `de`.
+    if (op.tipo !== 'condutor') continue;
     if (op.para === null || carrinhaMexida.has(op.para)) continue;
     const atual = pessoas.get(op.para)?.carrinhaId;
     if (atual === undefined || atual === op.carrinhaId) continue;
@@ -283,7 +349,10 @@ export type ResultadoGravacao =
   /** As operações anulam-se umas às outras (ex.: A → B → A): não se grava nada. */
   | { tipo: 'vazio' }
   | { tipo: 'invalido'; erros: string[] }
-  /** Alguém mudou entretanto as mesmas pessoas (ou o condutor das mesmas carrinhas): não se grava nada. */
+  /**
+   * Alguém mudou entretanto as mesmas pessoas (ou o condutor das mesmas carrinhas, ou onde elas dormem):
+   * não se grava nada.
+   */
   | { tipo: 'conflito'; conflitos: ConflitoServidor[] };
 
 function blocos<T>(lista: T[]): T[][] {
@@ -325,6 +394,7 @@ export function gravarLote(bd: Bd, pedido: PedidoLote): ResultadoGravacao {
 
       const alteracoes = alteracoesDasOperacoes(estado, ops);
       const condutores = alteracoesDeCondutor(estado, ops);
+      const dormidas = alteracoesDeDormida(estado, ops);
       const quando = pedido.agora.toISOString();
       const { id: loteId } = tx
         .insert(esquema.lotes)
@@ -355,6 +425,12 @@ export function gravarLote(bd: Bd, pedido: PedidoLote): ResultadoGravacao {
           .where(eq(esquema.carrinhas.id, c.carrinhaId))
           .run();
       }
+      for (const d of dormidas) {
+        tx.update(esquema.carrinhas)
+          .set(colunasDaDormida(d.depois))
+          .where(eq(esquema.carrinhas.id, d.carrinhaId))
+          .run();
+      }
 
       const linhas = [
         ...alteracoes.map((a) => ({
@@ -372,6 +448,14 @@ export function gravarLote(bd: Bd, pedido: PedidoLote): ResultadoGravacao {
           campo: CAMPO_CONDUTOR,
           antes: JSON.stringify(c.antes),
           depois: JSON.stringify(c.depois),
+        })),
+        ...dormidas.map((d) => ({
+          loteId,
+          entidade: 'carrinha',
+          entidadeId: d.carrinhaId,
+          campo: CAMPO_DORMIDA,
+          antes: JSON.stringify(d.antes),
+          depois: JSON.stringify(d.depois),
         })),
       ];
       for (const b of blocos(linhas)) tx.insert(esquema.alteracoes).values(b).run();

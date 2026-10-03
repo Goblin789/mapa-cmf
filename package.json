@@ -18,6 +18,7 @@
     "verificar": "npm run tipos && npm run lint && npm run test",
     "bd:gerar": "drizzle-kit generate",
     "importar": "tsx scripts/importar.ts",
+    "sincronizar": "tsx scripts/sincronizar.ts",
     "geocodificar": "tsx scripts/geocodificar.ts",
     "start": "tsx src/servidor/index.ts"
   },

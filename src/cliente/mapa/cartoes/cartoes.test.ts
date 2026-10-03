@@ -169,3 +169,63 @@ describe('casa que conta sempre como cheia', () => {
     expect(html).toContain('1/3');
   });
 });
+
+describe('carro: desenhado como um carro visto de cima', () => {
+  const comCarro = (e: Estado): Estado => ({
+    ...e,
+    carrinhas: e.carrinhas.map((c) =>
+      c.id === 'V2' ? { ...c, tipo: 'carro', marca: 'Marca Fictícia', modelo: 'Modelo X', lugares: 5 } : c,
+    ),
+  });
+  const desenhar = (compacta: boolean) =>
+    renderToStaticMarkup(
+      createElement(CartaoCarrinha, {
+        carrinhaId: 'V2',
+        geometria: geometriaCarrinha(5, compacta, 'carro'),
+        x: 0,
+        y: 0,
+        confianca: 'definida',
+        destaque: null,
+      }),
+    );
+
+  it('quatro rodas, para-brisas e vidro de trás; os nomes um por linha, como na carrinha', () => {
+    comEstado(comCarro);
+    const html = desenhar(false);
+    expect(html.match(/<rect [^>]*fill="#1e293b"/g)).toHaveLength(4);
+    expect(html).toContain('class="vidros-carro"');
+    expect(ordem(html)).toEqual(['p1', 'p2', 'p3', 'p6']);
+    expect(html).toContain('Mostrar as ligações deste carro.');
+  });
+
+  it('o tooltip diz que é um carro, com a marca e o modelo (também no compacto, com quem vai)', () => {
+    comEstado(comCarro);
+    expect(desenhar(false)).toContain('title="Carro ZZ 2000 · Marca Fictícia Modelo X · 4/5 lugares');
+    const compacto = desenhar(true);
+    expect(compacto).toContain('title="Carro ZZ 2000 · Marca Fictícia Modelo X · 4/5 lugares');
+    expect(compacto).toContain('Vão: Pessoa 01, Pessoa 02, Pessoa 03, Pessoa 06');
+    expect(ordem(compacto)).toEqual([]);
+  });
+
+  it('a carrinha continua sem vidro de trás e o tooltip começa por "Carrinha"', () => {
+    comEstado((e) => ({
+      ...e,
+      carrinhas: e.carrinhas.map((c) =>
+        c.id === 'V2' ? { ...c, marca: 'Marca Fictícia', modelo: 'Modelo Y' } : c,
+      ),
+    }));
+    const html = renderToStaticMarkup(
+      createElement(CartaoCarrinha, {
+        carrinhaId: 'V2',
+        geometria: geometriaCarrinha(9),
+        x: 0,
+        y: 0,
+        confianca: 'definida',
+        destaque: null,
+      }),
+    );
+    expect(html).not.toContain('vidros-carro');
+    expect(html).toContain('title="Carrinha ZZ 2000 · Marca Fictícia Modelo Y · 4/9 lugares');
+    expect(html).toContain('Mostrar as ligações desta carrinha.');
+  });
+});

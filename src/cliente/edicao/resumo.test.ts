@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { dormidasDasCarrinhas } from '../../dominio/dormidas';
+import { indexar } from '../../dominio/indices';
 import {
   aplicarOperacoes,
   type CampoMovivel,
@@ -11,9 +13,11 @@ import type { Estado } from '../../dominio/tipos';
 import {
   agruparAlteracoes,
   agruparCondutores,
+  agruparDormidas,
   alteracoesDaPessoa,
   calcularAvisos,
   condutorPendente,
+  dormidaPendente,
   movimentosDoSitio,
   pessoaTemAlteracoes,
   resumirPasso,
@@ -31,6 +35,13 @@ const mover = (pessoaId: string, campo: CampoMovivel, de: string | null, para: s
 
 const condutor = (carrinhaId: string, de: string | null, para: string | null): Operacao => ({
   tipo: 'condutor',
+  carrinhaId,
+  de,
+  para,
+});
+
+const dormida = (carrinhaId: string, de: string | null, para: string | null): Operacao => ({
+  tipo: 'dormida',
   carrinhaId,
   de,
   para,
@@ -94,6 +105,73 @@ describe('agruparCondutores', () => {
 
   it('sem mudanças de condutor devolve lista vazia', () => {
     expect(agruparCondutores(estadoExemplo(), [mover('p-gil', 'carrinhaId', 'zz1001', null)])).toEqual([]);
+  });
+});
+
+describe('agruparDormidas', () => {
+  const estado = estadoExemplo();
+  const sugestoes = dormidasDasCarrinhas(estado, indexar(estado));
+
+  it('uma linha por carrinha, pela ordem das carrinhas, com os nomes e a frase do histórico', () => {
+    const grupos = agruparDormidas(
+      estado,
+      [
+        dormida('zz1002', 'local:local-parque', 'casa:casa-3'),
+        mover('p-ana', 'casaId', 'casa-1', 'casa-3'),
+        dormida('zz1001', null, 'casa:casa-2'),
+      ],
+      sugestoes,
+    );
+    expect(grupos).toStrictEqual([
+      {
+        carrinhaId: 'zz1001',
+        matricula: 'ZZ 1001',
+        de: 'por definir',
+        para: 'Casa Dois',
+        // Estava por definir e o mapa mostrava a Casa Um (a sugestão).
+        sugestaoAntes: 'Casa Um',
+        confirmaSugestao: false,
+        descricao: 'ZZ 1001 — onde dorme: por definir → Casa Dois',
+      },
+      {
+        carrinhaId: 'zz1002',
+        matricula: 'ZZ 1002',
+        de: 'Parque',
+        para: 'Casa Três',
+        sugestaoAntes: null,
+        confirmaSugestao: false,
+        descricao: 'ZZ 1002 — onde dorme: Parque → Casa Três',
+      },
+    ]);
+  });
+
+  it('passar a dormir na casa sugerida confirma a sugestão', () => {
+    expect(agruparDormidas(estado, [dormida('zz1001', null, 'casa:casa-1')], sugestoes)[0]).toMatchObject({
+      de: 'por definir',
+      para: 'Casa Um',
+      sugestaoAntes: 'Casa Um',
+      confirmaSugestao: true,
+    });
+    // Sem as sugestões do estado gravado não se sabe o que estava sugerido.
+    expect(agruparDormidas(estado, [dormida('zz1001', null, 'casa:casa-1')])[0]).toMatchObject({
+      sugestaoAntes: null,
+      confirmaSugestao: false,
+    });
+  });
+
+  it('várias mudanças da mesma carrinha ficam numa (a primeira origem e o último destino); as que se anulam saem', () => {
+    expect(
+      agruparDormidas(estado, [
+        dormida('zz1001', null, 'casa:casa-2'),
+        dormida('zz1001', 'casa:casa-2', 'local:local-parque'),
+        dormida('zz1002', 'local:local-parque', null),
+        dormida('zz1002', null, 'local:local-parque'),
+      ]).map((g) => [g.matricula, g.de, g.para]),
+    ).toStrictEqual([['ZZ 1001', 'por definir', 'Parque']]);
+  });
+
+  it('sem mudanças de onde dorme devolve lista vazia', () => {
+    expect(agruparDormidas(estado, [mover('p-ana', 'casaId', 'casa-1', 'casa-3')])).toStrictEqual([]);
   });
 });
 
@@ -239,6 +317,12 @@ describe('calcularAvisos', () => {
     expect(calcularAvisos(servidor, aplicarOperacoes(servidor, ops), ops)).toEqual([]);
   });
 
+  it('mudar onde dorme não dá avisos (nem conta como carrinha mexida para o condutor)', () => {
+    const servidor = comCondutor();
+    const pendentes = [dormida('zz1001', null, 'casa:casa-3'), dormida('zz1002', 'local:local-parque', null)];
+    expect(calcularAvisos(servidor, aplicarOperacoes(servidor, pendentes), pendentes)).toStrictEqual([]);
+  });
+
   it('avisa quem fica fora das casas ou sem transporte, depois dos avisos fortes', () => {
     const avisos = simular([
       mover('p-bruno', 'carrinhaId', 'zz1001', null),
@@ -307,6 +391,26 @@ describe('condutorPendente, pessoaTemAlteracoes e sitioTemAlteracoes', () => {
   });
 });
 
+describe('dormidaPendente, pessoaTemAlteracoes e sitioTemAlteracoes: onde dorme', () => {
+  const pendentes = [dormida('zz1001', null, 'casa:casa-1'), dormida('zz1001', 'casa:casa-1', 'casa:casa-2')];
+
+  it('a última mudança de onde dorme de uma carrinha', () => {
+    expect(dormidaPendente(pendentes, 'zz1001')).toStrictEqual(
+      dormida('zz1001', 'casa:casa-1', 'casa:casa-2'),
+    );
+    expect(dormidaPendente(pendentes, 'zz1002')).toBeNull();
+  });
+
+  it('a carrinha tem alterações; as pessoas e as casas não', () => {
+    expect(sitioTemAlteracoes(pendentes, 'carrinhaId', 'zz1001')).toBe(true);
+    expect(sitioTemAlteracoes(pendentes, 'carrinhaId', 'zz1002')).toBe(false);
+    expect(sitioTemAlteracoes(pendentes, 'casaId', 'casa-2')).toBe(false);
+    expect(pessoaTemAlteracoes(pendentes, 'p-ana')).toBe(false);
+    expect(movimentosDoSitio(pendentes, 'carrinhaId', 'zz1001')).toStrictEqual({ entram: [], saem: [] });
+    expect(alteracoesDaPessoa(pendentes, 'p-ana').size).toBe(0);
+  });
+});
+
 describe('resumirPasso', () => {
   const estado = estadoExemplo();
 
@@ -363,6 +467,37 @@ describe('resumirPasso', () => {
         condutor('zz1002', null, 'p-gil'),
       ]),
     ).toBe('Gil N. — carrinha: Sem transporte da empresa → ZZ 1002 · Gil N. passa a conduzir a ZZ 1002');
+  });
+});
+
+describe('resumirPasso: onde dorme', () => {
+  const estado = estadoExemplo();
+
+  it('uma carrinha: a frase do histórico', () => {
+    expect(resumirPasso(estado, [dormida('zz1001', null, 'casa:casa-1')])).toBe(
+      'ZZ 1001 — onde dorme: por definir → Casa Um',
+    );
+    expect(resumirPasso(estado, [dormida('zz1002', 'local:local-parque', null)])).toBe(
+      'ZZ 1002 — onde dorme: Parque → por definir',
+    );
+  });
+
+  it('várias carrinhas (ex.: confirmar todas as sugestões): quantas', () => {
+    expect(
+      resumirPasso(estado, [dormida('zz1001', null, 'casa:casa-1'), dormida('zz1003', null, 'casa:casa-3')]),
+    ).toBe('onde dormem 2 carrinhas');
+  });
+
+  it('misturado com condutores: só o número; com pessoas: a mudança e onde dorme', () => {
+    expect(
+      resumirPasso(estado, [dormida('zz1001', null, 'casa:casa-1'), condutor('zz1001', null, 'p-ana')]),
+    ).toBe('2 alterações');
+    expect(
+      resumirPasso(estado, [
+        mover('p-ana', 'casaId', 'casa-1', 'casa-3'),
+        dormida('zz1001', null, 'casa:casa-3'),
+      ]),
+    ).toBe('Ana T. — casa: Casa Um → Casa Três · ZZ 1001 — onde dorme: por definir → Casa Três');
   });
 });
 

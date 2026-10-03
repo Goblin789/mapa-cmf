@@ -3,7 +3,10 @@ import { dormidasDasCarrinhas } from '../../dominio/dormidas';
 import { indexar } from '../../dominio/indices';
 import { estadoFicticio, pessoaFicticia } from './dadosFicticios';
 import {
+  artigoDoVeiculo,
   comPlural,
+  deArtigoDoVeiculo,
+  detalheCarrinha,
   formatarData,
   hojeISO,
   nomeCompleto,
@@ -12,6 +15,7 @@ import {
   textoContrato,
   textoDormida,
   textoLotacao,
+  textoMarcaModelo,
   textoTelefone,
 } from './textos';
 
@@ -94,7 +98,7 @@ describe('textoDormida', () => {
     expect(textoDormida(dormidas.get('v1'), ind)).toEqual({
       casaId: 'casa-a',
       rotulo: 'Casa A',
-      nota: 'Sugerida: onde mora a maioria dos passageiros.',
+      nota: 'sugerido (é onde moram mais passageiros)',
       desconhecida: false,
     });
   });
@@ -114,9 +118,10 @@ describe('textoDormida', () => {
     });
   });
 
-  it('desconhecida', () => {
+  it('por definir e sem sugestão', () => {
     expect(textoDormida(dormidas.get('v3'), ind)).toMatchObject({
-      rotulo: 'Desconhecido',
+      rotulo: 'Por definir',
+      nota: 'Sem sugestão: nenhum passageiro mora numa casa CMF.',
       desconhecida: true,
     });
     expect(textoDormida(undefined, ind).desconhecida).toBe(true);
@@ -158,5 +163,44 @@ describe('textoApartamento', () => {
     expect(n).toBe(1);
     expect(textoApartamento(casa, n)).toBeNull();
     expect(textoApartamento({ ...casa, apartamento: '  ' }, n)).toBeNull();
+  });
+});
+
+describe('textoMarcaModelo', () => {
+  it('marca e modelo juntos; sem repetir a marca quando o modelo já a tem', () => {
+    expect(textoMarcaModelo({ marca: 'Marca', modelo: 'Modelo X' })).toBe('Marca Modelo X');
+    expect(textoMarcaModelo({ marca: 'Marca', modelo: 'marca Modelo X' })).toBe('marca Modelo X');
+    expect(textoMarcaModelo({ marca: 'Marca', modelo: 'Marcante' })).toBe('Marca Marcante');
+    expect(textoMarcaModelo({ marca: ' Marca ', modelo: 'Marca' })).toBe('Marca');
+  });
+
+  it('só um dos dois, ou nenhum', () => {
+    expect(textoMarcaModelo({ marca: 'Marca', modelo: null })).toBe('Marca');
+    expect(textoMarcaModelo({ marca: null, modelo: 'Modelo X' })).toBe('Modelo X');
+    expect(textoMarcaModelo({ marca: '  ', modelo: '' })).toBeNull();
+    expect(textoMarcaModelo({ marca: null, modelo: null })).toBeNull();
+  });
+});
+
+describe('artigoDoVeiculo', () => {
+  it('a carrinha, o carro', () => {
+    expect(artigoDoVeiculo('carrinha')).toBe('a');
+    expect(artigoDoVeiculo('carro')).toBe('o');
+  });
+});
+
+describe('deArtigoDoVeiculo', () => {
+  it('condutor da carrinha, condutor do carro', () => {
+    expect(deArtigoDoVeiculo('carrinha')).toBe('da');
+    expect(deArtigoDoVeiculo('carro')).toBe('do');
+  });
+});
+
+describe('detalheCarrinha', () => {
+  it('ocupação e marca com modelo; sem marca nem modelo, só a ocupação', () => {
+    expect(detalheCarrinha({ lugares: 9, marca: 'Marca', modelo: 'Modelo X' }, 3)).toBe(
+      '3/9 lugares · Marca Modelo X',
+    );
+    expect(detalheCarrinha({ lugares: 5, marca: null, modelo: null }, 0)).toBe('0/5 lugares');
   });
 });

@@ -8,7 +8,7 @@ import { type Alvo, chaveAlvo } from '../../dominio/operacoes';
 import { compactar, normalizarTexto } from '../../dominio/pesquisa';
 import type { Estado, Id, Pessoa } from '../../dominio/tipos';
 import { formatarMatricula } from '../comum/Matricula';
-import { comPlural, ROTULO_FORA_DAS_CASAS, ROTULO_SEM_TRANSPORTE } from '../paineis/textos';
+import { comPlural, ROTULO_FORA_DAS_CASAS, ROTULO_SEM_TRANSPORTE, textoMarcaModelo } from '../paineis/textos';
 
 export type TipoDestino = 'casa' | 'carrinha' | 'obra';
 
@@ -138,13 +138,13 @@ export function montarDestinos(estado: Estado, ind: Indices, pessoaIds: readonly
       alvo: { tipo: 'carrinha', id: carrinha.id },
       tipo: 'carrinha',
       rotulo: formatarMatricula(carrinha.matricula),
-      detalhe: carrinha.modelo,
+      detalhe: textoMarcaModelo(carrinha),
       especial: false,
       lotacao: lotacao(ocupados, carrinha.lugares, n - jaLa),
       pessoas: ocupados,
       jaLa,
       clienteId: null,
-      termos: termos(carrinha.modelo),
+      termos: termos(carrinha.marca, carrinha.modelo),
       termosCompactos: [carrinha.matricula, ...carrinha.matriculasAlternativas].map(compactar),
     });
   });
@@ -240,7 +240,7 @@ export function destinosEscolhiveis(grupos: readonly GrupoDestinos[]): Destino[]
  * estar na lista (o filtro mudou), começa no primeiro. null = lista vazia.
  */
 export function proximoAtivo(
-  escolhiveis: readonly Destino[],
+  escolhiveis: readonly { chave: string }[],
   atual: string | null,
   tecla: 'ArrowDown' | 'ArrowUp' | 'Home' | 'End',
 ): string | null {
@@ -255,7 +255,7 @@ export function proximoAtivo(
 }
 
 /** O ativo, se ainda estiver na lista; senão o primeiro escolhível (ou null). */
-export function ativoValido(escolhiveis: readonly Destino[], atual: string | null): string | null {
+export function ativoValido(escolhiveis: readonly { chave: string }[], atual: string | null): string | null {
   if (atual !== null && escolhiveis.some((d) => d.chave === atual)) return atual;
   return escolhiveis[0]?.chave ?? null;
 }

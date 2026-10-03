@@ -2,7 +2,8 @@
 
 import type { Dormida } from '../../dominio/dormidas';
 import type { Indices } from '../../dominio/indices';
-import type { Casa, Id, Pessoa } from '../../dominio/tipos';
+import { normalizarTexto } from '../../dominio/pesquisa';
+import type { Carrinha, Casa, Id, Pessoa, TipoLocal, TipoVeiculo } from '../../dominio/tipos';
 
 export const ROTULO_FORA_DAS_CASAS = 'Fora das casas CMF';
 export const ROTULO_SEM_TRANSPORTE = 'Sem transporte da empresa';
@@ -80,14 +81,71 @@ export interface TextoDormida {
   desconhecida: boolean;
 }
 
-/** Onde dorme uma carrinha: definida, sugerida (pela casa da maioria dos passageiros) ou desconhecida. */
+export const ROTULO_DORMIDA_POR_DEFINIR = 'Por definir';
+
+/** Nota de onde dorme quando não está definido e se usa a casa da maioria dos passageiros. */
+export const NOTA_DORMIDA_SUGERIDA = 'sugerido (é onde moram mais passageiros)';
+
+/** Onde dorme uma carrinha: definida, sugerida (pela casa da maioria dos passageiros) ou por definir. */
 export function textoDormida(d: Dormida | undefined, ind: Indices): TextoDormida {
   if (!d || d.confianca === 'desconhecida') {
-    return { casaId: null, rotulo: 'Desconhecido', nota: 'Ainda não está definido.', desconhecida: true };
+    return {
+      casaId: null,
+      rotulo: ROTULO_DORMIDA_POR_DEFINIR,
+      nota: 'Sem sugestão: nenhum passageiro mora numa casa CMF.',
+      desconhecida: true,
+    };
   }
-  const nota = d.confianca === 'sugerida' ? 'Sugerida: onde mora a maioria dos passageiros.' : null;
+  const nota = d.confianca === 'sugerida' ? NOTA_DORMIDA_SUGERIDA : null;
   const casa = d.casaId ? ind.casas.get(d.casaId) : undefined;
   if (casa) return { casaId: casa.id, rotulo: casa.nome, nota, desconhecida: false };
   const local = d.localId ? ind.locais.get(d.localId) : undefined;
   return { casaId: null, rotulo: local?.nome ?? 'Local desconhecido', nota, desconhecida: !local };
 }
+
+/** "Carrinha" ou "Carro". */
+export const ROTULO_TIPO_VEICULO: Record<TipoVeiculo, string> = { carrinha: 'Carrinha', carro: 'Carro' };
+
+/** Artigo antes da matrícula: "a CF 5001" (carrinha), "o DH 9250" (carro). */
+export function artigoDoVeiculo(tipo: TipoVeiculo): 'a' | 'o' {
+  return tipo === 'carro' ? 'o' : 'a';
+}
+
+/** "de" com o artigo, antes da matrícula: "condutor da CF 5001" (carrinha), "condutor do DH 9250" (carro). */
+export function deArtigoDoVeiculo(tipo: TipoVeiculo): 'da' | 'do' {
+  return tipo === 'carro' ? 'do' : 'da';
+}
+
+/**
+ * Marca e modelo: "Ford Transit Custom". Se o modelo já começar pela marca, não a repete; só com um dos
+ * dois, fica esse; sem nenhum, null.
+ */
+export function textoMarcaModelo(c: Pick<Carrinha, 'marca' | 'modelo'>): string | null {
+  const marca = c.marca?.trim() ?? '';
+  const modelo = c.modelo?.trim() ?? '';
+  if (!marca) return modelo || null;
+  if (!modelo) return marca;
+  const m = normalizarTexto(modelo);
+  const jaTemMarca = m === normalizarTexto(marca) || m.startsWith(`${normalizarTexto(marca)} `);
+  return jaTemMarca ? modelo : `${marca} ${modelo}`;
+}
+
+/** Detalhe de uma carrinha (pesquisa): "3/9 lugares · Ford Transit Custom". */
+export function detalheCarrinha(
+  c: Pick<Carrinha, 'lugares' | 'marca' | 'modelo'>,
+  passageiros: number,
+): string {
+  const marcaModelo = textoMarcaModelo(c);
+  return `${passageiros}/${c.lugares} lugares${marcaModelo ? ` · ${marcaModelo}` : ''}`;
+}
+
+/** Tipo de um local por palavras ("estacionamento", "oficina"…). */
+export const ROTULO_TIPO_LOCAL: Record<TipoLocal, string> = {
+  casa: 'casa',
+  obra: 'obra',
+  estacionamento: 'estacionamento',
+  oficina: 'oficina',
+  escritorio: 'escritório',
+  bomba: 'bomba de gasolina',
+  outro: 'outro local',
+};

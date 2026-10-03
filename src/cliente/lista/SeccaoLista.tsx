@@ -2,7 +2,8 @@
 // Cabeçalho neutro (só a pastilha da lotação tem cor), nomes por baixo e os lugares vazios tracejados.
 // No modo de edição as secções com alvo recebem nomes largados (data-alvo, ver arrastar/motor.ts).
 // Quem conduz leva o volante ao lado do nome (em todas as vistas); nas carrinhas o condutor vem primeiro
-// e as que levam gente sem condutor dizem-no, discretamente.
+// e as que levam gente sem condutor dizem-no, discretamente. Cada carrinha mostra a marca e o modelo, se é
+// carro ou carrinha e onde dorme (definido ou "≈ sugerido"); no modo de edição, com um botão para o mudar.
 
 import { useId, useMemo } from 'react';
 import type { Indices } from '../../dominio/indices';
@@ -14,14 +15,32 @@ import { ESTILO_AVISO_CONTRATO, ESTILO_NIVEL } from '../comum/lotacao';
 import { Matricula } from '../comum/Matricula';
 import { NomeChip } from '../comum/NomeChip';
 import { ContextoOrdemPessoas } from '../comum/ordemPessoas';
+import { BOTAO_MINI } from '../edicao/classes';
+import { dormidaPendente } from '../edicao/resumo';
+import { abrirDormida } from '../edicao/ui';
 import { useLoja } from '../estado/loja';
 import { agruparPorCliente } from '../paineis/agrupar';
 import { FOCO_VISIVEL } from '../paineis/classes';
 import { ehCondutor, ROTULO_SEM_CONDUTOR, semCondutor } from '../paineis/condutor';
 import { coordenadasDoLocal, destinoNoMapa, ZOOM_DESTINO } from '../paineis/fichas';
 import { MarcaCliente } from '../paineis/pecas';
-import { comPlural, textoDormida, textoLotacao } from '../paineis/textos';
-import { IconeCarrinha, IconeCasa, IconeObra, IconePino, IconeSeta } from './icones';
+import {
+  comPlural,
+  ROTULO_TIPO_VEICULO,
+  textoDormida,
+  textoLotacao,
+  textoMarcaModelo,
+} from '../paineis/textos';
+import {
+  IconeCarrinha,
+  IconeCarrinhaLado,
+  IconeCarroLado,
+  IconeCasa,
+  IconeDormir,
+  IconeObra,
+  IconePino,
+  IconeSeta,
+} from './icones';
 import { lugaresVazios, type Seccao } from './seccoes';
 
 interface Props {
@@ -127,6 +146,11 @@ export function SeccaoLista({ seccao: s, soCabecalho, recolhida, aoAlternar, com
   const modoEdicao = useLoja((st) => st.modoEdicao);
   const definirFoco = useLoja((st) => st.definirFoco);
   const pedirIrPara = useLoja((st) => st.pedirIrPara);
+  // Onde dorme esta carrinha mudou no rascunho (antes do `return` abaixo: é um hook).
+  const dormidaAlterada = useLoja(
+    (st) =>
+      s.tipo === 'carrinha' && s.id !== null && st.modoEdicao && dormidaPendente(st.pendentes, s.id) !== null,
+  );
   const idTitulo = useId();
   const idCorpo = useId();
   if (!indices) return null;
@@ -175,13 +199,28 @@ export function SeccaoLista({ seccao: s, soCabecalho, recolhida, aoAlternar, com
       <IconeObra tracejado={especial} className="size-4 text-slate-500" />
     ) : null;
 
+  const marcaModelo = carrinha ? textoMarcaModelo(carrinha) : null;
+  const IconeVeiculo = carrinha?.tipo === 'carro' ? IconeCarroLado : IconeCarrinhaLado;
   const titulo = carrinha ? (
     <>
       <Matricula matricula={carrinha.matricula} altura={18} />
       <span id={idTitulo} className="sr-only">
-        Carrinha {carrinha.matricula}
+        {ROTULO_TIPO_VEICULO[carrinha.tipo]} {carrinha.matricula}
+        {marcaModelo ? `, ${marcaModelo}` : ''}
       </span>
-      {carrinha.modelo && <span className="min-w-0 truncate text-xs text-slate-500">{carrinha.modelo}</span>}
+      <span
+        aria-hidden="true"
+        className="flex min-w-0 items-center gap-1 text-xs text-slate-500"
+        title={[ROTULO_TIPO_VEICULO[carrinha.tipo], marcaModelo].filter(Boolean).join(' · ')}
+      >
+        <IconeVeiculo className="size-4 text-slate-500" />
+        <span className="min-w-0 truncate">
+          {carrinha.tipo === 'carro' && (
+            <span className="font-medium text-slate-600">Carro{marcaModelo ? ' · ' : ''}</span>
+          )}
+          {marcaModelo}
+        </span>
+      </span>
     </>
   ) : (
     <>
@@ -269,14 +308,38 @@ export function SeccaoLista({ seccao: s, soCabecalho, recolhida, aoAlternar, com
               <span className="sr-only">: {aviso.rotulo.toLowerCase()}</span>
             </span>
           )}
-          {dormida && (
-            <span className={dormida.desconhecida ? 'text-slate-500 italic' : ''}>
-              {dormida.desconhecida ? 'Onde dorme: por definir' : `Dorme em ${dormida.rotulo}`}
-              {dormidaSugerida && (
+          {dormida && carrinha && (
+            <span className="inline-flex min-w-0 flex-wrap items-center gap-x-1 gap-y-0.5">
+              <IconeDormir className="size-3 text-slate-400" />
+              {dormida.desconhecida ? (
                 <span className="text-slate-500 italic" title={dormida.nota ?? undefined}>
-                  {' '}
-                  · sugerido
+                  Onde dorme: por definir
                 </span>
+              ) : dormidaSugerida ? (
+                <span title={dormida.nota ?? undefined}>
+                  Dorme em <span aria-hidden="true">≈ </span>
+                  {dormida.rotulo}
+                  <span className="text-slate-500 italic"> · sugerido</span>
+                </span>
+              ) : (
+                <span>Dorme em {dormida.rotulo}</span>
+              )}
+              {dormidaAlterada && (
+                <span className="font-semibold text-amber-800" title="Alterado — por guardar">
+                  <span aria-hidden="true">●</span>
+                  <span className="sr-only"> (alterado, por guardar)</span>
+                </span>
+              )}
+              {modoEdicao && (
+                <button
+                  type="button"
+                  onClick={() => abrirDormida(carrinha.id)}
+                  aria-label={`Mudar onde dorme ${carrinha.tipo === 'carro' ? 'o' : 'a'} ${carrinha.matricula}`}
+                  title="Mudar onde dorme"
+                  className={`${BOTAO_MINI} ml-0.5`}
+                >
+                  Mudar
+                </button>
               )}
             </span>
           )}

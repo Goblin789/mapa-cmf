@@ -18,24 +18,28 @@ import {
   textoResumo,
 } from './processar';
 import { type FicheiroLido, gerarRelatorioHtml, type MetaRelatorio } from './relatorio';
-import type { DadosIniciais } from './tipos';
+import type { DadosIniciais, DadosReferencia } from './tipos';
 
-const RAIZ = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
-const PASTA_DADOS_INICIAIS = join(RAIZ, 'dados-iniciais');
+export const RAIZ = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
+export const PASTA_DADOS_INICIAIS = join(RAIZ, 'dados-iniciais');
 export const CAMINHO_RELATORIO = join(RAIZ, 'dados', 'relatorio-importacao.html');
 
 function lerJson<T>(nome: string): T {
   return JSON.parse(readFileSync(join(PASTA_DADOS_INICIAIS, nome), 'utf8')) as T;
 }
 
-export function lerDadosIniciais(): DadosIniciais {
+/** Clientes, casas, veículos e locais dos dados iniciais (só leitura). */
+export function lerDadosReferencia(): DadosReferencia {
   return {
     clientes: lerJson('clientes.json'),
     casas: lerJson('casas.json'),
     carrinhas: lerJson('carrinhas.json'),
     locais: lerJson('locais.json'),
-    importacao: lerJson('importacao.json'),
   };
+}
+
+export function lerDadosIniciais(): DadosIniciais {
+  return { ...lerDadosReferencia(), importacao: lerJson('importacao.json') };
 }
 
 async function lerExcel(caminho: string): Promise<Folhas> {

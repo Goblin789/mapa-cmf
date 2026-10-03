@@ -31,7 +31,21 @@ const operacaoCondutor = z.object({
   para: id.nullable(),
 });
 
-const operacao = z.discriminatedUnion('tipo', [operacaoMover, operacaoCondutor]);
+/** "casa:<id>" ou "local:<id>"; null = por definir (o mapa usa a sugestão). */
+const chaveDormida = z
+  .string()
+  .max(210)
+  .regex(/^(casa|local):.+$/, { error: 'Onde dorme tem de ser "casa:<id>", "local:<id>" ou null.' });
+
+/** Mudar onde dorme uma carrinha. */
+const operacaoDormida = z.object({
+  tipo: z.literal('dormida'),
+  carrinhaId: id,
+  de: chaveDormida.nullable(),
+  para: chaveDormida.nullable(),
+});
+
+const operacao = z.discriminatedUnion('tipo', [operacaoMover, operacaoCondutor, operacaoDormida]);
 
 const pedidoGuardar = z.object({
   /**

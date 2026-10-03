@@ -6,6 +6,8 @@ import { useLoja } from '../estado/loja';
 import { FOCO_VISIVEL } from '../paineis/classes';
 import { entrarEdicaoComAviso } from './acoes';
 import { DialogoCancelar } from './DialogoCancelar';
+import { DialogoConfirmarSugestoes } from './DialogoConfirmarSugestoes';
+import { DialogoDormida } from './DialogoDormida';
 import { DialogoGuardar } from './DialogoGuardar';
 import { DialogoHistorico } from './DialogoHistorico';
 import { DialogoMoverPara } from './DialogoMoverPara';
@@ -94,8 +96,12 @@ export function Edicao() {
   const modoEdicao = useLoja((s) => s.modoEdicao);
   useFocoAoMudarModo(modoEdicao, dialogo !== null);
 
-  // Fora do modo de edição não há nada para mover nem para cancelar.
-  const soEmEdicao = dialogo?.tipo === 'mover' || dialogo?.tipo === 'cancelar';
+  // Fora do modo de edição não há nada para mover, para cancelar nem onde dormir para mudar.
+  const soEmEdicao =
+    dialogo?.tipo === 'mover' ||
+    dialogo?.tipo === 'cancelar' ||
+    dialogo?.tipo === 'dormida' ||
+    dialogo?.tipo === 'confirmar-sugestoes';
   useEffect(() => {
     if (!modoEdicao && soEmEdicao) fecharDialogo();
   }, [modoEdicao, soEmEdicao, fecharDialogo]);
@@ -106,6 +112,12 @@ export function Edicao() {
         <DialogoMoverPara pessoaIds={dialogo.pessoaIds} filtro={dialogo.filtro} aoFechar={fecharDialogo} />
       )}
       {modoEdicao && dialogo?.tipo === 'cancelar' && <DialogoCancelar aoFechar={fecharDialogo} />}
+      {modoEdicao && dialogo?.tipo === 'dormida' && (
+        <DialogoDormida carrinhaId={dialogo.carrinhaId} aoFechar={fecharDialogo} />
+      )}
+      {modoEdicao && dialogo?.tipo === 'confirmar-sugestoes' && (
+        <DialogoConfirmarSugestoes aoFechar={fecharDialogo} />
+      )}
       {dialogo?.tipo === 'guardar' && <DialogoGuardar aoFechar={fecharDialogo} />}
       {dialogo?.tipo === 'historico' && <DialogoHistorico aoFechar={fecharDialogo} />}
       <AvisoFlutuante />

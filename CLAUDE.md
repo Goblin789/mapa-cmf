@@ -15,6 +15,11 @@ Decisões e respostas do Rafael: `docs/decisoes.md` (atualizar sempre que ele de
 - `npm run importar` — importação dos Excel em modo de ensaio (gera `dados/relatorio-importacao.html`);
   `npm run importar -- --aplicar` grava na base de dados local. Recusa se já houver gravações feitas no
   programa (lotes que não são de importação), porque as apagava; só com `--forcar`.
+- `npm run sincronizar` — ensaio da sincronização NÃO destrutiva dos dados iniciais (clientes, casas,
+  veículos, locais) com a BD (gera `dados/relatorio-sincronizacao.html`); `npm run sincronizar -- --aplicar`
+  grava num só lote (autor 'dados-iniciais', tipo 'ficha') do Histórico, sem tocar em condutores, onde
+  dormem, pessoas (exceto as de veículos que saem) nem histórico. `--bd <caminho>` e `--relatorio <caminho>`
+  para trabalhar numa cópia. É assim que se aplicam dados novos depois de haver edições no programa.
 - `npm run geocodificar` — coordenadas das moradas de `dados-iniciais/locais.json`.
 - `npm run bd:gerar` — nova migração depois de mudar `src/servidor/db/esquema.ts`.
 
@@ -44,6 +49,8 @@ Decisões e respostas do Rafael: `docs/decisoes.md` (atualizar sempre que ele de
 Mapa com cartões ao estilo pedido pelo Rafael (casas com telhado, carrinhas vistas de cima, matrícula
 luxemburguesa), camadas, lista lateral por casas/carrinhas/obras/clientes e **modo de edição** (rascunho,
 arrastar, Mover para…, Guardar/Cancelar, histórico) — tudo local no PC do Rafael. Ainda sem login nem alojamento (M1).
-- `POST /api/lotes` grava tudo ou nada (409 se alguém mudou as mesmas pessoas); `GET /api/historico`.
+- `POST /api/lotes` grava tudo ou nada (409 se alguém mudou as mesmas pessoas ou carrinhas); operações
+  `mover`, `condutor` e `dormida` (onde dorme a carrinha). `GET /api/historico`.
+- Todos os nomes têm o mesmo texto (`COR_TEXTO_NOMES`); as cores dos clientes são claras (ver `docs/cores.md`).
   O autor é 'local' e só se aceitam origens localhost até haver login.
 - Tipos da API em `src/dominio/api.ts`; formato das matrículas em `src/dominio/matricula.ts`.

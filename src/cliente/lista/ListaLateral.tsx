@@ -5,6 +5,8 @@
 // O atributo data-caixas-laterais serve à pesquisa para encontrar aqui o nome de uma pessoa.
 
 import { useMemo, useState } from 'react';
+import { operacoesConfirmarSugestoes } from '../edicao/ondeDorme';
+import { useUiEdicao } from '../edicao/ui';
 import { useLoja } from '../estado/loja';
 import { clientesPorOrdem } from '../paineis/agrupar';
 import { useEcraLargo } from '../paineis/ganchos';
@@ -37,7 +39,9 @@ export function ListaLateral() {
   const estado = useLoja((s) => s.estado);
   const indices = useLoja((s) => s.indices);
   const modoEdicao = useLoja((s) => s.modoEdicao);
+  const dormidas = useLoja((s) => s.dormidas);
   const foco = useLoja((s) => s.foco);
+  const abrirDialogo = useUiEdicao((s) => s.abrirDialogo);
   const ecraLargo = useEcraLargo();
 
   const [preferencias, setPreferencias] = useState(carregarPreferencias);
@@ -51,6 +55,13 @@ export function ListaLateral() {
   const seccoes = useMemo(
     () => (estado && indices ? seccoesDaVista(vista, estado, indices, filtros) : []),
     [vista, estado, indices, filtros],
+  );
+  // Carrinhas com onde dormem só sugerido (o botão "Confirmar todas as sugestões" da vista Carrinhas).
+  const mostrarSugestoes = vista === 'carrinhas' && modoEdicao;
+  const sugestoes = useMemo(
+    () =>
+      mostrarSugestoes && estado && dormidas ? operacoesConfirmarSugestoes(estado, dormidas).length : null,
+    [mostrarSugestoes, estado, dormidas],
   );
 
   // Quando uma pessoa entra em foco (ex.: pela pesquisa), abre a secção onde ela está.
@@ -120,6 +131,8 @@ export function ListaLateral() {
         alargado={ecraLargo ? alargado : null}
         aoAlternarAlargado={() => mudarPreferencias({ alargado: !preferencias.alargado })}
         modoEdicao={modoEdicao}
+        sugestoesPorConfirmar={sugestoes}
+        aoConfirmarSugestoes={() => abrirDialogo({ tipo: 'confirmar-sugestoes' })}
       />
       {/* relative: os textos só para leitores de ecrã (sr-only, absolutos) ficam presos a esta caixa que rola;
           sem isto escapavam-lhe e a página inteira passava a rolar (a roda do rato na legenda escondia o topo). */}

@@ -1,9 +1,9 @@
 [
-  { "id": "costantini", "nome": "Costantini", "nomeExcel": "COSTANTINI", "cor": "#C62725", "sigla": "CO", "interno": false, "pessoasDoc": 58 },
-  { "id": "galere", "nome": "Galère", "nomeExcel": "GALÈRE", "cor": "#4FA36B", "sigla": "GA", "interno": false, "pessoasDoc": 24 },
-  { "id": "ap-kieffer", "nome": "A+P Kieffer", "nomeExcel": "A+P KIEFFER", "cor": "#013067", "sigla": "AK", "interno": false, "pessoasDoc": 22 },
-  { "id": "phillipe-btp", "nome": "Phillipe BTP", "nomeExcel": "PHILLIPE BTP", "cor": "#A47FB1", "sigla": "PB", "interno": false, "pessoasDoc": 18 },
-  { "id": "kisch", "nome": "Kisch", "nomeExcel": "KISCH", "cor": "#E5D148", "sigla": "KI", "interno": false, "pessoasDoc": 5 },
-  { "id": "enquadramento", "nome": "Enquadramento", "nomeExcel": "ENQUADRAMENTO", "nomesAlternativos": ["NÃO PRODUTIVOS"], "cor": "#575756", "sigla": "EN", "interno": true, "pessoasDoc": 5 },
-  { "id": "mersch", "nome": "Mersch", "nomeExcel": "MERSCH", "cor": "#91CCF3", "sigla": "ME", "interno": false, "pessoasDoc": 4 }
+  { "id": "costantini", "nome": "Costantini", "nomeExcel": "COSTANTINI", "cor": "#F28A7E", "sigla": "CO", "interno": false, "pessoasDoc": 58 },
+  { "id": "galere", "nome": "Galère", "nomeExcel": "GALÈRE", "cor": "#B2ECBC", "sigla": "GA", "interno": false, "pessoasDoc": 24 },
+  { "id": "ap-kieffer", "nome": "A+P Kieffer", "nomeExcel": "A+P KIEFFER", "cor": "#84A6F4", "sigla": "AK", "interno": false, "pessoasDoc": 22 },
+  { "id": "phillipe-btp", "nome": "Phillipe BTP", "nomeExcel": "PHILLIPE BTP", "cor": "#EACBF7", "sigla": "PB", "interno": false, "pessoasDoc": 18 },
+  { "id": "kisch", "nome": "Kisch", "nomeExcel": "KISCH", "cor": "#FCE55E", "sigla": "KI", "interno": false, "pessoasDoc": 5 },
+  { "id": "enquadramento", "nome": "Enquadramento", "nomeExcel": "ENQUADRAMENTO", "nomesAlternativos": ["NÃO PRODUTIVOS"], "cor": "#F39200", "sigla": "EN", "interno": true, "pessoasDoc": 5 },
+  { "id": "mersch", "nome": "Mersch", "nomeExcel": "MERSCH", "cor": "#5CB4B8", "sigla": "ME", "interno": false, "pessoasDoc": 4 }
 ]

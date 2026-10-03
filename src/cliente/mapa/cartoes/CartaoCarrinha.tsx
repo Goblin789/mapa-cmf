@@ -5,11 +5,15 @@
 // em foco; no modo de edição é um alvo (data-alvo).
 // Compacta (modo compacto do mapa): mais curta e estreita, só a matrícula e a lotação; quem vai lá
 // dentro (o condutor primeiro) fica no tooltip e na ficha do foco.
+// Os carros (tipo 'carro') desenham-se como um carro visto de cima, no mesmo estilo: mais curto e
+// redondo à frente e atrás, capô com a matrícula, os vidros à volta do tejadilho (para-brisas, laterais e
+// de trás) e quatro rodas. O tooltip diz sempre se é carrinha ou carro, a marca e o modelo.
 
 import type { ConfiancaDormida } from '../../../dominio/dormidas';
+import { formatarMatricula } from '../../../dominio/matricula';
 import { ocupacaoCarrinha } from '../../../dominio/ocupacao';
 import { chaveAlvo } from '../../../dominio/operacoes';
-import type { Id } from '../../../dominio/tipos';
+import type { Carrinha, Id } from '../../../dominio/tipos';
 import { ESTILO_NIVEL } from '../../comum/lotacao';
 import { Matricula } from '../../comum/Matricula';
 import { useLoja } from '../../estado/loja';
@@ -20,7 +24,7 @@ import { CLASSE_FOCO_TECLADO, type Destaque, posicao, tracoDestaque } from './co
 import { Lugares } from './Lugar';
 import { PastilhaLotacao } from './PastilhaLotacao';
 
-export const TEXTO_SUGERIDO = 'Onde dorme: sugerido — a maioria dos passageiros mora aqui';
+export const TEXTO_SUGERIDO = 'Onde dorme: sugerido — é onde moram mais passageiros';
 
 interface Props {
   carrinhaId: Id;
@@ -50,8 +54,100 @@ function caminhoCarrocaria(r: Retangulo, raioFrente: number, raioTras: number): 
   ].join(' ');
 }
 
+/**
+ * Carroçaria do carro: os quatro cantos bem redondos (curvas mais cheias do que um arco) e a frente e a
+ * traseira ligeiramente abauladas, como os para-choques vistos de cima.
+ */
+export function caminhoCarro(r: Retangulo, raioFrente: number, raioTras: number): string {
+  const { x, y, largura: w, altura: h } = r;
+  const a = raioFrente;
+  const b = raioTras;
+  /** Pontos de controlo das curvas dos cantos (0,45 do raio: entre um arco e um canto vivo). */
+  const k = 0.45;
+  /** Quanto a frente e a traseira se abaulam ao centro. */
+  const bojo = 1.2;
+  return [
+    `M${x + a} ${y + bojo}`,
+    `Q${x + w / 2} ${y - bojo} ${x + w - a} ${y + bojo}`,
+    `C${x + w - a * k} ${y + bojo} ${x + w} ${y + a * k} ${x + w} ${y + a}`,
+    `V${y + h - b}`,
+    `C${x + w} ${y + h - b * k} ${x + w - b * k} ${y + h - bojo} ${x + w - b} ${y + h - bojo}`,
+    `Q${x + w / 2} ${y + h + bojo} ${x + b} ${y + h - bojo}`,
+    `C${x + b * k} ${y + h - bojo} ${x} ${y + h - b * k} ${x} ${y + h - b}`,
+    `V${y + a}`,
+    `C${x} ${y + a * k} ${x + a * k} ${y + bojo} ${x + a} ${y + bojo}`,
+    'Z',
+  ].join(' ');
+}
+
+const COR_VIDRO = '#334155';
+const COR_RODA = '#1e293b';
+const COR_LINHA = '#cbd5e1';
+
+/**
+ * Os vidros do carro vistos de cima, numa só peça escura à volta do tejadilho (onde vão os nomes):
+ * para-brisas à frente (curvo), vidros laterais finos e vidro de trás. A carrinha não tem este anel:
+ * tem só o para-brisas e as calhas do tejadilho.
+ */
+function DetalhesCarro({ g }: { g: GeometriaCarrinha }) {
+  const p = g.parabrisas;
+  const v = g.vidroTraseiro;
+  if (!v) return null;
+  const fora = { x: p.x, y: p.y, largura: p.largura, altura: v.y + v.altura - p.y };
+  /** Largura dos vidros laterais (finos: de cima vê-se pouco deles). */
+  const lado = 1.5;
+  const dentro = {
+    x: fora.x + lado,
+    y: p.y + p.altura,
+    largura: fora.largura - 2 * lado,
+    altura: v.y - (p.y + p.altura),
+  };
+  return (
+    <path
+      className="vidros-carro"
+      d={`${caminhoCarro(fora, 6, 4)} ${caminhoCarro(dentro, 3, 2.5)}`}
+      fillRule="evenodd"
+      fill={COR_VIDRO}
+    />
+  );
+}
+
+/** Para-brisas e calhas do tejadilho da carrinha. */
+function DetalhesCarrinha({ g }: { g: GeometriaCarrinha }) {
+  const p = g.parabrisas;
+  const calhaTopo = p.y + p.altura + 2;
+  const calhaFundo = g.estado.y - 2;
+  return (
+    <>
+      <path
+        d={`M${p.x} ${p.y} H${p.x + p.largura} L${p.x + p.largura - 3} ${p.y + p.altura} H${p.x + 3} Z`}
+        fill={COR_VIDRO}
+        stroke={COR_RODA}
+        strokeWidth={0.5}
+        strokeLinejoin="round"
+      />
+      {/* Calhas do tejadilho. */}
+      {calhaFundo > calhaTopo &&
+        [g.corpo.x + 2.5, g.corpo.x + g.corpo.largura - 2.5].map((x) => (
+          <line key={x} x1={x} y1={calhaTopo} x2={x} y2={calhaFundo} stroke={COR_LINHA} strokeWidth={1} />
+        ))}
+    </>
+  );
+}
+
+/** "Carro YG 4474" / "Carrinha CF 5001". */
+export function nomeDoVeiculo(c: Pick<Carrinha, 'tipo' | 'matricula'>): string {
+  return `${c.tipo === 'carro' ? 'Carro' : 'Carrinha'} ${formatarMatricula(c.matricula)}`;
+}
+
+/** "Renault Megane" (o que houver), ou null. */
+export function marcaEModelo(c: Pick<Carrinha, 'marca' | 'modelo'>): string | null {
+  return [c.marca, c.modelo].filter(Boolean).join(' ') || null;
+}
+
 function Silhueta({ g, destaque }: { g: GeometriaCarrinha; destaque: Destaque }) {
   const traco = tracoDestaque(destaque);
+  const carro = g.veiculo === 'carro';
   const corpo = {
     ...g.corpo,
     x: g.corpo.x + 0.5,
@@ -59,9 +155,6 @@ function Silhueta({ g, destaque }: { g: GeometriaCarrinha; destaque: Destaque })
     largura: g.corpo.largura - 1,
     altura: g.corpo.altura - 1,
   };
-  const p = g.parabrisas;
-  const calhaTopo = p.y + p.altura + 2;
-  const calhaFundo = g.estado.y - 2;
   return (
     <svg
       className="forma-carrinha pointer-events-none absolute left-0 top-0 overflow-visible"
@@ -80,30 +173,23 @@ function Silhueta({ g, destaque }: { g: GeometriaCarrinha; destaque: Destaque })
           y={r.y}
           width={r.largura}
           height={r.altura}
-          rx={1.75}
-          fill="#1e293b"
+          rx={carro ? 2 : 1.75}
+          fill={COR_RODA}
         />
       ))}
       <path
         className="forma-corpo"
-        d={caminhoCarrocaria(corpo, 11, 4)}
+        d={
+          carro
+            ? caminhoCarro(corpo, g.compacta ? 14 : 18, g.compacta ? 10 : 12)
+            : caminhoCarrocaria(corpo, 11, 4)
+        }
         fill="#f8fafc"
         stroke={traco.cor}
         strokeWidth={traco.largura}
         strokeDasharray={traco.tracejado}
       />
-      <path
-        d={`M${p.x} ${p.y} H${p.x + p.largura} L${p.x + p.largura - 3} ${p.y + p.altura} H${p.x + 3} Z`}
-        fill="#334155"
-        stroke="#1e293b"
-        strokeWidth={0.5}
-        strokeLinejoin="round"
-      />
-      {/* Calhas do tejadilho. */}
-      {calhaFundo > calhaTopo &&
-        [g.corpo.x + 2.5, g.corpo.x + g.corpo.largura - 2.5].map((x) => (
-          <line key={x} x1={x} y1={calhaTopo} x2={x} y2={calhaFundo} stroke="#cbd5e1" strokeWidth={1} />
-        ))}
+      {carro ? <DetalhesCarro g={g} /> : <DetalhesCarrinha g={g} />}
     </svg>
   );
 }
@@ -121,9 +207,10 @@ export function CartaoCarrinha({ carrinhaId, geometria: g, x, y, confianca, dest
   const estilo = ESTILO_NIVEL[oc.nivel];
   const emFoco = destaque === 'foco';
   const sugerida = confianca === 'sugerida';
+  const carro = carrinha.tipo === 'carro';
   const descricao = [
-    carrinha.matricula,
-    carrinha.modelo,
+    nomeDoVeiculo(carrinha),
+    marcaEModelo(carrinha),
     `${oc.ocupados}/${oc.lugares} lugares`,
     estilo.rotulo,
     sugerida ? TEXTO_SUGERIDO : null,
@@ -146,9 +233,9 @@ export function CartaoCarrinha({ carrinhaId, geometria: g, x, y, confianca, dest
       <Silhueta g={g} destaque={destaque} />
       <button
         type="button"
-        className={`absolute inset-0 cursor-pointer rounded-t-xl rounded-b-sm ${CLASSE_FOCO_TECLADO}`}
+        className={`absolute inset-0 cursor-pointer ${carro ? 'rounded-t-[14px] rounded-b-[10px]' : 'rounded-t-xl rounded-b-sm'} ${CLASSE_FOCO_TECLADO}`}
         title={descricao}
-        aria-label={`${descricao}. Mostrar as ligações desta carrinha.`}
+        aria-label={`${descricao}. Mostrar as ligações ${carro ? 'deste carro' : 'desta carrinha'}.`}
         aria-pressed={emFoco}
         onClick={() => definirFoco(emFoco ? null : { tipo: 'carrinha', id: carrinhaId })}
       />

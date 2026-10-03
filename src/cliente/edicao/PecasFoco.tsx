@@ -1,29 +1,32 @@
 // Peças do modo de edição para o painel de foco: marca "alterado — por guardar", o valor gravado
 // ao lado do que mudou, quem entra e sai de uma casa/carrinha, os botões "Mudar casa/carrinha/obra"
-// (o caminho garantido no telemóvel, sem arrastar) e o condutor da carrinha ("Tornar condutor",
-// "Tirar condutor"). Mudar o condutor só se faz aqui dentro, como um passo do rascunho.
+// (o caminho garantido no telemóvel, sem arrastar), o condutor da carrinha ("Tornar condutor",
+// "Tirar condutor") e onde ela dorme ("Mudar onde dorme…", "Confirmar sugestão"). Mudar o condutor ou
+// onde dorme só se faz aqui dentro, como um passo do rascunho.
 
-import type { CampoMovivel } from '../../dominio/operacoes';
+import { type CampoMovivel, nomeDaDormida } from '../../dominio/operacoes';
 import type { Carrinha, Id, Pessoa } from '../../dominio/tipos';
 import { IconeVolante } from '../comum/IconeVolante';
 import { formatarMatricula } from '../comum/Matricula';
 import { NomeChip } from '../comum/NomeChip';
 import { useLoja } from '../estado/loja';
-import { comPlural } from '../paineis/textos';
-import { definirCondutorComAviso, entrarEdicaoComAviso } from './acoes';
+import { artigoDoVeiculo, comPlural, deArtigoDoVeiculo } from '../paineis/textos';
+import { confirmarSugestaoComAviso, definirCondutorComAviso, entrarEdicaoComAviso } from './acoes';
 import { BOTAO_MINI, BOTAO_PEQUENO, MARCA_ALTERADO } from './classes';
 import type { TipoDestino } from './destinos';
-import { IconeCarrinha, IconeCasa, IconeLapis, IconeObra } from './icones';
+import { IconeCarrinha, IconeCasa, IconeDormir, IconeGuardar, IconeLapis, IconeObra } from './icones';
+import { rotuloConfirmarSugestao, rotuloMudarDormida } from './ondeDorme';
 import {
   alteracoesDaPessoa,
   condutorPendente,
+  dormidaPendente,
   movimentosDoSitio,
   pessoaTemAlteracoes,
   rotuloDoCondutor,
   rotuloDoValor,
   sitioTemAlteracoes,
 } from './resumo';
-import { abrirMoverPara } from './ui';
+import { abrirDormida, abrirMoverPara } from './ui';
 
 export function MarcaAlterado() {
   return (
@@ -72,6 +75,70 @@ export function CondutorGravado({ carrinhaId }: { carrinhaId: Id }) {
     <span className="block w-full text-xs text-amber-900">
       <span aria-hidden="true">● </span>
       antes: {rotuloDoCondutor(estadoServidor, op.de)}
+    </span>
+  );
+}
+
+/** "antes: Casa Um" (ou "antes: por definir"), por baixo de onde dorme quando mudou no rascunho. */
+export function DormidaGravada({ carrinhaId }: { carrinhaId: Id }) {
+  const modoEdicao = useLoja((s) => s.modoEdicao);
+  const pendentes = useLoja((s) => s.pendentes);
+  const estadoServidor = useLoja((s) => s.estadoServidor);
+  if (!modoEdicao || !estadoServidor) return null;
+  const op = dormidaPendente(pendentes, carrinhaId);
+  if (!op) return null;
+  return (
+    <span className="block w-full text-xs text-amber-900">
+      <span aria-hidden="true">● </span>
+      antes: {nomeDaDormida(estadoServidor, op.de)}
+    </span>
+  );
+}
+
+/**
+ * No modo de edição, por baixo de onde dorme: "Mudar onde dorme…" (abre o diálogo) e, quando o sítio é só
+ * uma sugestão, "Confirmar sugestão" (grava a casa sugerida como definida). Fora dele, nada.
+ */
+export function AcoesDormida({ carrinha }: { carrinha: Carrinha }) {
+  const modoEdicao = useLoja((s) => s.modoEdicao);
+  const dormida = useLoja((s) => s.dormidas?.get(carrinha.id));
+  const nomeSugerida = useLoja((s) =>
+    dormida?.casaId ? (s.indices?.casas.get(dormida.casaId)?.nome ?? null) : null,
+  );
+  if (!modoEdicao) return null;
+  const sugerida = dormida?.confianca === 'sugerida';
+  return (
+    <span className="mt-1 flex flex-wrap gap-1.5">
+      <button
+        type="button"
+        data-botao-dormida={carrinha.id}
+        onClick={() => abrirDormida(carrinha.id)}
+        aria-label={rotuloMudarDormida(carrinha)}
+        className={BOTAO_PEQUENO}
+      >
+        <IconeDormir className="h-3.5 w-3.5" />
+        Mudar onde dorme…
+      </button>
+      {sugerida && (
+        <button
+          type="button"
+          onClick={() => {
+            if (!confirmarSugestaoComAviso(carrinha.id)) return;
+            // O botão desaparece: o foco passa para "Mudar onde dorme…".
+            requestAnimationFrame(() => {
+              document
+                .querySelector<HTMLElement>(`[data-botao-dormida="${CSS.escape(carrinha.id)}"]`)
+                ?.focus();
+            });
+          }}
+          aria-label={rotuloConfirmarSugestao(carrinha, nomeSugerida)}
+          title="Passa a ficar definido que dorme nesta casa"
+          className={BOTAO_PEQUENO}
+        >
+          <IconeGuardar className="h-3.5 w-3.5" />
+          Confirmar sugestão
+        </button>
+      )}
     </span>
   );
 }
@@ -145,8 +212,8 @@ export function AcoesPessoa({ pessoa }: { pessoa: Pessoa }) {
           >
             <IconeVolante tamanho={14} />
             {conduz
-              ? `Deixar de conduzir a ${formatarMatricula(carrinha.matricula)}`
-              : `Tornar condutor da ${formatarMatricula(carrinha.matricula)}`}
+              ? `Deixar de conduzir ${artigoDoVeiculo(carrinha.tipo)} ${formatarMatricula(carrinha.matricula)}`
+              : `Tornar condutor ${deArtigoDoVeiculo(carrinha.tipo)} ${formatarMatricula(carrinha.matricula)}`}
           </button>
         )}
       </div>
@@ -165,7 +232,8 @@ export function PassageirosEmEdicao({
   carrinha: Carrinha;
   passageiros: Pessoa[];
 }) {
-  const matricula = formatarMatricula(carrinha.matricula);
+  // "da CF 5001" (carrinha) ou "do DH 9250" (carro).
+  const daCarrinha = `${deArtigoDoVeiculo(carrinha.tipo)} ${formatarMatricula(carrinha.matricula)}`;
   if (passageiros.length === 0) return <p className="text-xs text-slate-600 italic">Sem passageiros.</p>;
   return (
     <ul className="space-y-1">
@@ -188,8 +256,8 @@ export function PassageirosEmEdicao({
               onClick={() => mudarCondutor(carrinha.id, conduz ? null : p.id, p.id)}
               aria-label={
                 conduz
-                  ? `Tirar ${p.nomeCurto} de condutor da ${matricula}`
-                  : `Tornar ${p.nomeCurto} condutor da ${matricula}`
+                  ? `Tirar ${p.nomeCurto} de condutor ${daCarrinha}`
+                  : `Tornar ${p.nomeCurto} condutor ${daCarrinha}`
               }
               className={BOTAO_MINI}
             >
@@ -202,7 +270,10 @@ export function PassageirosEmEdicao({
   );
 }
 
-/** Numa casa ou carrinha: quem entra e quem sai (e, numa carrinha, o condutor) nas alterações por guardar. */
+/**
+ * Numa casa ou carrinha: quem entra e quem sai (e, numa carrinha, o condutor e onde dorme) nas alterações
+ * por guardar.
+ */
 export function MovimentosPendentes({ campo, id }: { campo: CampoMovivel; id: Id }) {
   const modoEdicao = useLoja((s) => s.modoEdicao);
   const pendentes = useLoja((s) => s.pendentes);
@@ -210,12 +281,14 @@ export function MovimentosPendentes({ campo, id }: { campo: CampoMovivel; id: Id
   if (!modoEdicao || !estadoServidor) return null;
   const { entram, saem } = movimentosDoSitio(pendentes, campo, id);
   const condutor = campo === 'carrinhaId' ? condutorPendente(pendentes, id) : null;
-  if (entram.length === 0 && saem.length === 0 && !condutor) return null;
+  const dormida = campo === 'carrinhaId' ? dormidaPendente(pendentes, id) : null;
+  if (entram.length === 0 && saem.length === 0 && !condutor && !dormida) return null;
   const nome = (pessoaId: Id) => estadoServidor.pessoas.find((p) => p.id === pessoaId)?.nomeCurto ?? pessoaId;
   const partes = [
     entram.length > 0 ? comPlural(entram.length, 'entra', 'entram') : null,
     saem.length > 0 ? comPlural(saem.length, 'sai', 'saem') : null,
     condutor ? 'muda o condutor' : null,
+    dormida ? 'muda onde dorme' : null,
   ].filter(Boolean);
 
   return (
@@ -250,6 +323,17 @@ export function MovimentosPendentes({ campo, id }: { campo: CampoMovivel; id: Id
               <span aria-hidden="true"> → </span>
               <span className="sr-only"> passa para </span>
               <strong className="font-semibold">{rotuloDoCondutor(estadoServidor, condutor.para)}</strong>
+            </span>
+          </li>
+        )}
+        {dormida && (
+          <li className="flex items-center gap-1">
+            <IconeDormir className="h-3 w-3 text-amber-900" />
+            <span>
+              Onde dorme: {nomeDaDormida(estadoServidor, dormida.de)}
+              <span aria-hidden="true"> → </span>
+              <span className="sr-only"> passa para </span>
+              <strong className="font-semibold">{nomeDaDormida(estadoServidor, dormida.para)}</strong>
             </span>
           </li>
         )}

@@ -2,13 +2,16 @@
 // A lotação nunca pinta o fundo dos nomes: vai só na pastilha do número, sempre com um símbolo além
 // da cor (○ livre, ● cheio, ▲ a mais).
 //
-// Há clientes vermelhos (Costantini) e verdes (Galère) e o laranja é da marca CMF (ver docs/cores.md).
-// Para a pastilha nunca parecer um nome, tem outra forma de cor: fundo claro, contorno e texto escuros
-// do mesmo tom (os nomes são blocos de cor cheia, médios ou escuros). O texto tem sempre ≥ 6:1 de
-// contraste com o fundo da pastilha.
-// Os três fundos têm claridades e tons diferentes (verde quase branco, creme, rosa-salmão) para os
-// níveis se distinguirem também com daltonismo vermelho-verde, onde verde, âmbar e vermelho claros
-// ficavam iguais. "Gente a mais" é o fundo mais carregado: é o aviso que mais importa ver.
+// Os nomes são todos blocos de cor CLARA com texto quase-preto (ver docs/cores.md). Para a pastilha
+// nunca parecer um nome, usa o desenho oposto:
+// - com lugares livres e cheio: pastilha BRANCA, contorno e número no tom do nível (verde, âmbar);
+// - gente a mais: pastilha CHEIA, vermelho escuro com o número a branco — o aviso que mais importa ver.
+// Nenhum nome é branco nem escuro, por isso nenhuma pastilha se confunde com um nome.
+// Entre "livre" e "cheio" (as duas brancas) o contorno muda de claridade: verde-escuro (green-800, o
+// mesmo tom do número) e âmbar claro (amber-600). Com o green-700 os dois contornos ficavam com quase a
+// mesma claridade na protanopia (ΔE00 7); com o green-800 ficam a ΔE00 ≥ 17 nas três visões. O símbolo
+// (○ / ●) separa-os sempre; "gente a mais" é a única cheia.
+// O número tem sempre ≥ 6:1 de contraste com o fundo da pastilha.
 
 import type { AvisoContrato, NivelLotacao } from '../../dominio/ocupacao';
 
@@ -19,26 +22,26 @@ export const ESTILO_NIVEL: Record<
   livre: {
     rotulo: 'com lugares livres',
     simbolo: '○',
-    contorno: 'border-green-700',
-    // green-800 sobre green-50: 6,8:1
-    pastilha: 'bg-green-50 text-green-800 ring-1 ring-inset ring-green-700',
-    corHex: '#008236',
+    contorno: 'border-green-800',
+    // green-800 sobre branco: 7,1:1 (número e contorno)
+    pastilha: 'bg-white text-green-800 ring-1 ring-inset ring-green-800',
+    corHex: '#016630',
   },
   cheio: {
     rotulo: 'cheio',
     simbolo: '●',
     contorno: 'border-amber-600',
-    // amber-900 sobre amber-100: 8,1:1
-    pastilha: 'bg-amber-100 text-amber-900 ring-1 ring-inset ring-amber-600',
+    // amber-800 sobre branco: 7,1:1
+    pastilha: 'bg-white text-amber-800 ring-1 ring-inset ring-amber-600',
     corHex: '#e17100',
   },
   excesso: {
     rotulo: 'gente a mais',
     simbolo: '▲',
-    contorno: 'border-red-700',
-    // red-950 sobre red-300: 8,4:1
-    pastilha: 'bg-red-300 text-red-950 ring-1 ring-inset ring-red-700',
-    corHex: '#c10007',
+    contorno: 'border-red-800',
+    // branco sobre red-700: 6,4:1
+    pastilha: 'bg-red-700 text-white ring-1 ring-inset ring-red-800',
+    corHex: '#9f0712',
   },
 };
 

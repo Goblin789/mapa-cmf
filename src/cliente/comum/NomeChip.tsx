@@ -1,4 +1,5 @@
-// O nome de uma pessoa: fundo da cor do cliente, texto preto ou branco, sigla do cliente.
+// O nome de uma pessoa: fundo da cor do cliente, texto quase-preto igual em todos (COR_TEXTO_NOMES),
+// sigla do cliente.
 // Usado nos cartões do mapa e na lista lateral.
 // Fora do modo de edição, clicar põe a pessoa em foco. No modo de edição o nome é arrastável
 // (data-arrastavel-pessoa, ver arrastar/motor.ts) e o clique seleciona: Ctrl/⌘+clique junta ou tira,
@@ -93,7 +94,7 @@ export function NomeChip({ pessoa, compacto = false, className = '', condutor = 
       {condutor && <IconeVolante tamanho={compacto ? 9 : 11} rotulo="condutor" />}
       <span className="min-w-0 flex-1 truncate">{pessoa.nomeCurto}</span>
       {aConfirmar && (
-        <span className="shrink-0 rounded-sm bg-white/80 px-0.5 font-bold text-amber-700" aria-hidden="true">
+        <span className="shrink-0 rounded-sm bg-white/80 px-0.5 font-bold text-amber-800" aria-hidden="true">
           ?
         </span>
       )}

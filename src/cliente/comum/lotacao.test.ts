@@ -1,27 +1,25 @@
 import { describe, expect, it } from 'vitest';
 import clientesIniciais from '../../../dados-iniciais/clientes.json';
-import { contraste } from '../../dominio/cores';
+import { COR_TEXTO_NOMES, contraste } from '../../dominio/cores';
 import type { NivelLotacao } from '../../dominio/ocupacao';
 import { ESTILO_NIVEL } from './lotacao';
 
 /** Tons do Tailwind 4 que a lotação usa (oklch do tema convertido para sRGB). */
 const TAILWIND: Record<string, string> = {
-  'green-50': '#f0fdf4',
+  white: '#ffffff',
   'green-700': '#008236',
   'green-800': '#016630',
-  'amber-100': '#fef3c6',
   'amber-600': '#e17100',
-  'amber-900': '#7b3306',
-  'red-300': '#ffa2a2',
+  'amber-800': '#973c00',
   'red-700': '#c10007',
-  'red-950': '#460809',
+  'red-800': '#9f0712',
 };
 
 const NIVEIS: NivelLotacao[] = ['livre', 'cheio', 'excesso'];
 
-/** A cor hex de `bg-…`, `text-…` ou `ring-…` nas classes da pastilha. */
+/** A cor hex de `bg-…`, `text-…` ou `ring-…` nas classes da pastilha (`white` ou `tom-número`). */
 function corDaClasse(classes: string, prefixo: 'bg' | 'text' | 'ring'): string {
-  const m = new RegExp(`(?:^|\\s)${prefixo}-([a-z]+-\\d+)(?=\\s|$)`).exec(classes);
+  const m = new RegExp(`(?:^|\\s)${prefixo}-(white|[a-z]+-\\d+)(?=\\s|$)`).exec(classes);
   if (!m) throw new Error(`Sem ${prefixo}-… em "${classes}"`);
   const hex = TAILWIND[m[1] as string];
   if (!hex) throw new Error(`Falta ${m[1]} na tabela de tons do teste`);
@@ -52,7 +50,7 @@ function linear(c: number): number {
 }
 
 /** CIELAB (D65) da cor vista com a matriz dada (aplicada em RGB linear). */
-function lab(hex: string, matriz: Matriz): [number, number, number] {
+function lab(hex: string, matriz: Matriz = NORMAL): [number, number, number] {
   const rgb = [1, 3, 5].map((i) => linear(Number.parseInt(hex.slice(i, i + 2), 16) / 255));
   const [r, g, b] = matriz.map((linha) =>
     Math.min(
@@ -99,25 +97,62 @@ describe('ESTILO_NIVEL (pastilhas da lotação)', () => {
     expect(corHex).toBe(corDaClasse(pastilha, 'ring'));
   });
 
-  it.each(VISOES)('%s: os três fundos distinguem-se entre si (ΔE76 ≥ 15)', (_visao, matriz) => {
-    const fundos = NIVEIS.map((n) => corDaClasse(ESTILO_NIVEL[n].pastilha, 'bg'));
-    for (let i = 0; i < fundos.length; i++) {
-      for (let j = i + 1; j < fundos.length; j++) {
-        const d = distancia(fundos[i] as string, fundos[j] as string, matriz);
-        expect(d, `${NIVEIS[i]} / ${NIVEIS[j]}`).toBeGreaterThanOrEqual(15);
-      }
+  it.each(NIVEIS)('%s: a pastilha vê-se sobre o cartão branco (fundo ou contorno ≥ 3:1)', (nivel) => {
+    const { pastilha } = ESTILO_NIVEL[nivel];
+    const fundo = contraste(corDaClasse(pastilha, 'bg'), '#ffffff');
+    const contorno = contraste(corDaClasse(pastilha, 'ring'), '#ffffff');
+    expect(Math.max(fundo, contorno)).toBeGreaterThanOrEqual(3);
+  });
+
+  // Os nomes são todos blocos de cor clara (L* entre 60 e 95) com texto quase-preto. Uma pastilha é
+  // branca (L* ≥ 99) ou escura (L* ≤ 50) e nunca tem o texto dos nomes: não há como as confundir.
+  it('nenhuma pastilha tem o desenho de um nome (fundo branco ou escuro, texto que não é o dos nomes)', () => {
+    for (const cliente of clientesIniciais) {
+      const [l] = lab(cliente.cor);
+      expect(l, cliente.sigla).toBeGreaterThanOrEqual(60);
+      expect(l, cliente.sigla).toBeLessThanOrEqual(95);
+    }
+    for (const nivel of NIVEIS) {
+      const { pastilha } = ESTILO_NIVEL[nivel];
+      const [l] = lab(corDaClasse(pastilha, 'bg'));
+      expect(l >= 99 || l <= 50, `${nivel}: L* ${l.toFixed(1)}`).toBe(true);
+      expect(corDaClasse(pastilha, 'text').toLowerCase()).not.toBe(COR_TEXTO_NOMES.toLowerCase());
     }
   });
 
-  it.each(VISOES)('%s: nenhuma pastilha se parece com o nome de um cliente (ΔE76 ≥ 15)', (_visao, matriz) => {
-    for (const nivel of NIVEIS) {
-      const fundo = corDaClasse(ESTILO_NIVEL[nivel].pastilha, 'bg');
-      for (const cliente of clientesIniciais) {
-        expect(distancia(fundo, cliente.cor, matriz), `${nivel} / ${cliente.sigla}`).toBeGreaterThanOrEqual(
-          15,
-        );
+  it.each(VISOES)(
+    '%s: nenhum fundo de pastilha se parece com o nome de um cliente (ΔE76 ≥ 15)',
+    (_visao, matriz) => {
+      for (const nivel of NIVEIS) {
+        const fundo = corDaClasse(ESTILO_NIVEL[nivel].pastilha, 'bg');
+        for (const cliente of clientesIniciais) {
+          expect(distancia(fundo, cliente.cor, matriz), `${nivel} / ${cliente.sigla}`).toBeGreaterThanOrEqual(
+            15,
+          );
+        }
       }
-    }
+    },
+  );
+
+  // Duas pastilhas distinguem-se pelo fundo (branca / cheia) ou, sendo ambas brancas, pelo contorno.
+  it.each(VISOES)(
+    '%s: os três níveis distinguem-se entre si (fundo ou contorno, ΔE76 ≥ 15)',
+    (_visao, matriz) => {
+      for (let i = 0; i < NIVEIS.length; i++) {
+        for (let j = i + 1; j < NIVEIS.length; j++) {
+          const a = ESTILO_NIVEL[NIVEIS[i] as NivelLotacao].pastilha;
+          const b = ESTILO_NIVEL[NIVEIS[j] as NivelLotacao].pastilha;
+          const fundo = distancia(corDaClasse(a, 'bg'), corDaClasse(b, 'bg'), matriz);
+          const contorno = distancia(corDaClasse(a, 'ring'), corDaClasse(b, 'ring'), matriz);
+          expect(Math.max(fundo, contorno), `${NIVEIS[i]} / ${NIVEIS[j]}`).toBeGreaterThanOrEqual(15);
+        }
+      }
+    },
+  );
+
+  it('"gente a mais" é a única pastilha cheia: é o aviso que mais importa ver', () => {
+    const cheias = NIVEIS.filter((n) => lab(corDaClasse(ESTILO_NIVEL[n].pastilha, 'bg'))[0] <= 50);
+    expect(cheias).toEqual(['excesso']);
   });
 
   it('a simulação bate com valores conhecidos (preto, branco, cinzento ficam iguais)', () => {

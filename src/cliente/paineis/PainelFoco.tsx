@@ -1,8 +1,9 @@
 // Ficha rápida do que está em foco (pessoa, casa ou carrinha), sobre o canto superior esquerdo do mapa.
 // Fecha com o botão ou com Esc. As casas, carrinhas e nomes da ficha mudam o foco.
 // No modo de edição: marca "alterado — por guardar", mostra o valor gravado ao lado do que mudou,
-// quem entra e sai, os botões "Mudar casa/carrinha/obra" (abrem o "Mover para…") e os de condutor
-// ("Tornar condutor" / "Tirar condutor"). O condutor aparece sempre em primeiro, com o volante.
+// quem entra e sai, os botões "Mudar casa/carrinha/obra" (abrem o "Mover para…"), os de condutor
+// ("Tornar condutor" / "Tirar condutor") e os de onde dorme a carrinha ("Mudar onde dorme…",
+// "Confirmar sugestão"). O condutor aparece sempre em primeiro, com o volante.
 
 import { type ReactNode, useEffect, useId } from 'react';
 import { clienteEfetivoId } from '../../dominio/cores';
@@ -14,8 +15,10 @@ import { IconeVolante } from '../comum/IconeVolante';
 import { ESTILO_AVISO_CONTRATO } from '../comum/lotacao';
 import { formatarMatricula } from '../comum/Matricula';
 import {
+  AcoesDormida,
   AcoesPessoa,
   CondutorGravado,
+  DormidaGravada,
   MarcaAlterado,
   MovimentosPendentes,
   PassageirosEmEdicao,
@@ -36,10 +39,12 @@ import {
   nomeCompleto,
   ROTULO_FORA_DAS_CASAS,
   ROTULO_SEM_TRANSPORTE,
+  ROTULO_TIPO_VEICULO,
   textoApartamento,
   textoCarta,
   textoContrato,
   textoDormida,
+  textoMarcaModelo,
   textoTelefone,
 } from './textos';
 
@@ -309,7 +314,11 @@ function FichaCarrinha({
 }) {
   const passageiros = indices.passageiros.get(carrinha.id) ?? [];
   const oc = ocupacaoCarrinha(carrinha, passageiros.length);
-  const dorme = textoDormida(dormidas.get(carrinha.id), indices);
+  const dormida = dormidas.get(carrinha.id);
+  const dorme = textoDormida(dormida, indices);
+  const sugerida = dormida?.confianca === 'sugerida';
+  const marcaModelo = textoMarcaModelo(carrinha);
+  const tipo = ROTULO_TIPO_VEICULO[carrinha.tipo];
   const { casas, semCasa } = casasDasPessoas(passageiros, indices);
   const alternativas = carrinha.matriculasAlternativas.length
     ? `também ${carrinha.matriculasAlternativas.join(', ')}`
@@ -320,13 +329,13 @@ function FichaCarrinha({
 
   return (
     <Moldura
-      tipo={carrinha.temporaria ? 'Carrinha de substituição' : 'Carrinha'}
+      tipo={carrinha.temporaria ? `${tipo} de substituição` : tipo}
       titulo={formatarMatricula(carrinha.matricula)}
       subtitulo={alternativas}
       alterado={alterada}
     >
       <dl>
-        <Linha rotulo="Modelo">{carrinha.modelo ?? <Vazio>desconhecido</Vazio>}</Linha>
+        <Linha rotulo="Modelo">{marcaModelo ?? <Vazio>desconhecido</Vazio>}</Linha>
         <Linha rotulo="Ocupação">
           <PastilhaLotacao ocupados={oc.ocupados} lugares={oc.lugares} nivel={oc.nivel} />
         </Linha>
@@ -342,6 +351,11 @@ function FichaCarrinha({
           </span>
         </Linha>
         <Linha rotulo="Onde dorme">
+          {sugerida && (
+            <span aria-hidden="true" className="text-slate-600">
+              ≈{' '}
+            </span>
+          )}
           {dorme.casaId ? (
             <BotaoFoco foco={{ tipo: 'casa', id: dorme.casaId }}>{dorme.rotulo}</BotaoFoco>
           ) : dorme.desconhecida ? (
@@ -349,7 +363,13 @@ function FichaCarrinha({
           ) : (
             dorme.rotulo
           )}
-          {dorme.nota && <span className="block text-xs text-slate-700">{dorme.nota}</span>}
+          {dorme.nota && (
+            <span className={`block text-xs ${sugerida ? 'text-slate-700 italic' : 'text-slate-700'}`}>
+              {dorme.nota}
+            </span>
+          )}
+          <DormidaGravada carrinhaId={carrinha.id} />
+          <AcoesDormida carrinha={carrinha} />
         </Linha>
       </dl>
       {carrinha.nota && <p className="mt-1 text-xs text-slate-700 italic">{carrinha.nota}</p>}

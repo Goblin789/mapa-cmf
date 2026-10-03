@@ -37,8 +37,8 @@ export interface CarrinhaInicial {
   id: Id;
   matricula: string;
   matriculasAlternativas: string[];
-  /** 'carrinha' ou 'carro'. Por omissão, carrinha. */
-  tipo?: 'carrinha' | 'carro';
+  /** 'carrinha' ou 'carro' (TIPOS_VEICULO; outro valor é erro bloqueante). Por omissão, carrinha. */
+  tipo?: string;
   marca?: string | null;
   modelo: string | null;
   lugares: number;
@@ -78,6 +78,9 @@ export interface DadosIniciais {
   locais: LocalInicial[];
   importacao: ConfigImportacao;
 }
+
+/** Os dados iniciais sem as pessoas: o que a sincronização (npm run sincronizar) compara com a base de dados. */
+export type DadosReferencia = Pick<DadosIniciais, 'clientes' | 'casas' | 'carrinhas' | 'locais'>;
 
 // --- Resultado da importação ---
 

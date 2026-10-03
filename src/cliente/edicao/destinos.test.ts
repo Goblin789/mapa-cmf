@@ -168,3 +168,21 @@ describe('tituloMover', () => {
     expect(tituloMover(['Ana T.', 'Bruno E.'], 'casa')).toBe('Mover 2 pessoas para…');
   });
 });
+
+describe('montarDestinos: marca e modelo das carrinhas', () => {
+  it('o detalhe é a marca com o modelo e a pesquisa encontra pela marca', () => {
+    const base = estadoExemplo();
+    const estado = {
+      ...base,
+      carrinhas: base.carrinhas.map((c) =>
+        c.id === 'zz1003' ? { ...c, tipo: 'carro' as const, marca: 'Marca Fictícia', modelo: 'Modelo X' } : c,
+      ),
+    };
+    const grupos = destinosDe(['p-helena'], estado);
+    const carro = grupos[1]?.destinos.find((d) => d.rotulo === 'ZZ 1003');
+    expect(carro?.detalhe).toBe('Marca Fictícia Modelo X');
+    expect(
+      filtrarDestinos(grupos, 'marca ficticia', 'carrinha').flatMap((g) => g.destinos.map((d) => d.rotulo)),
+    ).toEqual(['ZZ 1003']);
+  });
+});

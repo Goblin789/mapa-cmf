@@ -69,6 +69,7 @@ export function inserirDadosFicticios(bd: Bd): void {
         id: 'car-2',
         matricula: 'ZZ0002',
         matriculasAlternativas: ['ZZ9999'],
+        marca: 'Marca Fictícia',
         modelo: 'Carrinha Modelo',
         lugares: 9,
         dormeCasaId: 'casa-monte',
@@ -76,7 +77,7 @@ export function inserirDadosFicticios(bd: Bd): void {
         nota: 'Substituição',
         ordem: 2,
       },
-      { id: 'car-1', matricula: 'ZZ0001', lugares: 5, dormeLocalId: 'loc-parque', ordem: 1 },
+      { id: 'car-1', matricula: 'ZZ0001', tipo: 'carro', lugares: 5, dormeLocalId: 'loc-parque', ordem: 1 },
     ])
     .run();
 

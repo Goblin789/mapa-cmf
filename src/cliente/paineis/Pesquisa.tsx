@@ -4,6 +4,7 @@
 
 import { type KeyboardEvent, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { clienteEfetivoId } from '../../dominio/cores';
+import type { Indices } from '../../dominio/indices';
 import { pesquisar, type ResultadoPesquisa } from '../../dominio/pesquisa';
 import type { Id } from '../../dominio/tipos';
 import { useLoja } from '../estado/loja';
@@ -11,13 +12,26 @@ import { FOCO_VISIVEL, Z_POPOVER } from './classes';
 import { destinoNoMapa, ZOOM_DESTINO } from './fichas';
 import { IconeTipo, MarcaCliente } from './pecas';
 import { ehAtalhoPesquisa, ehCampoEditavel, moverAtivo } from './teclado';
-import { comPlural } from './textos';
+import { comPlural, detalheCarrinha } from './textos';
 
 const ROTULO_TIPO: Record<ResultadoPesquisa['tipo'], string> = {
   pessoa: 'pessoa',
   carrinha: 'carrinha',
   casa: 'casa',
 };
+
+/** Tipo à direita do resultado: um carro da frota diz "carro". */
+function rotuloTipo(r: ResultadoPesquisa, ind: Indices | null): string {
+  if (r.tipo === 'carrinha' && ind?.carrinhas.get(r.id)?.tipo === 'carro') return 'carro';
+  return ROTULO_TIPO[r.tipo];
+}
+
+/** Detalhe do resultado. Numa carrinha: "3/9 lugares · Ford Transit Custom" (com a marca). */
+function detalheResultado(r: ResultadoPesquisa, ind: Indices | null): string {
+  const carrinha = r.tipo === 'carrinha' ? ind?.carrinhas.get(r.id) : undefined;
+  if (!carrinha || !ind) return r.detalhe;
+  return detalheCarrinha(carrinha, ind.passageiros.get(carrinha.id)?.length ?? 0);
+}
 
 /** Se a pessoa estiver numa caixa lateral, mostra o nome dela lá (sem mexer no mapa nem no painel). */
 function mostrarNasCaixas(pessoaId: Id): void {
@@ -201,9 +215,11 @@ export function Pesquisa() {
                 {r.tipo === 'pessoa' ? <MarcaCliente cliente={cliente} /> : <IconeTipo tipo={r.tipo} />}
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-medium">{r.rotulo}</span>
-                  <span className="block truncate text-xs text-slate-600">{r.detalhe}</span>
+                  <span className="block truncate text-xs text-slate-600">
+                    {detalheResultado(r, indices)}
+                  </span>
                 </span>
-                <span className="shrink-0 text-[11px] text-slate-600">{ROTULO_TIPO[r.tipo]}</span>
+                <span className="shrink-0 text-[11px] text-slate-600">{rotuloTipo(r, indices)}</span>
               </div>
             );
           })}

@@ -11,7 +11,11 @@ export type DialogoEdicao =
   | { tipo: 'cancelar' }
   | { tipo: 'historico' }
   /** `filtro` = só casas/carrinhas/obras (aberto a partir do painel de foco); null = tudo. */
-  | { tipo: 'mover'; pessoaIds: Id[]; filtro: TipoDestino | null };
+  | { tipo: 'mover'; pessoaIds: Id[]; filtro: TipoDestino | null }
+  /** "Onde dorme a …": escolher a casa ou o local onde a carrinha dorme. */
+  | { tipo: 'dormida'; carrinhaId: Id }
+  /** Pede confirmação antes de confirmar as sugestões de onde dormem todas as carrinhas. */
+  | { tipo: 'confirmar-sugestoes' };
 
 export interface AvisoCurto {
   texto: string;
@@ -40,6 +44,11 @@ export const useUiEdicao = create<UiEdicao>()((set, get) => ({
 /** Abre o "Mover para…" (atalho para os painéis). */
 export function abrirMoverPara(pessoaIds: readonly Id[], filtro: TipoDestino | null = null): void {
   useUiEdicao.getState().abrirDialogo({ tipo: 'mover', pessoaIds: [...pessoaIds], filtro });
+}
+
+/** Abre o "Onde dorme a …" de uma carrinha. */
+export function abrirDormida(carrinhaId: Id): void {
+  useUiEdicao.getState().abrirDialogo({ tipo: 'dormida', carrinhaId });
 }
 
 /** Há algum diálogo aberto (deste módulo ou de outro, com o elemento <dialog>)? */

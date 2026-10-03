@@ -16,8 +16,12 @@ describe('montarModelo', () => {
   });
 
   it('as carrinhas vão para onde dormem (definida ou sugerida)', () => {
-    expect(grupo('L2')?.carrinhas).toEqual([{ id: 'V1', nLugares: 5, confianca: 'definida' }]);
-    expect(grupo('L1')?.carrinhas).toEqual([{ id: 'V2', nLugares: 9, confianca: 'sugerida' }]);
+    expect(grupo('L2')?.carrinhas).toEqual([
+      { id: 'V1', tipo: 'carrinha', nLugares: 5, confianca: 'definida' },
+    ]);
+    expect(grupo('L1')?.carrinhas).toEqual([
+      { id: 'V2', tipo: 'carrinha', nLugares: 9, confianca: 'sugerida' },
+    ]);
     // Estacionamento: grupo só com carrinhas.
     expect(grupo('E')?.casas).toEqual([]);
     expect(grupo('E')?.carrinhas.map((c) => c.id)).toEqual(['V4']);

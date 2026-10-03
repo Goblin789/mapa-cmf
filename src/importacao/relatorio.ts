@@ -493,7 +493,7 @@ function secaoFalta(r: ResultadoImportacao): string {
   );
 }
 
-const ESTILO = `
+export const ESTILO = `
 :root { color-scheme: light; --fundo: #f6f7f9; --texto: #1f2328; --suave: #59636e; --linha: #d0d7de;
   --dif: #fff3bf; --excesso: #ffc9c9; }
 * { box-sizing: border-box; }

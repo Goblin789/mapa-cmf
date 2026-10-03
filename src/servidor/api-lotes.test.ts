@@ -306,6 +306,87 @@ describe('POST /api/lotes — condutor', () => {
   });
 });
 
+describe('POST /api/lotes — onde dorme', () => {
+  const dormida = (carrinhaId: string, de: string | null, para: string | null): Operacao => ({
+    tipo: 'dormida',
+    carrinhaId,
+    de,
+    para,
+  });
+
+  it('muda onde dorme: grava a carrinha e a alteração, e o estado e o histórico mostram-no', async () => {
+    const resposta = await postar({
+      versaoBase: 1,
+      operacoes: [dormida('car-1', 'local:loc-parque', 'casa:casa-monte')],
+    });
+    expect(resposta.status).toBe(201);
+    expect(await resposta.json()).toStrictEqual({ loteId: 2, versao: 2 });
+
+    const estado = (await (await app.request('/api/estado')).json()) as {
+      carrinhas: { id: string; dormeCasaId: string | null; dormeLocalId: string | null }[];
+    };
+    expect(estado.carrinhas.map((c) => [c.id, c.dormeCasaId, c.dormeLocalId])).toStrictEqual([
+      ['car-1', 'casa-monte', null],
+      ['car-2', 'casa-monte', null],
+    ]);
+    expect(bd.select().from(esquema.alteracoes).all()).toStrictEqual([
+      {
+        id: 1,
+        loteId: 2,
+        entidade: 'carrinha',
+        entidadeId: 'car-1',
+        campo: 'dormida',
+        antes: '"local:loc-parque"',
+        depois: '"casa:casa-monte"',
+      },
+    ]);
+    const historico = (await (await app.request('/api/historico?limite=1')).json()) as EntradaHistorico[];
+    expect(historico[0]?.alteracoes.map((a) => a.descricao)).toStrictEqual([
+      'ZZ 0001 — onde dorme: Parque → Casa Monte',
+    ]);
+  });
+
+  it('sítio que não existe → 400 e nada muda', async () => {
+    const antes = fotografia();
+    const resposta = await postar({
+      versaoBase: 1,
+      operacoes: [dormida('car-1', 'local:loc-parque', 'local:nada')],
+    });
+    expect(resposta.status).toBe(400);
+    expect(await resposta.json()).toStrictEqual({
+      erro: 'Há mudanças que não se podem gravar. Nada foi gravado.',
+      erros: ['O sítio onde dormir "local:nada" não existe.'],
+    });
+    expect(fotografia()).toStrictEqual(antes);
+  });
+
+  it('conflito de onde dorme → 409 com a frase pronta a mostrar', async () => {
+    expect(
+      (await postar({ versaoBase: 1, operacoes: [dormida('car-2', 'casa:casa-monte', null)] })).status,
+    ).toBe(201);
+    const depois = fotografia();
+    const segundo = await postar({
+      versaoBase: 1,
+      operacoes: [dormida('car-2', 'casa:casa-monte', 'casa:casa-ribeira')],
+    });
+    expect(segundo.status).toBe(409);
+    expect(await segundo.json()).toStrictEqual({
+      erro: 'Alguém mudou entretanto algumas destas pessoas ou carrinhas. Nada foi gravado.',
+      conflitos: [
+        {
+          tipo: 'dormida',
+          carrinhaId: 'car-2',
+          esperado: 'casa:casa-monte',
+          atual: null,
+          descricao:
+            'ZZ 0002 — onde dorme: esperavas Casa Monte, mas agora está por definir (alguém mudou entretanto)',
+        },
+      ],
+    });
+    expect(fotografia()).toStrictEqual(depois);
+  });
+});
+
 describe('POST /api/lotes — compactação', () => {
   it('A → B → C grava só A → C', async () => {
     const resposta = await postar({
@@ -532,6 +613,31 @@ describe('POST /api/lotes — pedidos inválidos (400)', () => {
     [
       'condutor com pessoa vazia',
       { versaoBase: 1, operacoes: [{ tipo: 'condutor', carrinhaId: 'car-2', de: null, para: '' }] },
+      /operacoes\[0\]\.para/,
+    ],
+    [
+      'onde dorme sem carrinha',
+      { versaoBase: 1, operacoes: [{ tipo: 'dormida', de: null, para: 'casa:casa-monte' }] },
+      /operacoes\[0\]\.carrinhaId/,
+    ],
+    [
+      'onde dorme sem "de"',
+      { versaoBase: 1, operacoes: [{ tipo: 'dormida', carrinhaId: 'car-1', para: 'casa:casa-monte' }] },
+      /operacoes\[0\]\.de/,
+    ],
+    [
+      'onde dorme com uma chave mal feita',
+      { versaoBase: 1, operacoes: [{ tipo: 'dormida', carrinhaId: 'car-1', de: null, para: 'casa-monte' }] },
+      /operacoes\[0\]\.para: Onde dorme tem de ser "casa:<id>", "local:<id>" ou null\./,
+    ],
+    [
+      'onde dorme com uma chave sem id',
+      { versaoBase: 1, operacoes: [{ tipo: 'dormida', carrinhaId: 'car-1', de: 'local:', para: null }] },
+      /operacoes\[0\]\.de/,
+    ],
+    [
+      'onde dorme com um número',
+      { versaoBase: 1, operacoes: [{ tipo: 'dormida', carrinhaId: 'car-1', de: null, para: 3 }] },
       /operacoes\[0\]\.para/,
     ],
     [

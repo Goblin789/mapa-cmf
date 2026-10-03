@@ -1,5 +1,7 @@
 // Montagem das entidades a gravar a partir das linhas da lista mestra e dos dados iniciais.
 // Regras em docs/decisoes.md. Função pura: não lê nem escreve ficheiros.
+// Os clientes, locais, casas e veículos (montarReferencias) servem também a sincronização
+// (sincronizar.ts): a importação e a sincronização convertem os JSON exatamente da mesma maneira.
 
 import {
   type Carrinha,
@@ -11,12 +13,15 @@ import {
   type Pais,
   type Pessoa,
   TIPOS_LOCAL,
+  TIPOS_VEICULO,
   type TipoLocal,
+  type TipoVeiculo,
 } from '../dominio/tipos';
 import { chaveNome, garantirUnico, idPessoaBase, normalizarNumero } from './celulas';
 import { criarProcuras, type Procuras } from './correspondencias';
 import type {
   DadosIniciais,
+  DadosReferencia,
   Entidades,
   ErroImportacao,
   LinhaLista,
@@ -69,7 +74,7 @@ function verificarUnicos<T>(lista: T[], campo: (x: T) => string, rotulo: string,
   }
 }
 
-function montarClientes(dados: DadosIniciais, erros: ErroImportacao[]): Cliente[] {
+function montarClientes(dados: DadosReferencia, erros: ErroImportacao[]): Cliente[] {
   verificarUnicos(dados.clientes, (c) => c.id, 'Id de cliente', erros);
   verificarUnicos(dados.clientes, (c) => c.cor.toLowerCase(), 'Cor de cliente', erros);
   verificarUnicos(dados.clientes, (c) => c.sigla, 'Sigla de cliente', erros);
@@ -83,7 +88,7 @@ function montarClientes(dados: DadosIniciais, erros: ErroImportacao[]): Cliente[
   }));
 }
 
-function montarLocais(dados: DadosIniciais, erros: ErroImportacao[]): Local[] {
+function montarLocais(dados: DadosReferencia, erros: ErroImportacao[]): Local[] {
   verificarUnicos(dados.locais, (l) => l.id, 'Id de local', erros);
   const locais: Local[] = [];
   for (const l of dados.locais) {
@@ -117,7 +122,7 @@ function montarLocais(dados: DadosIniciais, erros: ErroImportacao[]): Local[] {
   return locais;
 }
 
-function montarCasas(dados: DadosIniciais, locais: Local[], erros: ErroImportacao[]): Casa[] {
+function montarCasas(dados: DadosReferencia, locais: Local[], erros: ErroImportacao[]): Casa[] {
   verificarUnicos(dados.casas, (c) => c.id, 'Id de casa', erros);
   verificarUnicos(dados.casas, (c) => c.nome, 'Nome de casa', erros);
   const idsLocais = new Set(locais.map((l) => l.id));
@@ -146,7 +151,25 @@ function montarCasas(dados: DadosIniciais, locais: Local[], erros: ErroImportaca
   });
 }
 
-function montarCarrinhas(dados: DadosIniciais, erros: ErroImportacao[]): Carrinha[] {
+/** Texto vazio (ou só espaços) conta como não preenchido. */
+function textoOuNulo(valor: string | null | undefined): string | null {
+  const t = valor?.trim();
+  return t ? t : null;
+}
+
+/** Tipo do veículo: por omissão carrinha; um valor que não seja 'carrinha' nem 'carro' é erro bloqueante. */
+function tipoVeiculo(tipo: string | undefined, onde: string, erros: ErroImportacao[]): TipoVeiculo {
+  if (tipo === undefined) return 'carrinha';
+  if ((TIPOS_VEICULO as readonly string[]).includes(tipo)) return tipo as TipoVeiculo;
+  erros.push({
+    bloqueante: true,
+    mensagem: `Tipo de veículo desconhecido "${tipo}" (tem de ser ${TIPOS_VEICULO.join(' ou ')}).`,
+    onde,
+  });
+  return 'carrinha';
+}
+
+function montarCarrinhas(dados: DadosReferencia, erros: ErroImportacao[]): Carrinha[] {
   verificarUnicos(dados.carrinhas, (c) => c.id, 'Id de carrinha', erros);
   verificarUnicos(
     dados.carrinhas.flatMap((c) => [c.matricula, ...c.matriculasAlternativas]),
@@ -157,8 +180,8 @@ function montarCarrinhas(dados: DadosIniciais, erros: ErroImportacao[]): Carrinh
   return dados.carrinhas.map((c, i) => ({
     id: c.id,
     matricula: c.matricula,
-    tipo: c.tipo === 'carro' ? ('carro' as const) : ('carrinha' as const),
-    marca: c.marca ?? null,
+    tipo: tipoVeiculo(c.tipo, `dados-iniciais/carrinhas.json (${c.id})`, erros),
+    marca: textoOuNulo(c.marca),
     matriculasAlternativas: [...c.matriculasAlternativas],
     modelo: c.modelo,
     lugares: c.lugares,
@@ -169,6 +192,32 @@ function montarCarrinhas(dados: DadosIniciais, erros: ErroImportacao[]): Carrinh
     nota: c.nota,
     ordem: i,
   }));
+}
+
+/** O que se monta dos dados iniciais sem precisar das pessoas. */
+export interface Referencias {
+  clientes: Cliente[];
+  locais: Local[];
+  casas: Casa[];
+  /** Carrinhas e carros, sem condutor nem sítio onde dormir (isso edita-se no programa). */
+  carrinhas: Carrinha[];
+}
+
+/**
+ * Clientes, locais, casas e veículos a partir dos dados iniciais, com os erros dos JSON (ids, cores,
+ * siglas, nomes e matrículas repetidos; tipos e países desconhecidos; locais sem coordenadas; casas com
+ * local inexistente). A ordem de cada lista é a do JSON (`ordem` = posição).
+ */
+export function montarReferencias(dados: DadosReferencia): {
+  referencias: Referencias;
+  erros: ErroImportacao[];
+} {
+  const erros: ErroImportacao[] = [];
+  const clientes = montarClientes(dados, erros);
+  const locais = montarLocais(dados, erros);
+  const casas = montarCasas(dados, locais, erros);
+  const carrinhas = montarCarrinhas(dados, erros);
+  return { referencias: { clientes, locais, casas, carrinhas }, erros };
 }
 
 /** Separa as linhas da folha "Não estão na lista" entre as que entram e as que ficam de fora. */
@@ -323,13 +372,10 @@ export function montarEntidades(
   extras: LinhaLista[],
   dados: DadosIniciais,
 ): ResultadoMontagem {
-  const erros: ErroImportacao[] = [];
   const normalizacoes = new Normalizacoes();
 
-  const clientes = montarClientes(dados, erros);
-  const locais = montarLocais(dados, erros);
-  const casas = montarCasas(dados, locais, erros);
-  const carrinhas = montarCarrinhas(dados, erros);
+  const { referencias, erros } = montarReferencias(dados);
+  const { clientes, locais, casas, carrinhas } = referencias;
 
   const { incluidos, excluidos, emFalta } = separarExtras(extras, dados.importacao.extrasAIncluir);
   for (const nome of emFalta) {

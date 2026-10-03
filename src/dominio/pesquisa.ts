@@ -77,6 +77,7 @@ export function pesquisar(estado: Estado, ind: Indices, termoBruto: string, limi
     const pontuacao = Math.max(
       pontuarCompacto(c.matricula, termo),
       ...c.matriculasAlternativas.map((m) => pontuarCompacto(m, termo) * 0.9),
+      pontuar([c.marca, c.modelo].filter(Boolean).join(' '), termo) * 0.6,
     );
     if (pontuacao > 0) {
       const n = ind.passageiros.get(c.id)?.length ?? 0;

@@ -40,6 +40,8 @@ const AUTORES: Record<string, string> = {
   importacao: 'Importação dos Excel',
   // Enquanto não há login (M1), o servidor grava os lotes com o autor "local".
   local: 'Este computador',
+  // Sincronização dos dados iniciais (npm run sincronizar): frota, cores, casas, locais.
+  'dados-iniciais': 'Dados iniciais',
 };
 
 /** Autor a mostrar ("importacao" e "local" não são pessoas). */

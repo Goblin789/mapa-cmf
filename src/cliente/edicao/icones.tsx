@@ -144,3 +144,33 @@ export function IconeRodar({ className }: PropsIcone) {
     </Icone>
   );
 }
+
+/** Lua: onde dorme a carrinha. */
+export function IconeDormir({ className }: PropsIcone) {
+  return (
+    <Icone className={className}>
+      <path d="M12.75 10.1A5.25 5.25 0 016.4 2.75a5.25 5.25 0 106.35 7.35z" />
+    </Icone>
+  );
+}
+
+/** Placa de estacionamento ("P"): outros locais onde uma carrinha pode dormir. */
+export function IconeLocal({ className }: PropsIcone) {
+  return (
+    <Icone className={className}>
+      <rect x="2.5" y="2.5" width="11" height="11" rx="2" />
+      <path d="M6.5 11V5h2.25a1.75 1.75 0 010 3.5H6.5" />
+    </Icone>
+  );
+}
+
+/** Ponto de interrogação num círculo tracejado: "por definir". */
+export function IconePorDefinir({ className }: PropsIcone) {
+  return (
+    <Icone className={className}>
+      <circle cx="8" cy="8" r="6" strokeDasharray="2 1.8" />
+      <path d="M6.4 6.4a1.6 1.6 0 113.1.6c-.3.7-1.5 1-1.5 2" />
+      <path d="M8 11.25v.01" />
+    </Icone>
+  );
+}

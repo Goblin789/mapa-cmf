@@ -260,7 +260,7 @@ describe('modos e cartões (estado fictício)', () => {
       lat: latLng.lat,
       lng: latLng.lng,
       casas: [],
-      carrinhas: [{ id: 'VNOVA', nLugares: 5, confianca: 'sugerida' }],
+      carrinhas: [{ id: 'VNOVA', tipo: 'carrinha', nLugares: 5, confianca: 'sugerida' }],
       obras: [],
     };
     const d1 = disporMapa([...antes, novo], { ...opcoes, anterior: d0 });
@@ -311,6 +311,7 @@ describe('modos e cartões (estado fictício)', () => {
       casas: Array.from({ length: casas }, (_, i) => ({ id: `c${i}`, nLugares: 2 })),
       carrinhas: Array.from({ length: carrinhas }, (_, i) => ({
         id: `v${i}`,
+        tipo: 'carrinha',
         nLugares: 5,
         confianca: 'sugerida',
       })),

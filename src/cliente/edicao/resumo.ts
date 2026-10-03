@@ -1,15 +1,19 @@
-// Resumo do rascunho: alterações agrupadas por pessoa (e as de condutor por carrinha), avisos antes de
-// guardar, o que mudou numa pessoa/casa/carrinha (painel de foco) e a frase de um passo (Desfeito: …).
-// Funções puras.
+// Resumo do rascunho: alterações agrupadas por pessoa (e as de condutor e de onde dorme por carrinha),
+// avisos antes de guardar, o que mudou numa pessoa/casa/carrinha (painel de foco) e a frase de um passo
+// (Desfeito: …). Funções puras.
 
+import type { Dormida } from '../../dominio/dormidas';
 import { type Indices, indexar } from '../../dominio/indices';
 import { type AvisoContrato, ocupacaoCarrinha, ocupacaoCasa } from '../../dominio/ocupacao';
 import {
   type CampoMovivel,
+  compactarOperacoes,
   descreverOperacao,
+  nomeDaDormida,
   nomeDoValor,
   type Operacao,
   type OperacaoCondutor,
+  type OperacaoDormida,
   type OperacaoMover,
 } from '../../dominio/operacoes';
 import type { Estado, Id, Pessoa } from '../../dominio/tipos';
@@ -35,6 +39,11 @@ export function soMovimentos(ops: readonly Operacao[]): OperacaoMover[] {
 /** Só as mudanças de condutor. */
 export function soCondutores(ops: readonly Operacao[]): OperacaoCondutor[] {
   return ops.filter((op): op is OperacaoCondutor => op.tipo === 'condutor');
+}
+
+/** Só as mudanças de onde dormem as carrinhas. */
+export function soDormidas(ops: readonly Operacao[]): OperacaoDormida[] {
+  return ops.filter((op): op is OperacaoDormida => op.tipo === 'dormida');
 }
 
 function nomeDaPessoa(estado: Estado, id: Id): string {
@@ -144,6 +153,52 @@ export function agruparCondutores(
   );
 }
 
+export interface AlteracaoDeDormida {
+  carrinhaId: Id;
+  /** Matrícula formatada ("ZZ 1001"). */
+  matricula: string;
+  /** Onde dormia e onde passa a dormir ("por definir", "Casa Um", "Parque"). */
+  de: string;
+  para: string;
+  /** Casa sugerida quando estava por definir (a da maioria dos passageiros); null se não havia. */
+  sugestaoAntes: string | null;
+  /** Estava por definir e passa a dormir na casa que era sugerida: confirma a sugestão. */
+  confirmaSugestao: boolean;
+  /** Frase inteira, como no histórico ("ZZ 1001 — onde dorme: por definir → Casa Um"). */
+  descricao: string;
+}
+
+/**
+ * Mudanças de onde dormem as carrinhas por guardar, uma por carrinha (pela ordem das carrinhas). Os nomes
+ * vêm do estado gravado; `dormidasServidor` (as sugestões do estado gravado) diz o que estava sugerido.
+ */
+export function agruparDormidas(
+  estadoServidor: Estado,
+  pendentes: readonly Operacao[],
+  dormidasServidor: ReadonlyMap<Id, Dormida> = new Map(),
+): AlteracaoDeDormida[] {
+  const resultado: AlteracaoDeDormida[] = [];
+  for (const op of soDormidas(compactarOperacoes(soDormidas(pendentes)))) {
+    const sugerida = dormidasServidor.get(op.carrinhaId);
+    const sugestao = op.de === null && sugerida?.confianca === 'sugerida' ? sugerida.casaId : null;
+    resultado.push({
+      carrinhaId: op.carrinhaId,
+      matricula: matriculaDe(estadoServidor, op.carrinhaId),
+      de: nomeDaDormida(estadoServidor, op.de),
+      para: nomeDaDormida(estadoServidor, op.para),
+      sugestaoAntes: sugestao === null ? null : nomeDaDormida(estadoServidor, `casa:${sugestao}`),
+      confirmaSugestao: sugestao !== null && op.para === `casa:${sugestao}`,
+      descricao: descreverOperacao(estadoServidor, op),
+    });
+  }
+  const ordem = new Map(estadoServidor.carrinhas.map((c) => [c.id, c.ordem]));
+  const posicao = (id: Id) => ordem.get(id) ?? Number.MAX_SAFE_INTEGER;
+  return resultado.sort(
+    (a, b) =>
+      posicao(a.carrinhaId) - posicao(b.carrinhaId) || comparadorNomes.compare(a.matricula, b.matricula),
+  );
+}
+
 export type GravidadeAviso = 'forte' | 'simples';
 
 export interface AvisoGuardar {
@@ -165,12 +220,12 @@ function destinos(pendentes: readonly Operacao[], campo: CampoMovivel): Id[] {
   return [...ids];
 }
 
-/** Carrinhas em que as alterações mexem: entra ou sai alguém, ou muda o condutor. */
+/** Carrinhas em que as alterações mexem: entra ou sai alguém, ou muda o condutor (onde dorme não conta). */
 function carrinhasMexidas(pendentes: readonly Operacao[]): Id[] {
   const ids = new Set<Id>();
   for (const op of pendentes) {
     if (op.tipo === 'condutor') ids.add(op.carrinhaId);
-    else if (op.campo === 'carrinhaId') {
+    else if (op.tipo === 'mover' && op.campo === 'carrinhaId') {
       if (op.de !== null) ids.add(op.de);
       if (op.para !== null) ids.add(op.para);
     }
@@ -337,19 +392,28 @@ export function condutorPendente(pendentes: readonly Operacao[], carrinhaId: Id)
   return soCondutores(pendentes).findLast((op) => op.carrinhaId === carrinhaId) ?? null;
 }
 
-/** A pessoa tem alterações por guardar: muda de casa, carrinha ou obra, ou passa a (ou deixa de) conduzir. */
-export function pessoaTemAlteracoes(pendentes: readonly Operacao[], pessoaId: Id): boolean {
-  return pendentes.some((op) =>
-    op.tipo === 'condutor' ? op.de === pessoaId || op.para === pessoaId : op.pessoaId === pessoaId,
-  );
+/** Mudança de onde dorme por guardar de uma carrinha (a última, se houver mais do que uma). */
+export function dormidaPendente(pendentes: readonly Operacao[], carrinhaId: Id): OperacaoDormida | null {
+  return soDormidas(pendentes).findLast((op) => op.carrinhaId === carrinhaId) ?? null;
 }
 
-/** A casa ou carrinha tem alterações por guardar: entra ou sai alguém (ou, numa carrinha, muda o condutor). */
+/** A pessoa tem alterações por guardar: muda de casa, carrinha ou obra, ou passa a (ou deixa de) conduzir. */
+export function pessoaTemAlteracoes(pendentes: readonly Operacao[], pessoaId: Id): boolean {
+  return pendentes.some((op) => {
+    if (op.tipo === 'condutor') return op.de === pessoaId || op.para === pessoaId;
+    return op.tipo === 'mover' && op.pessoaId === pessoaId;
+  });
+}
+
+/**
+ * A casa ou carrinha tem alterações por guardar: entra ou sai alguém (ou, numa carrinha, muda o condutor
+ * ou onde dorme).
+ */
 export function sitioTemAlteracoes(pendentes: readonly Operacao[], campo: CampoMovivel, id: Id): boolean {
   return pendentes.some((op) =>
-    op.tipo === 'condutor'
-      ? campo === 'carrinhaId' && op.carrinhaId === id
-      : op.campo === campo && (op.de === id || op.para === id),
+    op.tipo === 'mover'
+      ? op.campo === campo && (op.de === id || op.para === id)
+      : campo === 'carrinhaId' && op.carrinhaId === id,
   );
 }
 
@@ -406,21 +470,27 @@ function efeitoNoCondutor(estado: Estado, op: OperacaoCondutor): string {
  * Frase curta de um passo do rascunho, para o aviso depois de desfazer/refazer/mover.
  * Uma pessoa: "Ana — casa: Casa Um → Casa Dois". Várias para o mesmo sítio: "3 pessoas → Casa Dois".
  * Só o condutor: "ZZ 1001 — condutor: sem condutor → Ana". Quem sai da carrinha que conduzia:
- * "Ana — carrinha: ZZ 1001 → ZZ 1002 · ZZ 1001 fica sem condutor". Outros casos: "4 alterações".
+ * "Ana — carrinha: ZZ 1001 → ZZ 1002 · ZZ 1001 fica sem condutor". Onde dorme uma carrinha:
+ * "ZZ 1001 — onde dorme: por definir → Casa Um"; de várias: "onde dormem 3 carrinhas".
+ * Outros casos: "4 alterações".
  */
 export function resumirPasso(estado: Estado, passo: readonly Operacao[]): string {
   const movimentos = soMovimentos(passo);
   const condutores = soCondutores(passo);
+  const dormidas = soDormidas(passo);
   if (movimentos.length === 0) {
-    const [unica] = condutores;
+    const outras = [...condutores, ...dormidas];
+    const [unica] = outras;
     if (!unica) return 'nada';
-    return condutores.length === 1
-      ? descreverOperacao(estado, unica)
-      : comPlural(condutores.length, 'alteração', 'alterações');
+    if (outras.length === 1) return descreverOperacao(estado, unica);
+    return condutores.length === 0
+      ? `onde dormem ${comPlural(dormidas.length, 'carrinha', 'carrinhas')}`
+      : comPlural(outras.length, 'alteração', 'alterações');
   }
   return [
     resumirMovimentos(estado, movimentos),
     ...condutores.map((op) => efeitoNoCondutor(estado, op)),
+    ...dormidas.map((op) => descreverOperacao(estado, op)),
   ].join(' · ');
 }
 

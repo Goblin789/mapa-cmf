@@ -130,7 +130,7 @@ export function criarApp({ bd, pastaCliente, anfitrioes, agora = () => new Date(
         case 'conflito':
           return c.json(
             {
-              erro: r.conflitos.some((cf) => cf.tipo === 'condutor')
+              erro: r.conflitos.some((cf) => cf.tipo !== 'mover')
                 ? 'Alguém mudou entretanto algumas destas pessoas ou carrinhas. Nada foi gravado.'
                 : 'Alguém mudou entretanto algumas destas pessoas. Nada foi gravado.',
               conflitos: r.conflitos,

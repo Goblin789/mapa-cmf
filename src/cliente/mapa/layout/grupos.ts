@@ -5,7 +5,7 @@
 import type { ConfiancaDormida, Dormida } from '../../../dominio/dormidas';
 import type { Indices } from '../../../dominio/indices';
 import { ocupacaoCasa } from '../../../dominio/ocupacao';
-import type { Estado, Id } from '../../../dominio/tipos';
+import type { Estado, Id, TipoVeiculo } from '../../../dominio/tipos';
 import type { Camada } from '../../estado/loja';
 import { lugaresADesenhar } from './medidas';
 
@@ -20,6 +20,8 @@ export interface CasaNoMapa {
 
 export interface CarrinhaNoMapa {
   id: Id;
+  /** Carrinha ou carro (o carro desenha-se mais curto e arredondado). */
+  tipo: TipoVeiculo;
   nLugares: number;
   confianca: ConfiancaDormida;
 }
@@ -112,6 +114,7 @@ export function montarModelo(
       const confianca = dormida?.confianca ?? 'desconhecida';
       const c: CarrinhaNoMapa = {
         id: carrinha.id,
+        tipo: carrinha.tipo,
         nLugares: lugaresADesenhar(carrinha.lugares, ocupados),
         confianca,
       };

@@ -2,6 +2,14 @@
 
 Registo das decisões do Rafael e das escolhas por omissão. Mais recentes primeiro.
 
+## 04/10/2026 — terceiro feedback do Rafael
+
+- **Texto dos nomes**: igual em todos (o quase-preto da marca, #1C1C1B). Paleta clara: Costantini #F28A7E (coral), Galère #B2ECBC (menta), A+P Kieffer #84A6F4 (pervinca), Phillipe BTP #EACBF7 (lilás), Kisch #FCE55E (amarelo), Enquadramento #F39200 (laranja CMF), Mersch #5CB4B8 (petróleo). Contraste ≥ 7:1 com o texto; ver `docs/cores.md`.
+- **Pastilhas da lotação**: brancas com contorno verde (livre) ou âmbar (cheio) e vermelhas cheias quando há gente a mais, para não se confundirem com os nomes (todos claros).
+- **Onde dorme**: muda-se no modo de edição (ficha: "Mudar onde dorme…" e "Confirmar sugestão"; lista Carrinhas: "Mudar" e "Confirmar todas as sugestões", um só passo). Casa, outro local (ex.: estacionamento) ou "por definir" (usa a sugestão: a casa onde moram mais passageiros). Fica no histórico.
+- **Frota** (lista do Rafael, corrigida por ele): 26 veículos com tipo (carrinha/carro), marca e modelo. **Ficam** CF5003 (Ford Tourneo Connect) e CF5005 (Ford Transit Custom). MJ9423, MJ9426 e VG9737 estavam na lista mas foram vendidas e não entram. A **DS4264 dos Excel é afinal o YG4474** (Renault Megane, carro; engano do Michael): o veículo mantém o id interno DS4264 na BD, com as pessoas e o condutor, e passa a ter a matrícula YG4474 (DS4264 fica como alternativa).
+- **Os dados iniciais deixam de se aplicar por reimportação** (a BD já tem edições do Rafael): passa a haver `npm run sincronizar`, que atualiza clientes, casas, veículos e locais sem tocar nas edições e regista tudo no histórico.
+
 ## 03/10/2026 — segundo feedback do Rafael
 
 - **Himeling**: as 4 casas da Rue de la Forêt sempre à esquerda e as 4 da Rue de la Grotte sempre à direita (nunca um grupo em cima e outro em baixo). O mesmo para as carrinhas.

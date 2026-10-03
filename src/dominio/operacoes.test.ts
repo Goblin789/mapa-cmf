@@ -5,18 +5,22 @@ import {
   type CampoMovivel,
   campoDoAlvo,
   chaveAlvo,
+  chaveDormida,
   compactarOperacoes,
   descreverOperacao,
   encontrarConflitos,
   lerChaveAlvo,
+  lerChaveDormida,
+  nomeDaDormida,
   nomeDoValor,
   type Operacao,
   operacaoCondutor,
+  operacaoDormida,
   operacoesParaAlvo,
   validarOperacoes,
   valorDoAlvo,
 } from './operacoes';
-import { estadoAleatorio, estadoExemplo } from './teste-fabrica';
+import { criarCarrinha, estadoAleatorio, estadoExemplo } from './teste-fabrica';
 import type { Estado } from './tipos';
 
 function mover(pessoaId: string, campo: CampoMovivel, de: string | null, para: string | null): Operacao {
@@ -25,6 +29,10 @@ function mover(pessoaId: string, campo: CampoMovivel, de: string | null, para: s
 
 function condutor(carrinhaId: string, de: string | null, para: string | null): Operacao {
   return { tipo: 'condutor', carrinhaId, de, para };
+}
+
+function dormida(carrinhaId: string, de: string | null, para: string | null): Operacao {
+  return { tipo: 'dormida', carrinhaId, de, para };
 }
 
 /** estadoExemplo com a Ana a conduzir a ZZ 1001 (onde vai) e a Célia a ZZ 1002. */
@@ -647,5 +655,169 @@ describe('descreverOperacao', () => {
     expect(descreverOperacao(estado, condutor('zz-x', 'p-x', null))).toBe(
       'zz-x — condutor: p-x → sem condutor',
     );
+  });
+});
+
+describe('onde dorme: chaves', () => {
+  it('chaveDormida: a casa manda sobre o local; sem nenhum, null', () => {
+    expect(chaveDormida(criarCarrinha({ dormeCasaId: 'casa-1' }))).toBe('casa:casa-1');
+    expect(chaveDormida(criarCarrinha({ dormeLocalId: 'local-parque' }))).toBe('local:local-parque');
+    expect(chaveDormida(criarCarrinha({ dormeCasaId: 'casa-1', dormeLocalId: 'local-parque' }))).toBe(
+      'casa:casa-1',
+    );
+    expect(chaveDormida(criarCarrinha())).toBeNull();
+  });
+
+  it('lerChaveDormida: casa ou local com id (que pode ter ":"); o resto é null', () => {
+    expect(lerChaveDormida('casa:casa-1')).toStrictEqual({ tipo: 'casa', id: 'casa-1' });
+    expect(lerChaveDormida('local:a:b')).toStrictEqual({ tipo: 'local', id: 'a:b' });
+    for (const errada of ['casa:', ':casa-1', 'casa-1', 'obra:obra-a', 'carrinha:zz1001', '']) {
+      expect(lerChaveDormida(errada), errada).toBeNull();
+    }
+  });
+
+  it('nomeDaDormida: nome da casa ou do local; "por definir"; ids desconhecidos aparecem como vieram', () => {
+    const estado = estadoExemplo();
+    expect(nomeDaDormida(estado, 'casa:casa-2')).toBe('Casa Dois');
+    expect(nomeDaDormida(estado, 'local:local-parque')).toBe('Parque');
+    expect(nomeDaDormida(estado, null)).toBe('por definir');
+    expect(nomeDaDormida(estado, 'casa:casa-x')).toBe('casa-x');
+    expect(nomeDaDormida(estado, 'lixo')).toBe('lixo');
+  });
+});
+
+describe('onde dorme: operações', () => {
+  it('operacaoDormida parte do que está gravado (não da sugestão); null se já for assim', () => {
+    const estado = estadoExemplo();
+    expect(operacaoDormida(estado, 'zz1001', 'casa:casa-1')).toStrictEqual(
+      dormida('zz1001', null, 'casa:casa-1'),
+    );
+    expect(operacaoDormida(estado, 'zz1002', null)).toStrictEqual(
+      dormida('zz1002', 'local:local-parque', null),
+    );
+    expect(operacaoDormida(estado, 'zz1002', 'local:local-parque')).toBeNull();
+    expect(operacaoDormida(estado, 'zz1001', null)).toBeNull();
+    expect(operacaoDormida(estado, 'nao-existe', 'casa:casa-1')).toBeNull();
+  });
+
+  it('aplicarOperacoes: muda as duas colunas (uma ou nenhuma) e mais nada; não altera o estado recebido', () => {
+    const estado = estadoExemplo();
+    const copia = structuredClone(estado);
+    const depois = aplicarOperacoes(estado, [
+      dormida('zz1001', null, 'casa:casa-3'),
+      dormida('zz1002', 'local:local-parque', null),
+      dormida('zz1003', null, 'local:local-parque'),
+    ]);
+    expect(depois.carrinhas.map((c) => [c.id, c.dormeCasaId, c.dormeLocalId])).toStrictEqual([
+      ['zz1001', 'casa-3', null],
+      ['zz1002', null, null],
+      ['zz1003', null, 'local-parque'],
+    ]);
+    expect(depois.pessoas).toBe(estado.pessoas);
+    expect(estado).toStrictEqual(copia);
+    // Uma carrinha que também tinha local definido fica só com o novo sítio.
+    const ambos = {
+      ...estado,
+      carrinhas: [criarCarrinha({ id: 'v', dormeCasaId: 'casa-1', dormeLocalId: 'x' })],
+    };
+    expect(aplicarOperacoes(ambos, [dormida('v', 'casa:casa-1', 'casa:casa-2')]).carrinhas[0]).toMatchObject({
+      dormeCasaId: 'casa-2',
+      dormeLocalId: null,
+    });
+  });
+
+  it('compactarOperacoes: junta as da mesma carrinha e tira as que voltam ao início', () => {
+    expect(
+      compactarOperacoes([
+        dormida('zz1001', null, 'casa:casa-1'),
+        condutor('zz1001', null, 'p-ana'),
+        dormida('zz1001', 'casa:casa-1', 'casa:casa-2'),
+        dormida('zz1002', 'local:local-parque', null),
+        dormida('zz1002', null, 'local:local-parque'),
+      ]),
+    ).toStrictEqual([dormida('zz1001', null, 'casa:casa-2'), condutor('zz1001', null, 'p-ana')]);
+  });
+
+  it('encontrarConflitos: o "de" tem de ser o sítio gravado (por definir incluído)', () => {
+    const estado = estadoExemplo();
+    expect(
+      encontrarConflitos(estado, [
+        dormida('zz1001', null, 'casa:casa-1'),
+        dormida('zz1002', 'local:local-parque', null),
+        dormida('nao-existe', null, 'casa:casa-1'),
+      ]),
+    ).toStrictEqual([]);
+    expect(
+      encontrarConflitos(estado, [
+        dormida('zz1001', 'casa:casa-2', 'casa:casa-1'),
+        dormida('zz1002', null, 'casa:casa-1'),
+      ]),
+    ).toStrictEqual([
+      { tipo: 'dormida', carrinhaId: 'zz1001', esperado: 'casa:casa-2', atual: null },
+      { tipo: 'dormida', carrinhaId: 'zz1002', esperado: null, atual: 'local:local-parque' },
+    ]);
+  });
+
+  it('validarOperacoes: a carrinha e o sítio têm de existir (casa entre as casas, local entre os locais)', () => {
+    const estado = estadoExemplo();
+    expect(
+      validarOperacoes(estado, [
+        dormida('zz1001', null, 'casa:casa-1'),
+        dormida('zz1002', 'local:local-parque', null),
+        dormida('zz1003', null, 'local:local-a'),
+      ]),
+    ).toStrictEqual([]);
+    expect(validarOperacoes(estado, [dormida('zz-x', null, 'casa:casa-1')])).toStrictEqual([
+      'A carrinha zz-x não existe.',
+    ]);
+    expect(
+      validarOperacoes(estado, [
+        dormida('zz1001', null, 'casa:local-a'),
+        dormida('zz1003', null, 'local:casa-1'),
+        dormida('zz1002', null, 'obra:obra-a'),
+      ]),
+    ).toStrictEqual([
+      'O sítio onde dormir "casa:local-a" não existe.',
+      'O sítio onde dormir "local:casa-1" não existe.',
+      'O sítio onde dormir "obra:obra-a" não existe.',
+    ]);
+  });
+
+  it('onde dorme não mexe na regra do condutor (a carrinha não conta como mexida)', () => {
+    // A Ana conduz a ZZ 1003 sem ir nela: mudar onde dorme a ZZ 1003 não faz disso um erro.
+    const estado = aplicarOperacoes(estadoExemplo(), [condutor('zz1003', null, 'p-ana')]);
+    expect(validarOperacoes(estado, [dormida('zz1003', null, 'casa:casa-3')])).toStrictEqual([]);
+  });
+
+  it('descreverOperacao: matrícula e os nomes dos sítios (ou "por definir")', () => {
+    const estado = estadoExemplo();
+    expect(descreverOperacao(estado, dormida('zz1001', null, 'casa:casa-1'))).toBe(
+      'ZZ 1001 — onde dorme: por definir → Casa Um',
+    );
+    expect(descreverOperacao(estado, dormida('zz1002', 'local:local-parque', 'casa:casa-3'))).toBe(
+      'ZZ 1002 — onde dorme: Parque → Casa Três',
+    );
+    expect(descreverOperacao(estado, dormida('zz-x', 'casa:casa-x', null))).toBe(
+      'zz-x — onde dorme: casa-x → por definir',
+    );
+  });
+
+  it('em estados aleatórios, aplicar e depois ler a chave dá o sítio pedido', () => {
+    for (let semente = 1; semente <= 40; semente++) {
+      const estado = estadoAleatorio(semente);
+      const sitios = [
+        null,
+        ...estado.casas.map((c) => `casa:${c.id}`),
+        ...estado.locais.map((l) => `local:${l.id}`),
+      ];
+      for (const [i, carrinha] of estado.carrinhas.entries()) {
+        const para = sitios[(semente + i) % sitios.length] ?? null;
+        const op = operacaoDormida(estado, carrinha.id, para);
+        const depois = aplicarOperacoes(estado, op ? [op] : []);
+        const final = depois.carrinhas.find((c) => c.id === carrinha.id);
+        expect(final && chaveDormida(final), `semente ${semente}`).toBe(para);
+        expect(validarOperacoes(estado, op ? [op] : []), `semente ${semente}`).toStrictEqual([]);
+      }
+    }
   });
 });

@@ -123,7 +123,7 @@ export function DocaCarrinhas({ modelo }: { modelo: ModeloMapa }) {
               </p>
               <div className="flex flex-wrap items-end gap-2">
                 {carrinhas.map((c) => {
-                  const g = geometriaCarrinha(c.nLugares);
+                  const g = geometriaCarrinha(c.nLugares, false, c.tipo);
                   return (
                     <Lugar key={c.id} g={g}>
                       <CartaoCarrinha

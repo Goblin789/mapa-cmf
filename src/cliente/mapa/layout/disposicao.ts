@@ -224,7 +224,7 @@ export function localAArrumar(
     carrinhas: grupo.carrinhas.map(
       (c): ElementoCartao => ({
         chave: chaveCarrinha(c.id),
-        geometria: geometriaCarrinha(c.nLugares, carrinhasCompactas),
+        geometria: geometriaCarrinha(c.nLugares, carrinhasCompactas, c.tipo),
       }),
     ),
     obras: grupo.obras.map(

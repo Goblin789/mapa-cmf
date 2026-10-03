@@ -1,10 +1,13 @@
 // Barra da lista lateral: "ver por" (Casas, Carrinhas, Obras, Clientes), filtros (nome, a confirmar,
-// clientes), abrir/recolher tudo e alargar o painel.
+// clientes), abrir/recolher tudo e alargar o painel. Na vista Carrinhas, no modo de edição: "Confirmar
+// todas as sugestões" de onde dormem (pede confirmação; é um só passo do rascunho).
 
 import type { ReactNode } from 'react';
 import type { Cliente, Id } from '../../dominio/tipos';
+import { BOTAO_MINI } from '../edicao/classes';
 import { FOCO_VISIVEL } from '../paineis/classes';
-import { IconeLargura, IconeLupa, IconeRecolher } from './icones';
+import { comPlural } from '../paineis/textos';
+import { IconeDormir, IconeLargura, IconeLupa, IconeRecolher } from './icones';
 import { type Filtros, VISTAS, type Vista } from './seccoes';
 
 interface Props {
@@ -23,6 +26,9 @@ interface Props {
   alargado: boolean | null;
   aoAlternarAlargado: () => void;
   modoEdicao: boolean;
+  /** Carrinhas com onde dormem só sugerido (vista Carrinhas, modo de edição); null = não se mostra. */
+  sugestoesPorConfirmar: number | null;
+  aoConfirmarSugestoes: () => void;
 }
 
 function BotaoBarra({
@@ -63,6 +69,8 @@ export function BarraLista({
   alargado,
   aoAlternarAlargado,
   modoEdicao,
+  sugestoesPorConfirmar,
+  aoConfirmarSugestoes,
 }: Props) {
   const alternarCliente = (id: Id) => {
     const clientesNovos = new Set(filtros.clientes);
@@ -199,6 +207,28 @@ export function BarraLista({
             Toque longo num nome para o levantar e arraste-o para outra casa, carrinha ou obra.
           </span>
         </p>
+      )}
+
+      {sugestoesPorConfirmar !== null && (
+        <div className="flex max-w-xl flex-wrap items-center gap-x-2 gap-y-1 rounded border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] leading-snug text-slate-700">
+          <IconeDormir className="size-3.5 text-slate-500" />
+          <span className="min-w-0 flex-1">
+            Onde dormem:{' '}
+            {sugestoesPorConfirmar === 0
+              ? 'nenhuma sugestão por confirmar.'
+              : `${comPlural(sugestoesPorConfirmar, 'sugestão', 'sugestões')} por confirmar.`}
+          </span>
+          {sugestoesPorConfirmar > 0 && (
+            <button
+              type="button"
+              onClick={aoConfirmarSugestoes}
+              title="Cada carrinha passa a dormir na casa onde moram mais passageiros (pede confirmação)"
+              className={BOTAO_MINI}
+            >
+              Confirmar todas as sugestões
+            </button>
+          )}
+        </div>
       )}
     </div>
   );

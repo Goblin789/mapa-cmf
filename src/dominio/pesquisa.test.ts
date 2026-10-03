@@ -175,6 +175,8 @@ describe('pesquisar', () => {
       ['Château Fictício', 1],
       ['Estêvão F.', 0.9],
       ['João T.', 0.9],
+      // A carrinha também aparece pelo modelo ("Carrinha Fictícia"), com menos peso.
+      ['ZZ1001', 0.6],
     ]);
   });
 

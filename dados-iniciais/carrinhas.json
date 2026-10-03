@@ -1,5 +1,7 @@
 [
   {"id":"CF5001","matricula":"CF5001","matriculasAlternativas":[],"tipo":"carrinha","marca":"Ford","modelo":"Transit Custom","lugares":9,"pessoasDoc":8,"nota":null},
+  {"id":"CF5003","matricula":"CF5003","matriculasAlternativas":[],"tipo":"carrinha","marca":"Ford","modelo":"Tourneo Connect","lugares":5,"pessoasDoc":0,"nota":"Nova (segundo a especificação); ocupantes por decidir."},
+  {"id":"CF5005","matricula":"CF5005","matriculasAlternativas":[],"tipo":"carrinha","marca":"Ford","modelo":"Transit Custom","lugares":9,"pessoasDoc":0,"nota":"Nova (segundo a especificação); ocupantes por decidir."},
   {"id":"CF5006","matricula":"CF5006","matriculasAlternativas":[],"tipo":"carrinha","marca":"Ford","modelo":"Transit Custom","lugares":9,"pessoasDoc":7,"nota":null},
   {"id":"CF5007","matricula":"CF5007","matriculasAlternativas":[],"tipo":"carrinha","marca":"Ford","modelo":"Transit Custom","lugares":9,"pessoasDoc":5,"nota":null},
   {"id":"CF5008","matricula":"CF5008","matriculasAlternativas":[],"tipo":"carrinha","marca":"Ford","modelo":"Transit Custom","lugares":9,"pessoasDoc":9,"nota":null},
@@ -12,18 +14,15 @@
   {"id":"LN8786","matricula":"LN8786","matriculasAlternativas":[],"tipo":"carrinha","marca":"Renault","modelo":"Kangoo","lugares":5,"pessoasDoc":2,"nota":null},
   {"id":"LR6976","matricula":"LR6976","matriculasAlternativas":[],"tipo":"carrinha","marca":"Renault","modelo":"Kangoo","lugares":5,"pessoasDoc":2,"nota":null},
   {"id":"LT4701","matricula":"LT4701","matriculasAlternativas":[],"tipo":"carrinha","marca":"Renault","modelo":"Kangoo","lugares":5,"pessoasDoc":2,"nota":null},
-  {"id":"MJ9423","matricula":"MJ9423","matriculasAlternativas":[],"tipo":"carrinha","marca":"Renault","modelo":"Trafic","lugares":9,"pessoasDoc":0,"nota":"Entrou na lista da frota a 04/10/2026; número de lugares por confirmar."},
-  {"id":"MJ9426","matricula":"MJ9426","matriculasAlternativas":[],"tipo":"carrinha","marca":"Renault","modelo":"Trafic","lugares":9,"pessoasDoc":0,"nota":"Entrou na lista da frota a 04/10/2026; número de lugares por confirmar."},
   {"id":"QM9530","matricula":"QM9530","matriculasAlternativas":[],"tipo":"carrinha","marca":"Renault","modelo":"Trafic","lugares":9,"pessoasDoc":5,"nota":null},
   {"id":"SZ7564","matricula":"SZ7564","matriculasAlternativas":[],"tipo":"carrinha","marca":"Renault","modelo":"Kangoo","lugares":7,"pessoasDoc":5,"nota":null},
   {"id":"TD4512","matricula":"TD4512","matriculasAlternativas":[],"tipo":"carrinha","marca":"Renault","modelo":"Trafic","lugares":9,"pessoasDoc":4,"nota":null},
   {"id":"VG9733","matricula":"VG9733","matriculasAlternativas":[],"tipo":"carrinha","marca":"Renault","modelo":"Kangoo","lugares":5,"pessoasDoc":1,"nota":null},
-  {"id":"VG9737","matricula":"VG9737","matriculasAlternativas":[],"tipo":"carrinha","marca":"Peugeot","modelo":"Partner","lugares":5,"pessoasDoc":0,"nota":"Entrou na lista da frota a 04/10/2026; número de lugares por confirmar."},
   {"id":"XN4293","matricula":"XN4293","matriculasAlternativas":[],"tipo":"carrinha","marca":"Nissan","modelo":"NV200","lugares":7,"pessoasDoc":6,"nota":null},
   {"id":"YF6656","matricula":"YF6656","matriculasAlternativas":[],"tipo":"carrinha","marca":"Renault","modelo":"Kangoo","lugares":5,"pessoasDoc":5,"nota":null},
   {"id":"DH9250","matricula":"DH9250","matriculasAlternativas":[],"tipo":"carro","marca":"Volvo","modelo":"V40","lugares":5,"pessoasDoc":1,"nota":null},
   {"id":"NQ6505","matricula":"NQ6505","matriculasAlternativas":[],"tipo":"carro","marca":"Kia","modelo":"Sportage","lugares":5,"pessoasDoc":1,"nota":null},
   {"id":"SF4680","matricula":"SF4680","matriculasAlternativas":[],"tipo":"carro","marca":"Volkswagen","modelo":"T-Roc","lugares":5,"pessoasDoc":1,"nota":null},
-  {"id":"YG4474","matricula":"YG4474","matriculasAlternativas":[],"tipo":"carro","marca":"Renault","modelo":"Megane","lugares":5,"pessoasDoc":0,"nota":"Entrou na lista da frota a 04/10/2026; número de lugares por confirmar."},
+  {"id":"DS4264","matricula":"YG4474","matriculasAlternativas":["DS4264"],"tipo":"carro","marca":"Renault","modelo":"Megane","lugares":5,"pessoasDoc":2,"nota":"Nos Excel do Michael aparece como DS4264 por engano; o Rafael confirmou a 04/10/2026 que é o YG4474."},
   {"id":"YT7579","matricula":"YT7579","matriculasAlternativas":["VD6376"],"tipo":"carro","marca":"Hyundai","modelo":"iX35","lugares":5,"pessoasDoc":3,"nota":"Hyundai. Nos Excel aparece como VD6376; o Rafael confirmou a 03/10/2026 que a matrícula verdadeira é YT7579."}
 ]

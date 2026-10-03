@@ -122,6 +122,8 @@ describe('carregarEstado', () => {
       {
         id: 'car-1',
         matricula: 'ZZ0001',
+        tipo: 'carro',
+        marca: null,
         matriculasAlternativas: [],
         modelo: null,
         lugares: 5,
@@ -135,6 +137,8 @@ describe('carregarEstado', () => {
       {
         id: 'car-2',
         matricula: 'ZZ0002',
+        tipo: 'carrinha',
+        marca: 'Marca Fictícia',
         matriculasAlternativas: ['ZZ9999'],
         modelo: 'Carrinha Modelo',
         lugares: 9,
@@ -171,6 +175,15 @@ describe('carregarEstado', () => {
     expect(estado.casas.map((c) => [c.id, c.sempreCheia])).toStrictEqual([
       ['casa-monte', true],
       ['casa-ribeira', false],
+    ]);
+  });
+
+  it('um tipo de veículo desconhecido (escrito à mão na base de dados) conta como carrinha', () => {
+    inserirDadosFicticios(bd);
+    bd.$client.prepare("UPDATE carrinhas SET tipo = 'mota' WHERE id = 'car-1'").run();
+    expect(carregarEstado(bd).carrinhas.map((c) => [c.id, c.tipo])).toStrictEqual([
+      ['car-1', 'carrinha'],
+      ['car-2', 'carrinha'],
     ]);
   });
 

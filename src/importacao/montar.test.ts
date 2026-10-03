@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { dadosFicticios, folhaExtraFicticia, folhaPessoalFicticia } from './dadosFicticios';
+import { lerDadosReferencia } from './executar';
 import { lerFolhaExtra, lerFolhaPessoal } from './listaMestra';
-import { montarEntidades, RAIO_CASA_M, RAIO_ESTACIONAMENTO_M, separarExtras } from './montar';
+import {
+  montarEntidades,
+  montarReferencias,
+  RAIO_CASA_M,
+  RAIO_ESTACIONAMENTO_M,
+  separarExtras,
+} from './montar';
 import type { LinhaLista } from './tipos';
 
 function montar(pessoal = lerFolhaPessoal(folhaPessoalFicticia()).linhas, dados = dadosFicticios()) {
@@ -257,5 +264,57 @@ describe('montarEntidades', () => {
     expect(mensagens).toHaveLength(2);
     expect(mensagens[0]).toContain('sem coordenadas');
     expect(mensagens[1]).toContain('nao-existe');
+  });
+});
+
+describe('veículos: tipo e marca (carrinhas.json)', () => {
+  it('lê o tipo e a marca; sem tipo é carrinha e sem marca fica null', () => {
+    const dados = dadosFicticios();
+    const [aa, bb, cc] = dados.carrinhas;
+    if (aa) Object.assign(aa, { tipo: 'carro', marca: 'Marca Fictícia' });
+    if (bb) Object.assign(bb, { tipo: 'carrinha', marca: '  ' });
+    // cc fica sem tipo nem marca (como os JSON antigos).
+    expect(cc?.tipo).toBeUndefined();
+    const { entidades, erros } = montar(undefined, dados);
+    expect(erros.filter((e) => e.bloqueante)).toEqual([]);
+    expect(entidades.carrinhas.map((c) => [c.id, c.tipo, c.marca, c.modelo])).toEqual([
+      ['AA1111', 'carro', 'Marca Fictícia', 'Modelo X'],
+      ['BB2222', 'carrinha', null, null],
+      ['CC3333', 'carrinha', null, null],
+    ]);
+  });
+
+  it('tipo desconhecido → erro bloqueante (não passa a carrinha em silêncio)', () => {
+    const dados = dadosFicticios();
+    const aa = dados.carrinhas[0];
+    if (aa) aa.tipo = 'Carro';
+    const { erros } = montarReferencias(dados);
+    expect(erros).toEqual([
+      {
+        bloqueante: true,
+        mensagem: 'Tipo de veículo desconhecido "Carro" (tem de ser carrinha ou carro).',
+        onde: 'dados-iniciais/carrinhas.json (AA1111)',
+      },
+    ]);
+  });
+
+  it('montarReferencias dá o mesmo que a importação, sem precisar das pessoas', () => {
+    const dados = dadosFicticios();
+    const { referencias, erros } = montarReferencias(dados);
+    const { entidades } = montar(undefined, dados);
+    expect(erros).toEqual([]);
+    expect(referencias).toEqual({
+      clientes: entidades.clientes,
+      locais: entidades.locais,
+      casas: entidades.casas,
+      carrinhas: entidades.carrinhas,
+    });
+  });
+
+  it('os dados iniciais do projeto montam sem erros e todos os veículos têm um tipo conhecido', () => {
+    const { referencias, erros } = montarReferencias(lerDadosReferencia());
+    expect(erros).toEqual([]);
+    expect(referencias.carrinhas.length).toBeGreaterThan(0);
+    for (const c of lerDadosReferencia().carrinhas) expect(['carrinha', 'carro']).toContain(c.tipo);
   });
 });
