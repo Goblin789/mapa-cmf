@@ -1,7 +1,7 @@
 // Peças pequenas partilhadas pelos painéis.
 
 import type { ReactNode } from 'react';
-import { corTexto } from '../../dominio/cores';
+import { COR_TEXTO_NOMES } from '../../dominio/cores';
 import type { NivelLotacao } from '../../dominio/ocupacao';
 import type { Cliente, Pessoa } from '../../dominio/tipos';
 import { ESTILO_NIVEL } from '../comum/lotacao';
@@ -20,7 +20,7 @@ export function MarcaCliente({ cliente }: { cliente: Cliente | null }) {
     <span
       aria-hidden="true"
       className="inline-grid h-4 min-w-6 shrink-0 place-items-center rounded-sm border border-black/30 px-0.5 text-[10px] leading-none font-bold"
-      style={{ backgroundColor: cor, color: corTexto(cor) }}
+      style={{ backgroundColor: cor, color: COR_TEXTO_NOMES }}
     >
       {cliente?.sigla ?? '?'}
     </span>

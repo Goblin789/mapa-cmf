@@ -4,7 +4,7 @@
 
 import { sql } from 'drizzle-orm';
 import { type AnySQLiteColumn, integer, real, sqliteTable, text } from 'drizzle-orm/sqlite-core';
-import { PAISES, TIPOS_LOCAL } from '../../dominio/tipos';
+import { PAISES, TIPOS_LOCAL, TIPOS_VEICULO } from '../../dominio/tipos';
 
 export const clientes = sqliteTable('clientes', {
   id: text('id').primaryKey(),
@@ -50,6 +50,8 @@ export const carrinhas = sqliteTable('carrinhas', {
     .$type<string[]>()
     .notNull()
     .default(sql`'[]'`),
+  tipo: text('tipo', { enum: TIPOS_VEICULO }).notNull().default('carrinha'),
+  marca: text('marca'),
   modelo: text('modelo'),
   lugares: integer('lugares').notNull(),
   dormeCasaId: text('dorme_casa_id').references(() => casas.id),

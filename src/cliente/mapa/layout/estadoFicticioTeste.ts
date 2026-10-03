@@ -34,6 +34,8 @@ function carrinha(id: string, lugares: number, ordem: number, dorme: Partial<Car
   return {
     id,
     matricula: `ZZ${ordem}000`,
+    tipo: 'carrinha',
+    marca: null,
     matriculasAlternativas: [],
     modelo: null,
     lugares,

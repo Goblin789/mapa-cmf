@@ -22,6 +22,13 @@ export function contraste(a: string, b: string): number {
   return (l1 + 0.05) / (l2 + 0.05);
 }
 
+/**
+ * Cor do texto de TODOS os nomes (o quase-preto da marca CMF). O Rafael quer o texto igual em todos os
+ * nomes: por isso as cores dos clientes são claras o suficiente para este texto se ler (ver docs/cores.md
+ * e o teste que o garante).
+ */
+export const COR_TEXTO_NOMES = '#1C1C1B';
+
 /** Texto preto ou branco, o que tiver mais contraste com o fundo. */
 export function corTexto(fundo: string): '#000000' | '#ffffff' {
   return contraste(fundo, '#000000') >= contraste(fundo, '#ffffff') ? '#000000' : '#ffffff';

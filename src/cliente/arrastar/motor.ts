@@ -4,7 +4,7 @@
 // elemento debaixo do ponteiro. Largar num alvo = loja.moverPara (um passo do rascunho).
 // Os ouvintes ficam no document (fase de captura: o Leaflet para a propagação de alguns eventos).
 
-import { clienteEfetivoId, corTexto } from '../../dominio/cores';
+import { COR_TEXTO_NOMES, clienteEfetivoId } from '../../dominio/cores';
 import type { Id } from '../../dominio/tipos';
 import { useUiEdicao } from '../edicao/ui';
 import { useLoja } from '../estado/loja';
@@ -95,7 +95,7 @@ export function instalarMotorArrastar(): () => void {
     fantasma = criarFantasma({
       ...partesArrastados(pessoa.nomeCurto, ids.length),
       corFundo: cor,
-      corTexto: corTexto(cor),
+      corTexto: COR_TEXTO_NOMES,
       ponteiro: estado.ponteiro,
     });
 

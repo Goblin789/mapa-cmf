@@ -91,6 +91,8 @@ function paraCarrinha(l: LinhasBd['carrinhas'][number]): Carrinha {
   return {
     id: l.id,
     matricula: l.matricula,
+    tipo: l.tipo === 'carro' ? 'carro' : 'carrinha',
+    marca: l.marca ?? null,
     matriculasAlternativas: listaDeTextos(l.matriculasAlternativas),
     modelo: l.modelo ?? null,
     lugares: l.lugares,

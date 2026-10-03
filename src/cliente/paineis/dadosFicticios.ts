@@ -41,6 +41,8 @@ function carrinhaFicticia(
   campos: Partial<Carrinha> & Pick<Carrinha, 'id' | 'matricula' | 'ordem'>,
 ): Carrinha {
   return {
+    tipo: 'carrinha',
+    marca: null,
     matriculasAlternativas: [],
     modelo: null,
     lugares: 5,

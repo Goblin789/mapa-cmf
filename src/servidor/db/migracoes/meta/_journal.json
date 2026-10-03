@@ -15,6 +15,13 @@
       "when": 1791059349073,
       "tag": "0001_condutor_e_casa_sempre_cheia",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1791067575849,
+      "tag": "0002_frota_tipo_e_marca",
+      "breakpoints": true
     }
   ]
 }

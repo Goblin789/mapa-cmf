@@ -37,6 +37,9 @@ export interface CarrinhaInicial {
   id: Id;
   matricula: string;
   matriculasAlternativas: string[];
+  /** 'carrinha' ou 'carro'. Por omissão, carrinha. */
+  tipo?: 'carrinha' | 'carro';
+  marca?: string | null;
   modelo: string | null;
   lugares: number;
   /** Pessoas segundo o documento de especificação. */

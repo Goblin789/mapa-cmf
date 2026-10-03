@@ -64,9 +64,15 @@ export interface Casa {
   ordem: number;
 }
 
+export const TIPOS_VEICULO = ['carrinha', 'carro'] as const;
+export type TipoVeiculo = (typeof TIPOS_VEICULO)[number];
+
+/** Um veículo da frota: carrinha ou carro (o nome "Carrinha" ficou por ser o caso mais comum). */
 export interface Carrinha {
   id: Id;
   matricula: string;
+  tipo: TipoVeiculo;
+  marca: string | null;
   /** Outras matrículas pelas quais é conhecida (pesquisa). */
   matriculasAlternativas: string[];
   modelo: string | null;

@@ -157,6 +157,8 @@ function montarCarrinhas(dados: DadosIniciais, erros: ErroImportacao[]): Carrinh
   return dados.carrinhas.map((c, i) => ({
     id: c.id,
     matricula: c.matricula,
+    tipo: c.tipo === 'carro' ? ('carro' as const) : ('carrinha' as const),
+    marca: c.marca ?? null,
     matriculasAlternativas: [...c.matriculasAlternativas],
     modelo: c.modelo,
     lugares: c.lugares,

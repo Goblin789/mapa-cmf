@@ -6,7 +6,7 @@
 // por guardar leva uma marca discreta.
 
 import { useContext } from 'react';
-import { clienteEfetivoId, corTexto } from '../../dominio/cores';
+import { COR_TEXTO_NOMES, clienteEfetivoId } from '../../dominio/cores';
 import type { Pessoa } from '../../dominio/tipos';
 import { modoDoClique } from '../arrastar/selecao';
 import { useLoja } from '../estado/loja';
@@ -34,7 +34,9 @@ export function NomeChip({ pessoa, compacto = false, className = '', condutor = 
     (s) =>
       s.modoEdicao &&
       s.pendentes.some((op) =>
-        op.tipo === 'condutor' ? op.de === pessoa.id || op.para === pessoa.id : op.pessoaId === pessoa.id,
+        op.tipo === 'condutor'
+          ? op.de === pessoa.id || op.para === pessoa.id
+          : op.tipo === 'mover' && op.pessoaId === pessoa.id,
       ),
   );
   const selecionar = useLoja((s) => s.selecionar);
@@ -86,7 +88,7 @@ export function NomeChip({ pessoa, compacto = false, className = '', condutor = 
         apagado ? 'opacity-20' : 'opacity-100',
         className,
       ].join(' ')}
-      style={{ backgroundColor: fundo, color: corTexto(fundo) }}
+      style={{ backgroundColor: fundo, color: COR_TEXTO_NOMES }}
     >
       {condutor && <IconeVolante tamanho={compacto ? 9 : 11} rotulo="condutor" />}
       <span className="min-w-0 flex-1 truncate">{pessoa.nomeCurto}</span>

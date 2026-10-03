@@ -26,7 +26,37 @@ export interface OperacaoCondutor {
   para: Id | null;
 }
 
-export type Operacao = OperacaoMover | OperacaoCondutor;
+/**
+ * Onde dorme uma carrinha: "casa:<id>", "local:<id>" (ex.: um estacionamento) ou null = por definir
+ * (aí o mapa usa a sugestão: a casa da maioria dos passageiros).
+ */
+export type ChaveDormida = string;
+
+/** Mudar onde dorme uma carrinha. */
+export interface OperacaoDormida {
+  tipo: 'dormida';
+  carrinhaId: Id;
+  de: ChaveDormida | null;
+  para: ChaveDormida | null;
+}
+
+export type Operacao = OperacaoMover | OperacaoCondutor | OperacaoDormida;
+
+/** Onde dorme a carrinha, como está gravado (sem contar com a sugestão). */
+export function chaveDormida(carrinha: Carrinha): ChaveDormida | null {
+  if (carrinha.dormeCasaId) return `casa:${carrinha.dormeCasaId}`;
+  if (carrinha.dormeLocalId) return `local:${carrinha.dormeLocalId}`;
+  return null;
+}
+
+/** Lê uma chave de dormida; null se for inválida. */
+export function lerChaveDormida(chave: ChaveDormida): { tipo: 'casa' | 'local'; id: Id } | null {
+  const i = chave.indexOf(':');
+  const tipo = chave.slice(0, i);
+  const id = chave.slice(i + 1);
+  if (i <= 0 || !id || (tipo !== 'casa' && tipo !== 'local')) return null;
+  return { tipo, id };
+}
 
 /** Sítio onde se larga uma ou mais pessoas. */
 export type Alvo =
@@ -95,6 +125,14 @@ export function operacoesParaAlvo(estado: Estado, pessoaIds: readonly Id[], alvo
   return ops;
 }
 
+/** Operação para a carrinha passar a dormir em `para` (null = por definir); null se já for assim. */
+export function operacaoDormida(estado: Estado, carrinhaId: Id, para: ChaveDormida | null): Operacao | null {
+  const carrinha = estado.carrinhas.find((c) => c.id === carrinhaId);
+  if (!carrinha) return null;
+  const de = chaveDormida(carrinha);
+  return de === para ? null : { tipo: 'dormida', carrinhaId, de, para };
+}
+
 /** Operação para pôr `pessoaId` (ou ninguém) a conduzir a carrinha; null se já for assim. */
 export function operacaoCondutor(estado: Estado, carrinhaId: Id, pessoaId: Id | null): Operacao | null {
   const carrinha = estado.carrinhas.find((c) => c.id === carrinhaId);
@@ -115,9 +153,14 @@ export function aplicarOperacoes(estado: Estado, ops: readonly Operacao[]): Esta
   if (ops.length === 0) return estado;
   const porPessoa = new Map<Id, OperacaoMover[]>();
   const condutores = new Map<Id, Id | null>();
+  const dormidas = new Map<Id, ChaveDormida | null>();
   for (const op of ops) {
     if (op.tipo === 'condutor') {
       condutores.set(op.carrinhaId, op.para);
+      continue;
+    }
+    if (op.tipo === 'dormida') {
+      dormidas.set(op.carrinhaId, op.para);
       continue;
     }
     const lista = porPessoa.get(op.pessoaId);
@@ -134,11 +177,22 @@ export function aplicarOperacoes(estado: Estado, ops: readonly Operacao[]): Esta
             return lista ? lista.reduce(aplicarUma, p) : p;
           }),
     carrinhas:
-      condutores.size === 0
+      condutores.size === 0 && dormidas.size === 0
         ? estado.carrinhas
         : estado.carrinhas.map((c): Carrinha => {
+            let nova = c;
             const condutorId = condutores.get(c.id);
-            return condutorId === undefined ? c : { ...c, condutorId };
+            if (condutorId !== undefined) nova = { ...nova, condutorId };
+            const dormida = dormidas.get(c.id);
+            if (dormida !== undefined) {
+              const lida = dormida === null ? null : lerChaveDormida(dormida);
+              nova = {
+                ...nova,
+                dormeCasaId: lida?.tipo === 'casa' ? lida.id : null,
+                dormeLocalId: lida?.tipo === 'local' ? lida.id : null,
+              };
+            }
+            return nova;
           }),
   };
 }
@@ -151,7 +205,11 @@ export function compactarOperacoes(ops: readonly Operacao[]): Operacao[] {
   const juntas = new Map<string, Operacao>();
   for (const op of ops) {
     const chave =
-      op.tipo === 'condutor' ? `c\u0000${op.carrinhaId}` : `p\u0000${op.pessoaId}\u0000${op.campo}`;
+      op.tipo === 'condutor'
+        ? `c\u0000${op.carrinhaId}`
+        : op.tipo === 'dormida'
+          ? `d\u0000${op.carrinhaId}`
+          : `p\u0000${op.pessoaId}\u0000${op.campo}`;
     const anterior = juntas.get(chave);
     juntas.set(chave, anterior ? { ...anterior, para: op.para } : { ...op });
   }
@@ -161,7 +219,8 @@ export function compactarOperacoes(ops: readonly Operacao[]): Operacao[] {
 /** `esperado` = o que a operação esperava encontrar (`de`); `atual` = o que lá está agora. */
 export type Conflito =
   | { tipo: 'mover'; pessoaId: Id; campo: CampoMovivel; esperado: Id | null; atual: Id | null }
-  | { tipo: 'condutor'; carrinhaId: Id; esperado: Id | null; atual: Id | null };
+  | { tipo: 'condutor'; carrinhaId: Id; esperado: Id | null; atual: Id | null }
+  | { tipo: 'dormida'; carrinhaId: Id; esperado: ChaveDormida | null; atual: ChaveDormida | null };
 
 /** Operações cujo `de` já não corresponde ao estado (alguém mudou entretanto). */
 export function encontrarConflitos(estado: Estado, ops: readonly Operacao[]): Conflito[] {
@@ -169,6 +228,18 @@ export function encontrarConflitos(estado: Estado, ops: readonly Operacao[]): Co
   const carrinhas = new Map(estado.carrinhas.map((c) => [c.id, c]));
   const conflitos: Conflito[] = [];
   for (const op of ops) {
+    if (op.tipo === 'dormida') {
+      const c = carrinhas.get(op.carrinhaId);
+      if (c && chaveDormida(c) !== op.de) {
+        conflitos.push({
+          tipo: 'dormida',
+          carrinhaId: op.carrinhaId,
+          esperado: op.de,
+          atual: chaveDormida(c),
+        });
+      }
+      continue;
+    }
     if (op.tipo === 'condutor') {
       const c = carrinhas.get(op.carrinhaId);
       if (c && c.condutorId !== op.de) {
@@ -205,7 +276,18 @@ export function validarOperacoes(estado: Estado, ops: readonly Operacao[]): stri
   };
   const erros: string[] = [];
   const carrinhasMexidas = new Set<Id>();
+  const casas = new Set(estado.casas.map((c) => c.id));
+  const locais = new Set(estado.locais.map((l) => l.id));
   for (const op of ops) {
+    if (op.tipo === 'dormida') {
+      if (!carrinhas.has(op.carrinhaId)) erros.push(`A carrinha ${op.carrinhaId} não existe.`);
+      if (op.para !== null) {
+        const lida = lerChaveDormida(op.para);
+        const existe = lida && (lida.tipo === 'casa' ? casas.has(lida.id) : locais.has(lida.id));
+        if (!existe) erros.push(`O sítio onde dormir "${op.para}" não existe.`);
+      }
+      continue;
+    }
     if (op.tipo === 'condutor') {
       if (!carrinhas.has(op.carrinhaId)) {
         erros.push(`A carrinha ${op.carrinhaId} não existe.`);
@@ -267,8 +349,25 @@ function nomePessoa(estado: Estado, id: Id | null): string {
   return estado.pessoas.find((p) => p.id === id)?.nomeCurto ?? id;
 }
 
-/** Ex.: "Ana Exemplo — casa: Casa A → Casa B"; "ZZ 1001 — condutor: sem condutor → Ana Exemplo". */
+/** Nome do sítio onde a carrinha dorme ("por definir" quando não está definido). */
+export function nomeDaDormida(estado: Estado, chave: ChaveDormida | null): string {
+  if (chave === null) return 'por definir';
+  const lida = lerChaveDormida(chave);
+  if (!lida) return chave;
+  if (lida.tipo === 'casa') return estado.casas.find((c) => c.id === lida.id)?.nome ?? lida.id;
+  return estado.locais.find((l) => l.id === lida.id)?.nome ?? lida.id;
+}
+
+/**
+ * Ex.: "Ana Exemplo — casa: Casa A → Casa B"; "ZZ 1001 — condutor: sem condutor → Ana Exemplo";
+ * "ZZ 1001 — onde dorme: por definir → Casa A".
+ */
 export function descreverOperacao(estado: Estado, op: Operacao): string {
+  if (op.tipo === 'dormida') {
+    const matricula = estado.carrinhas.find((c) => c.id === op.carrinhaId)?.matricula;
+    const carrinha = matricula ? formatarMatricula(matricula) : op.carrinhaId;
+    return `${carrinha} — onde dorme: ${nomeDaDormida(estado, op.de)} → ${nomeDaDormida(estado, op.para)}`;
+  }
   if (op.tipo === 'condutor') {
     const matricula = estado.carrinhas.find((c) => c.id === op.carrinhaId)?.matricula;
     const carrinha = matricula ? formatarMatricula(matricula) : op.carrinhaId;

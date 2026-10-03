@@ -54,6 +54,8 @@ export function criarCarrinha(parcial: Partial<Carrinha> = {}): Carrinha {
   return {
     id,
     matricula: id.toUpperCase(),
+    tipo: 'carrinha',
+    marca: null,
     matriculasAlternativas: [],
     modelo: null,
     lugares: 9,
