@@ -2,6 +2,15 @@
 
 Registo das decisões do Rafael e das escolhas por omissão. Mais recentes primeiro.
 
+## 03/10/2026 — M0 entregue (só leitura, no PC)
+
+- O servidor só aceita ligações do próprio PC (127.0.0.1 e verificação do Host) até haver login no M1.
+- A importação do M0 apaga e recria tudo (incluindo o histórico). A partir do M2 deixa de ser assim.
+- "Costantino Gonçalves" no ficheiro do Michael é a mesma pessoa que "Constantino Gonçalves" na lista.
+- A lista a salmão do Michael (sem casa) conta como "Fora das casas" no cruzamento.
+- Aviso de contrato: compara os lugares da casa (moradores + vagas) com o máximo e o tolerado, como diz a especificação.
+  Sem tolerado conhecido, passar o máximo dá só o aviso simples. *Por confirmar com o Rafael.*
+
 ## 03/10/2026 — arranque do M0
 
 **Aprovado**

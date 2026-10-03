@@ -9,7 +9,8 @@ Decisões e respostas do Rafael: `docs/decisoes.md` (atualizar sempre que ele de
   (telemóvel, ecrã, utilizador, guardar/gravar). Termos técnicos consagrados podem ficar em inglês.
 
 ## Comandos
-- `npm run dev` — servidor (porta 8787) + browser (Vite, porta 5173, com proxy de /api).
+- `npm run dev` — servidor (porta 8787, `node --watch`) + browser (Vite, porta 5173, com proxy de /api).
+  O servidor só aceita ligações do próprio PC enquanto não houver login (M1).
 - `npm run verificar` — tipos + lint + testes. Correr antes de dar uma tarefa por terminada.
 - `npm run importar` — importação dos Excel em modo de ensaio (gera `dados/relatorio-importacao.html`);
   `npm run importar -- --aplicar` grava na base de dados local.
@@ -30,7 +31,8 @@ Decisões e respostas do Rafael: `docs/decisoes.md` (atualizar sempre que ele de
 - **Nunca escrever** na pasta de origem do OneDrive (`PASTA_ORIGEM`): só se lê de lá.
 - **Dados pessoais fora do git**: nada de telefones, cartas, ausências, GPS nem cópias da lista de pessoal
   no repositório. Os Excel, a base de dados e os relatórios vivem em `dados/` (ignorada pelo git).
-  Testes usam dados fictícios.
+  Testes e comentários usam dados fictícios. Nomes reais só onde são indispensáveis para uma decisão
+  (`dados-iniciais/importacao.json`, `docs/`).
 - **Indisponibilidade**: guarda-se só o estado e as datas, **nunca o motivo** (nem campo de texto livre).
 - **GPS**: nenhum ponto fora de um local conhecido é guardado. As credenciais do Reveal só existem no servidor.
 - **Segredos** só em `.env` (local) ou nas variáveis do alojamento. Nunca no código nem no chat.
