@@ -43,6 +43,6 @@ Decisões e respostas do Rafael: `docs/decisoes.md` (atualizar sempre que ele de
 Mapa com cartões ao estilo pedido pelo Rafael (casas com telhado, carrinhas vistas de cima, matrícula
 luxemburguesa), camadas, lista lateral por casas/carrinhas/obras/clientes e **modo de edição** (rascunho,
 arrastar, Mover para…, Guardar/Cancelar, histórico) — tudo local no PC do Rafael. Ainda sem login nem alojamento (M1).
--  grava tudo ou nada (409 se alguém mudou as mesmas pessoas); .
+- `POST /api/lotes` grava tudo ou nada (409 se alguém mudou as mesmas pessoas); `GET /api/historico`.
   O autor é 'local' e só se aceitam origens localhost até haver login.
-- Tipos da API em ; formato das matrículas em .
+- Tipos da API em `src/dominio/api.ts`; formato das matrículas em `src/dominio/matricula.ts`.
