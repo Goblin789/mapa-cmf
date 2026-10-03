@@ -8,7 +8,7 @@
   },
   "scripts": {
     "dev": "concurrently -k -n servidor,cliente -c blue,green \"npm:dev:servidor\" \"npm:dev:cliente\"",
-    "dev:servidor": "tsx watch src/servidor/index.ts",
+    "dev:servidor": "node --watch --import tsx src/servidor/index.ts",
     "dev:cliente": "vite",
     "build": "vite build",
     "test": "vitest run",
@@ -18,7 +18,8 @@
     "verificar": "npm run tipos && npm run lint && npm run test",
     "bd:gerar": "drizzle-kit generate",
     "importar": "tsx scripts/importar.ts",
-    "geocodificar": "tsx scripts/geocodificar.ts"
+    "geocodificar": "tsx scripts/geocodificar.ts",
+    "start": "tsx src/servidor/index.ts"
   },
   "dependencies": {
     "@hono/node-server": "^2.1.3",

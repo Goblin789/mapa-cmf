@@ -88,7 +88,7 @@ export interface Obra {
 
 export interface Pessoa {
   id: Id;
-  /** Nº normalizado (sem espaços, com o sufixo: 865-017 e 865-017_3 são pessoas diferentes). */
+  /** Nº normalizado (sem espaços, com o sufixo: 900-001 e 900-001_2 são pessoas diferentes). */
   numero: string | null;
   numeroOriginal: string | null;
   apelidos: string;

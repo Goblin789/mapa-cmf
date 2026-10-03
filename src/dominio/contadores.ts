@@ -30,12 +30,13 @@ export interface Contadores {
 }
 
 function contarPorCliente(pessoas: Pessoa[], ind: Indices): ContagemPorCliente {
-  const porCliente: Record<Id, number> = {};
+  // Map e não {}: um id como "constructor" ou "toString" apanharia o valor de Object.prototype.
+  const porCliente = new Map<Id, number>();
   for (const p of pessoas) {
     const id = clienteEfetivoId(p, ind.obras);
-    porCliente[id] = (porCliente[id] ?? 0) + 1;
+    porCliente.set(id, (porCliente.get(id) ?? 0) + 1);
   }
-  return { total: pessoas.length, porCliente };
+  return { total: pessoas.length, porCliente: Object.fromEntries(porCliente) };
 }
 
 export function calcularContadores(estado: Estado, ind: Indices = indexar(estado)): Contadores {
