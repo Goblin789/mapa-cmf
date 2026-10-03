@@ -111,6 +111,8 @@ Há 136 pessoas, 7 clientes, 15 casas e 26 carrinhas. A lista nominal completa (
 
 ### Clientes e cores
 
+> Nota (03/10/2026): as cores abaixo são as do Excel do Michael. A aplicação usa as cores novas escolhidas a pedido do Rafael — ver `docs/cores.md`.
+
 | Cliente | Cor (hex) | Pessoas |
 | --- | --- | --- |
 | Costantini | #ED7D31 laranja | 58 |

@@ -98,7 +98,7 @@ export function PastilhaResumo({ disposto, esquerda, topo, destaque }: Props) {
               <IconeCasa tamanho={11} />
               <PastilhaLotacao ocupados={casas.ocupados} lugares={casas.lugares} nivel={casas.nivel} />
               {acimaContrato > 0 && (
-                <span className="text-[8px] text-amber-700" title="Acima do contrato">
+                <span className="text-[9px] text-amber-700" title="Acima do contrato">
                   ▲
                 </span>
               )}

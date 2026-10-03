@@ -17,7 +17,7 @@ import {
   operacoesParaAlvo,
 } from '../../dominio/operacoes';
 import type { Estado, Id } from '../../dominio/tipos';
-import { type ConflitoServidor, ErroConflito, guardarLote, obterEstado } from './api';
+import { type ConflitoServidor, ErroConflito, ErroServidor, guardarLote, obterEstado } from './api';
 
 export type Foco = { tipo: 'pessoa' | 'casa' | 'carrinha'; id: Id } | null;
 
@@ -207,7 +207,8 @@ export const useLoja = create<Loja>()((set, get) => {
       if (!estado || !modoEdicao) return 0;
       const ops = operacoesParaAlvo(estado, pessoaIds, alvo);
       get().aplicar(ops);
-      return ops.length;
+      // Conta pessoas que mudaram (a operação que tira o condutor vai junto e não conta).
+      return ops.filter((op) => op.tipo === 'mover').length;
     },
     desfazer: () => {
       const { passos, passosDesfeitos, modoEdicao } = get();
@@ -266,6 +267,9 @@ export const useLoja = create<Loja>()((set, get) => {
           await get().carregar();
         } else {
           set({ erroGuardar: e instanceof Error ? e.message : String(e), aGuardar: false });
+          // O servidor recusou (ex.: o condutor já não vai na carrinha): traz o estado atual para o
+          // rascunho se ver por cima dele. Uma falha de rede não recarrega.
+          if (e instanceof ErroServidor && e.estado === 400) await get().carregar();
         }
         return false;
       }

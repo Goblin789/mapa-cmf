@@ -11,7 +11,11 @@ Registo das decisões do Rafael e das escolhas por omissão. Mais recentes prime
 - **Walferdange e Schifflange** contam sempre como cheias (`sempreCheia`): os lugares são os moradores, sem vagas.
 - **Marca**: logótipo, favicon e letras da CMF (Archivo e IBM Plex Sans, alojadas no próprio site), conforme o manual de marca em `01 Marca`.
 - **Matrícula**: a verdadeira é **YT7579**; VD6376 (como aparece nos Excel) fica como alternativa.
-- A importação passa a recusar apagar a base de dados se já houver gravações feitas no programa (só com `--forcar`).
+- A importação passa a recusar apagar a base de dados se já houver gravações feitas no programa (lotes de mudança, correção ou ficha; só com `--forcar`).
+- Locais a menos de 500 m uns dos outros ficam lado a lado no mapa (o de oeste à esquerda); hoje só se aplica a Himeling.
+- Avisos ao guardar: condutor sem carta = aviso forte; carta caducada = aviso simples; carta desconhecida = sem aviso; carrinha mexida que tinha condutor e fica com gente sem condutor = aviso simples.
+- Modo de edição com o laranja da marca (#F39200) e texto escuro; as pastilhas da lotação passaram a fundo claro com contorno, para não se confundirem com os nomes vermelhos/verdes.
+- *Por confirmar*: se o cliente Kisch é a Kisch Constructions (Medernach); não se encontrou a marca da Phillipe BTP nem da Mersch (cores escolhidas por nós).
 
 ## 03/10/2026 — modo de edição e cartões novos (no PC)
 

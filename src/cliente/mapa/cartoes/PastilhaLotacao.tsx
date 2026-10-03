@@ -21,7 +21,7 @@ export function PastilhaLotacao({ ocupados, lugares, nivel }: Props) {
       title={`${ocupados} de ${lugares} lugares ocupados · ${estilo.rotulo}`}
     >
       {ocupados}/{lugares}
-      <span aria-hidden="true" className="text-[8px]">
+      <span aria-hidden="true" className="text-[9px]">
         {estilo.simbolo}
       </span>
       <span className="sr-only"> ({estilo.rotulo})</span>

@@ -18,7 +18,17 @@ export async function obterEstado(): Promise<Estado> {
 /** O servidor recusou porque alguém mudou entretanto as mesmas pessoas (HTTP 409). Nada foi gravado. */
 export class ErroConflito extends Error {
   constructor(readonly conflitos: ConflitoServidor[]) {
-    super('Alguém mudou entretanto algumas destas pessoas. Nada foi gravado.');
+    super('Alguém mudou entretanto algumas destas pessoas ou carrinhas. Nada foi gravado.');
+  }
+}
+
+/** O servidor recusou o pedido (ex.: 400 = as mudanças já não fazem sentido no estado atual). */
+export class ErroServidor extends Error {
+  constructor(
+    readonly estado: number,
+    mensagem: string,
+  ) {
+    super(mensagem);
   }
 }
 
@@ -37,7 +47,10 @@ export async function guardarLote(pedido: PedidoGuardar): Promise<RespostaGuarda
   if (resposta.status === 409 && corpo.conflitos) throw new ErroConflito(corpo.conflitos);
   if (!resposta.ok) {
     const detalhe = corpo.erros?.length ? ` ${corpo.erros.join(' ')}` : '';
-    throw new Error(`${corpo.erro ?? `O servidor respondeu ${resposta.status}.`}${detalhe}`);
+    throw new ErroServidor(
+      resposta.status,
+      `${corpo.erro ?? `O servidor respondeu ${resposta.status}.`}${detalhe}`,
+    );
   }
   return { loteId: corpo.loteId as number, versao: corpo.versao as number };
 }

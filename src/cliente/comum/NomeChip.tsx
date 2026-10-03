@@ -95,7 +95,7 @@ export function NomeChip({ pessoa, compacto = false, className = '', condutor = 
           ?
         </span>
       )}
-      {cliente && <span className="shrink-0 font-semibold opacity-70">{cliente.sigla}</span>}
+      {cliente && <span className="shrink-0 font-semibold opacity-90">{cliente.sigla}</span>}
       {alterado && (
         <>
           <span

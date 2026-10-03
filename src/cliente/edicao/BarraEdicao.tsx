@@ -47,7 +47,7 @@ export function BarraEdicao() {
         <div className="order-1 flex min-w-0 flex-1 items-center gap-2 text-sm sm:flex-auto">
           <span
             aria-hidden="true"
-            className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-amber-500 text-white"
+            className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[#F39200] text-[#1C1C1B]"
           >
             <IconeLapis className="h-3.5 w-3.5" />
           </span>
@@ -65,7 +65,7 @@ export function BarraEdicao() {
           <p
             className={`shrink-0 rounded-full border px-2 text-xs leading-5 font-semibold tabular-nums ${
               nPendentes > 0
-                ? 'border-amber-600 bg-amber-500 text-white'
+                ? 'border-[#B35F00] bg-[#F39200] text-[#1C1C1B]'
                 : 'border-amber-300 bg-white/70 text-amber-900'
             }`}
           >
@@ -120,7 +120,7 @@ export function BarraEdicao() {
             <span className="sm:hidden">Mover</span>
             <span className="hidden sm:inline">Mover para…</span>
             {nSelecao > 0 && (
-              <span className="rounded-full bg-amber-500 px-1.5 text-xs leading-4 font-semibold text-white tabular-nums">
+              <span className="rounded-full bg-[#F39200] px-1.5 text-xs leading-4 font-semibold text-[#1C1C1B] tabular-nums">
                 {nSelecao}
                 <span className="sr-only">
                   {' '}

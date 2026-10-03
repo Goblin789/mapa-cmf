@@ -3,7 +3,10 @@
 import type { Conflito, Operacao } from './operacoes';
 
 export interface PedidoGuardar {
-  /** Versão do estado sobre a qual as alterações foram feitas (informativa; os conflitos vêm do `de`). */
+  /**
+   * Versão do estado sobre a qual o rascunho foi feito. Os conflitos vêm do `de`; a versão serve também
+   * para o servidor reconhecer conflitos escondidos pela regra do condutor.
+   */
   versaoBase: number;
   operacoes: Operacao[];
   comentario?: string;

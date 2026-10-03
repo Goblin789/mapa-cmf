@@ -13,7 +13,8 @@ Decisões e respostas do Rafael: `docs/decisoes.md` (atualizar sempre que ele de
   O servidor só aceita ligações do próprio PC enquanto não houver login (M1).
 - `npm run verificar` — tipos + lint + testes. Correr antes de dar uma tarefa por terminada.
 - `npm run importar` — importação dos Excel em modo de ensaio (gera `dados/relatorio-importacao.html`);
-  `npm run importar -- --aplicar` grava na base de dados local.
+  `npm run importar -- --aplicar` grava na base de dados local. Recusa se já houver gravações feitas no
+  programa (lotes que não são de importação), porque as apagava; só com `--forcar`.
 - `npm run geocodificar` — coordenadas das moradas de `dados-iniciais/locais.json`.
 - `npm run bd:gerar` — nova migração depois de mudar `src/servidor/db/esquema.ts`.
 
