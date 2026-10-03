@@ -2,6 +2,16 @@
 
 Registo das decisões do Rafael e das escolhas por omissão. Mais recentes primeiro.
 
+## 03/10/2026 — modo de edição e cartões novos (no PC)
+
+- Um POST cujas mudanças se anulam todas (A→B→A) não cria lote (400): nem versão nova nem entrada vazia no histórico.
+- Conflitos: se alguém mudou as mesmas pessoas entretanto, nada é gravado e o ecrã explica quem/onde; o rascunho fica.
+- O mapa escolhe o tamanho dos cartões conforme o espaço: em ecrã inteiro (1920×1080) as carrinhas mostram os nomes;
+  numa janela mais pequena mostram só a matrícula e a lotação (os nomes aparecem ao aproximar meio zoom ou ao clicar).
+  *Por confirmar com o Rafael.*
+- Himeling: com 8 casas e ~10 carrinhas em dois pontos a 360 m, na vista de conjunto alguns cartões ficam afastados
+  do sítio (linha até ao ponto). Ao aproximar separam-se.
+
 ## 03/10/2026 — feedback do Rafael sobre o M0
 
 - **Mapa**: cartões muito mais pequenos e no sítio real; o mapa tem de se ver; nomes sempre visíveis nas casas e nas carrinhas.

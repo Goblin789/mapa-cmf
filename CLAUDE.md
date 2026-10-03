@@ -40,4 +40,9 @@ Decisões e respostas do Rafael: `docs/decisoes.md` (atualizar sempre que ele de
 - Nunca editar uma migração já aplicada: criar uma nova.
 
 ## Estado atual
-Etapa **M0**: mapa só de leitura, no PC do Rafael, com os dados reais importados localmente.
+Mapa com cartões ao estilo pedido pelo Rafael (casas com telhado, carrinhas vistas de cima, matrícula
+luxemburguesa), camadas, lista lateral por casas/carrinhas/obras/clientes e **modo de edição** (rascunho,
+arrastar, Mover para…, Guardar/Cancelar, histórico) — tudo local no PC do Rafael. Ainda sem login nem alojamento (M1).
+-  grava tudo ou nada (409 se alguém mudou as mesmas pessoas); .
+  O autor é 'local' e só se aceitam origens localhost até haver login.
+- Tipos da API em ; formato das matrículas em .
