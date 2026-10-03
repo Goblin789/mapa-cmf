@@ -2,7 +2,12 @@
 
 Mapa do pessoal, carrinhas, casas e obras da CMF.
 
-## Correr no PC
+## Abrir o mapa
+
+Duplo clique em **Abrir Mapa CMF.cmd** (nesta pasta). Abre uma janela preta que tem de ficar aberta
+enquanto se usa o mapa, e o browser abre sozinho em http://localhost:5173. Para parar, fecha-se a janela.
+
+## Correr no PC (pormenores)
 
 Precisa de Node 24.
 
