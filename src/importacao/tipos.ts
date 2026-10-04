@@ -84,8 +84,11 @@ export type DadosReferencia = Pick<DadosIniciais, 'clientes' | 'casas' | 'carrin
 
 // --- Resultado da importação ---
 
-/** O que se grava na base de dados. */
-export type Entidades = Omit<Estado, 'versao' | 'geradoEm'>;
+/**
+ * O que se grava na base de dados. Os Excel não trazem indisponibilidades nem problemas (M2: só se criam no
+ * programa).
+ */
+export type Entidades = Omit<Estado, 'versao' | 'geradoEm' | 'indisponibilidades' | 'problemas'>;
 
 export interface ErroImportacao {
   /** Um erro bloqueante impede o --aplicar. */

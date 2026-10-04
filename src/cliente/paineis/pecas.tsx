@@ -85,8 +85,8 @@ export function IconeFechar() {
   );
 }
 
-/** Ícones pequenos dos tipos de resultado da pesquisa. */
-export function IconeTipo({ tipo }: { tipo: 'casa' | 'carrinha' }) {
+/** Ícones pequenos dos tipos de resultado da pesquisa (M2: também a obra, um capacete). */
+export function IconeTipo({ tipo }: { tipo: 'casa' | 'carrinha' | 'obra' }) {
   return (
     <svg
       aria-hidden="true"
@@ -98,6 +98,12 @@ export function IconeTipo({ tipo }: { tipo: 'casa' | 'carrinha' }) {
     >
       {tipo === 'casa' ? (
         <path d="M2 8l6-5 6 5M4 7v6h8V7" strokeLinejoin="round" />
+      ) : tipo === 'obra' ? (
+        <path
+          d="M2.5 11.5h11M3.5 11.5a4.5 4.5 0 0 1 9 0M8 4v3"
+          strokeLinejoin="round"
+          strokeLinecap="round"
+        />
       ) : (
         <path d="M1.5 4.5h9l3 3v4h-12zM4 12.5a1 1 0 100-.1M11 12.5a1 1 0 100-.1" strokeLinejoin="round" />
       )}

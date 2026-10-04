@@ -7,11 +7,19 @@ import type {
   EntradaHistorico,
   PedidoGuardar,
   RespostaGuardar,
+  ResultadoGeocodificacao,
 } from '../../dominio/api';
-import type { Estado } from '../../dominio/tipos';
+import type { Estado, Pais } from '../../dominio/tipos';
 import { useSessao } from '../entrar/sessao';
 
-export type { AlteracaoHistorico, ConflitoServidor, EntradaHistorico, PedidoGuardar, RespostaGuardar };
+export type {
+  AlteracaoHistorico,
+  ConflitoServidor,
+  EntradaHistorico,
+  PedidoGuardar,
+  RespostaGuardar,
+  ResultadoGeocodificacao,
+};
 
 /**
  * Não há sessão (HTTP 401): nunca se entrou, a sessão expirou ou terminou noutro separador. O Portao mostra
@@ -90,4 +98,26 @@ export async function obterHistorico(limite = 50): Promise<EntradaHistorico[]> {
   });
   if (!resposta.ok) throw new Error(`O servidor respondeu ${resposta.status} ao pedir o histórico.`);
   return (await resposta.json()) as EntradaHistorico[];
+}
+
+/**
+ * M2 — POST /api/geocodificar: até 5 sítios para a morada, o melhor primeiro ([] = nada encontrado).
+ * Lança Error com a frase do servidor (ex.: "O serviço de moradas não respondeu. Tenta outra vez ou
+ * escolhe o sítio no mapa.") e ErroSessao num 401.
+ * CONTRATO DO M2: o módulo base implementa (o servidor e este pedido).
+ */
+export async function geocodificarMorada(morada: string, pais: Pais): Promise<ResultadoGeocodificacao[]> {
+  void morada;
+  void pais;
+  throw new Error('A procura de moradas ainda não está disponível.');
+}
+
+/**
+ * M2 — POST /api/geocodificar/inverso: a morada (e o país) do ponto escolhido no mapa; null se não houver.
+ * CONTRATO DO M2: o módulo base implementa.
+ */
+export async function geocodificarPosicao(lat: number, lng: number): Promise<ResultadoGeocodificacao | null> {
+  void lat;
+  void lng;
+  return null;
 }

@@ -39,12 +39,12 @@ export function MarcaAlterado() {
 
 /** A pessoa tem alterações por guardar, incluindo passar a (ou deixar de) conduzir (só no modo de edição). */
 export function usePessoaAlterada(pessoaId: Id): boolean {
-  return useLoja((s) => s.modoEdicao && pessoaTemAlteracoes(s.pendentes, pessoaId));
+  return useLoja((s) => s.modoEdicao && pessoaTemAlteracoes(s.pendentes, pessoaId, s.estado));
 }
 
 /** Alguém entra ou sai desta casa/carrinha (ou muda o condutor da carrinha) nas alterações por guardar. */
 export function useSitioAlterado(campo: CampoMovivel, id: Id): boolean {
-  return useLoja((s) => s.modoEdicao && sitioTemAlteracoes(s.pendentes, campo, id));
+  return useLoja((s) => s.modoEdicao && sitioTemAlteracoes(s.pendentes, campo, id, s.estado));
 }
 
 /** "antes: Casa Um", por baixo de um valor que mudou no rascunho. */

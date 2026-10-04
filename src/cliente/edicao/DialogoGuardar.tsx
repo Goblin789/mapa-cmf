@@ -12,7 +12,7 @@ import { IconeVolante } from '../comum/IconeVolante';
 import { Matricula } from '../comum/Matricula';
 import { useLoja } from '../estado/loja';
 import { MarcaCliente } from '../paineis/pecas';
-import { comPlural, hojeISO, ROTULO_TIPO_VEICULO } from '../paineis/textos';
+import { comPlural, ROTULO_TIPO_VEICULO } from '../paineis/textos';
 import { BOTAO_PERIGO, BOTAO_PRIMARIO, BOTAO_SECUNDARIO } from './classes';
 import { Dialogo } from './Dialogo';
 import { textoDoErro } from './erros';
@@ -25,18 +25,17 @@ const LIMITE_COMENTARIO = 500;
 function useInstantaneo() {
   // Tirado ao abrir: depois de gravar, a loja limpa o rascunho antes de o diálogo fechar.
   const [instantaneo] = useState(() => {
-    const { estadoServidor, estado, indices, pendentes } = useLoja.getState();
+    const { estadoServidor, estado, indices, pendentes, hoje } = useLoja.getState();
     if (!estadoServidor || !estado || !indices) return null;
+    // M2: os índices do servidor também com `hoje` (os indisponíveis não ocupam lugar na carrinha), para o
+    // "antes" e o "depois" dos avisos contarem da mesma maneira que o Mapa.
+    const indServidor = indexar(estadoServidor, hoje);
     return {
       n: pendentes.length,
       grupos: agruparAlteracoes(estadoServidor, pendentes),
       condutores: agruparCondutores(estadoServidor, pendentes),
-      dormidas: agruparDormidas(
-        estadoServidor,
-        pendentes,
-        dormidasDasCarrinhas(estadoServidor, indexar(estadoServidor)),
-      ),
-      avisos: calcularAvisos(estadoServidor, estado, pendentes, undefined, indices, hojeISO()),
+      dormidas: agruparDormidas(estadoServidor, pendentes, dormidasDasCarrinhas(estadoServidor, indServidor)),
+      avisos: calcularAvisos(estadoServidor, estado, pendentes, indServidor, indices, hoje),
       indices,
       matriculas: new Map(estadoServidor.carrinhas.map((c) => [c.id, c.matricula])),
       // "Carrinha" ou "Carro", para os leitores de ecrã.
@@ -52,7 +51,11 @@ function conflitoDeCarrinhas(conflitos: readonly ConflitoServidor[] | null): boo
 }
 
 function chaveConflito(c: ConflitoServidor): string {
-  return c.tipo === 'mover' ? `${c.pessoaId}:${c.campo}` : `${c.tipo}:${c.carrinhaId}`;
+  if (c.tipo === 'mover') return `${c.pessoaId}:${c.campo}`;
+  // M2: fichas e registos (obras, problemas, indisponibilidades…).
+  if (c.tipo === 'campo') return `campo:${c.entidade}:${c.id}:${c.campo}`;
+  if (c.tipo === 'registo') return `registo:${c.entidade}:${c.id}`;
+  return `${c.tipo}:${c.carrinhaId}`;
 }
 
 function Conflitos({ aoVoltar, aoDescartar }: { aoVoltar: () => void; aoDescartar: () => void }) {

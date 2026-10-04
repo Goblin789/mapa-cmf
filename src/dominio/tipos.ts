@@ -127,6 +127,38 @@ export interface Pessoa {
   ativa: boolean;
 }
 
+/**
+ * Período em que a pessoa não está disponível (férias, falta, baixa). De propósito, SEM motivo nem campo de
+ * texto livre: guarda-se só a pessoa e as datas (regra do projeto). Dentro de um período a pessoa continua na
+ * casa e na carrinha: na carrinha o lugar fica livre (não conta na lotação); na casa a cama não se liberta.
+ * M2 (docs/m2.md).
+ */
+export interface Indisponibilidade {
+  id: Id;
+  pessoaId: Id;
+  /** Primeiro dia indisponível (AAAA-MM-DD). */
+  inicio: string;
+  /** Último dia indisponível, inclusive (AAAA-MM-DD); null = sem data de regresso. */
+  fim: string | null;
+}
+
+/**
+ * Problema pendurado numa casa ou numa carrinha até estar resolvido (ex.: "esquentador avariado",
+ * "pneu furado"). É sobre a casa/carrinha: nunca dados pessoais nem de saúde. M2 (docs/m2.md).
+ */
+export interface Problema {
+  id: Id;
+  /** Exatamente um dos dois (casaId ou carrinhaId) está preenchido. */
+  casaId: Id | null;
+  carrinhaId: Id | null;
+  /** Texto curto (até MAX_TEXTO_PROBLEMA caracteres, dominio/problemas.ts). */
+  texto: string;
+  /** Dia em que foi aberto (AAAA-MM-DD). */
+  abertoEm: string;
+  /** Dia em que foi resolvido (AAAA-MM-DD); null = aberto. */
+  resolvidoEm: string | null;
+}
+
 export interface Estado {
   /** Aumenta a cada gravação; o browser usa-o para saber se tem a versão mais recente. */
   versao: number;
@@ -138,4 +170,8 @@ export interface Estado {
   carrinhas: Carrinha[];
   obras: Obra[];
   pessoas: Pessoa[];
+  /** Todos os períodos de indisponibilidade (passados, atuais e futuros), por pessoa e início. M2. */
+  indisponibilidades: Indisponibilidade[];
+  /** Todos os problemas das casas e carrinhas (abertos e resolvidos), mais recentes primeiro. M2. */
+  problemas: Problema[];
 }

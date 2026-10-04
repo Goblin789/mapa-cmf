@@ -182,5 +182,7 @@ export function estadoFicticio(): Estado {
       pessoaFicticia({ id: 'p8', nomeCurto: 'Hugo K.', casaId: 'casa-c', carrinhaId: null }),
       pessoaFicticia({ id: 'p9', nomeCurto: 'Inês L.', casaId: 'casa-a', carrinhaId: 'v1', ativa: false }),
     ],
+    indisponibilidades: [],
+    problemas: [],
   };
 }

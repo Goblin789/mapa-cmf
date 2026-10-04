@@ -149,6 +149,10 @@ export function montarEstado(linhas: LinhasBd, versao: number, geradoEm: string)
     carrinhas: linhas.carrinhas.map(paraCarrinha).sort(porOrdem((c) => c.matricula)),
     obras: linhas.obras.map(paraObra).sort((a, b) => compararIds(a.id, b.id)),
     pessoas: linhas.pessoas.map(paraPessoa).sort((a, b) => compararPessoas(a, b) || compararIds(a.id, b.id)),
+    // CONTRATO DO M2 (módulo base): ler as tabelas novas `indisponibilidades` e `problemas` (migração 0004)
+    // e ordená-las (períodos por pessoa e início; problemas abertos primeiro, mais recentes primeiro).
+    indisponibilidades: [],
+    problemas: [],
   };
 }
 

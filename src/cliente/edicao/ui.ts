@@ -3,8 +3,16 @@
 // estado/loja.ts; aqui só se decide o que se mostra.
 
 import { create } from 'zustand';
+import type { EntradaHistorico } from '../../dominio/api';
+import type { AlvoProblema } from '../../dominio/problemas';
 import type { Id } from '../../dominio/tipos';
 import type { TipoDestino } from './destinos';
+
+/** M2: um ponto no mapa (obra nova clicada no mapa). */
+export interface PosicaoMapa {
+  lat: number;
+  lng: number;
+}
 
 export type DialogoEdicao =
   | { tipo: 'guardar' }
@@ -15,7 +23,30 @@ export type DialogoEdicao =
   /** "Onde dorme a …": escolher a casa ou o local onde a carrinha dorme. */
   | { tipo: 'dormida'; carrinhaId: Id }
   /** Pede confirmação antes de confirmar as sugestões de onde dormem todas as carrinhas. */
-  | { tipo: 'confirmar-sugestoes' };
+  | { tipo: 'confirmar-sugestoes' }
+  // --- M2 (docs/m2.md). Os de edição só abrem no modo de edição: quem os abre entra antes nele. ---
+  /** Nova pessoa (módulo Fichas: edicao/DialogoNovaPessoa.tsx). */
+  | { tipo: 'nova-pessoa' }
+  /** "Saiu da empresa" / "Voltou à empresa" de uma pessoa (módulo Fichas: edicao/DialogoSaida.tsx). */
+  | { tipo: 'saida'; pessoaId: Id }
+  /**
+   * Nova obra (`obraId` null; `posicao` = o ponto clicado no mapa, se veio de lá) ou editar a obra
+   * (módulo Obras: edicao/DialogoObra.tsx).
+   */
+  | { tipo: 'obra'; obraId: Id | null; posicao: PosicaoMapa | null }
+  /**
+   * Marcar indisponível uma ou mais pessoas (`periodoId` null) ou mudar as datas de um período
+   * (módulo Indisponível e problemas: edicao/DialogoIndisponivel.tsx).
+   */
+  | { tipo: 'indisponivel'; pessoaIds: Id[]; periodoId: Id | null }
+  /** Problema novo (`problemaId` null) ou mudar o texto de um (módulo Indisponível e problemas). */
+  | { tipo: 'problema'; alvo: AlvoProblema; problemaId: Id | null }
+  /**
+   * "Reverter" um lote do Histórico: mostra o que volta atrás e o que já não se pode reverter; "Pôr no
+   * rascunho" chama loja.iniciarReversao (módulo Histórico: edicao/DialogoReverter.tsx). Abre também fora
+   * do modo de edição (só a pré-visualização; pôr no rascunho entra nele).
+   */
+  | { tipo: 'reverter'; entrada: EntradaHistorico };
 
 export interface AvisoCurto {
   texto: string;
@@ -49,6 +80,38 @@ export function abrirMoverPara(pessoaIds: readonly Id[], filtro: TipoDestino | n
 /** Abre o "Onde dorme a …" de uma carrinha. */
 export function abrirDormida(carrinhaId: Id): void {
   useUiEdicao.getState().abrirDialogo({ tipo: 'dormida', carrinhaId });
+}
+
+// --- M2: abrir os diálogos novos (quem chama já está no modo de edição, exceto no Reverter) ---
+
+/** Nova pessoa. */
+export function abrirNovaPessoa(): void {
+  useUiEdicao.getState().abrirDialogo({ tipo: 'nova-pessoa' });
+}
+
+/** "Saiu da empresa" (ou "Voltou à empresa", se a pessoa já não estiver ativa). */
+export function abrirSaida(pessoaId: Id): void {
+  useUiEdicao.getState().abrirDialogo({ tipo: 'saida', pessoaId });
+}
+
+/** Nova obra (obraId null; com a posição clicada no mapa, se houver) ou editar uma obra. */
+export function abrirObra(obraId: Id | null, posicao: PosicaoMapa | null = null): void {
+  useUiEdicao.getState().abrirDialogo({ tipo: 'obra', obraId, posicao });
+}
+
+/** Marcar indisponível (periodoId null) ou mudar as datas de um período. */
+export function abrirIndisponivel(pessoaIds: readonly Id[], periodoId: Id | null = null): void {
+  useUiEdicao.getState().abrirDialogo({ tipo: 'indisponivel', pessoaIds: [...pessoaIds], periodoId });
+}
+
+/** Problema novo (problemaId null) ou mudar o texto de um problema. */
+export function abrirProblema(alvo: AlvoProblema, problemaId: Id | null = null): void {
+  useUiEdicao.getState().abrirDialogo({ tipo: 'problema', alvo, problemaId });
+}
+
+/** "Reverter" um lote do Histórico. */
+export function abrirReverter(entrada: EntradaHistorico): void {
+  useUiEdicao.getState().abrirDialogo({ tipo: 'reverter', entrada });
 }
 
 /** Há algum diálogo aberto (deste módulo ou de outro, com o elemento <dialog>)? */

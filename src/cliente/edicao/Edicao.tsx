@@ -10,7 +10,13 @@ import { DialogoConfirmarSugestoes } from './DialogoConfirmarSugestoes';
 import { DialogoDormida } from './DialogoDormida';
 import { DialogoGuardar } from './DialogoGuardar';
 import { DialogoHistorico } from './DialogoHistorico';
+import { DialogoIndisponivel } from './DialogoIndisponivel';
 import { DialogoMoverPara } from './DialogoMoverPara';
+import { DialogoNovaPessoa } from './DialogoNovaPessoa';
+import { DialogoObra } from './DialogoObra';
+import { DialogoProblema } from './DialogoProblema';
+import { DialogoReverter } from './DialogoReverter';
+import { DialogoSaida } from './DialogoSaida';
 import { useAtalhosEdicao, useAvisoAoSair, useFocoAoMudarModo } from './ganchos';
 import { IconeLapis, IconeRelogio } from './icones';
 import { useUiEdicao } from './ui';
@@ -96,12 +102,18 @@ export function Edicao() {
   const modoEdicao = useLoja((s) => s.modoEdicao);
   useFocoAoMudarModo(modoEdicao, dialogo !== null);
 
-  // Fora do modo de edição não há nada para mover, para cancelar nem onde dormir para mudar.
+  // Fora do modo de edição não há nada para mover, para cancelar nem onde dormir para mudar; nem (M2)
+  // fichas novas, obras, indisponíveis ou problemas para mudar. O Reverter abre fora dele (pré-visualização).
   const soEmEdicao =
     dialogo?.tipo === 'mover' ||
     dialogo?.tipo === 'cancelar' ||
     dialogo?.tipo === 'dormida' ||
-    dialogo?.tipo === 'confirmar-sugestoes';
+    dialogo?.tipo === 'confirmar-sugestoes' ||
+    dialogo?.tipo === 'nova-pessoa' ||
+    dialogo?.tipo === 'saida' ||
+    dialogo?.tipo === 'obra' ||
+    dialogo?.tipo === 'indisponivel' ||
+    dialogo?.tipo === 'problema';
   useEffect(() => {
     if (!modoEdicao && soEmEdicao) fecharDialogo();
   }, [modoEdicao, soEmEdicao, fecharDialogo]);
@@ -118,6 +130,24 @@ export function Edicao() {
       {modoEdicao && dialogo?.tipo === 'confirmar-sugestoes' && (
         <DialogoConfirmarSugestoes aoFechar={fecharDialogo} />
       )}
+      {modoEdicao && dialogo?.tipo === 'nova-pessoa' && <DialogoNovaPessoa aoFechar={fecharDialogo} />}
+      {modoEdicao && dialogo?.tipo === 'saida' && (
+        <DialogoSaida pessoaId={dialogo.pessoaId} aoFechar={fecharDialogo} />
+      )}
+      {modoEdicao && dialogo?.tipo === 'obra' && (
+        <DialogoObra obraId={dialogo.obraId} posicao={dialogo.posicao} aoFechar={fecharDialogo} />
+      )}
+      {modoEdicao && dialogo?.tipo === 'indisponivel' && (
+        <DialogoIndisponivel
+          pessoaIds={dialogo.pessoaIds}
+          periodoId={dialogo.periodoId}
+          aoFechar={fecharDialogo}
+        />
+      )}
+      {modoEdicao && dialogo?.tipo === 'problema' && (
+        <DialogoProblema alvo={dialogo.alvo} problemaId={dialogo.problemaId} aoFechar={fecharDialogo} />
+      )}
+      {dialogo?.tipo === 'reverter' && <DialogoReverter entrada={dialogo.entrada} aoFechar={fecharDialogo} />}
       {dialogo?.tipo === 'guardar' && <DialogoGuardar aoFechar={fecharDialogo} />}
       {dialogo?.tipo === 'historico' && <DialogoHistorico aoFechar={fecharDialogo} />}
       <AvisoFlutuante />

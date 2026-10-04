@@ -57,6 +57,11 @@ export function chavesNoQuadro(
       const casaId = dormidas.get(elemento.id)?.casaId ?? null;
       return casaId !== null && ind.casas.has(casaId) ? [chaveElemento({ tipo: 'casa', id: casaId })] : [];
     }
+    case 'obra': {
+      // M2: quem trabalha na obra. CONTRATO DO M2 (módulo Obras): o bloco da obra no Quadro por obras.
+      if (!ind.obras.has(elemento.id)) return [];
+      return chavesPessoas(ind.trabalhadores.get(elemento.id) ?? []);
+    }
   }
 }
 

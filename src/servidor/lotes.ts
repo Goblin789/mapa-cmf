@@ -17,6 +17,7 @@ import {
   encontrarConflitos,
   lerChaveDormida,
   nomeDaDormida,
+  nomeDoRegisto,
   nomeDoValor,
   type Operacao,
   validarOperacoes,
@@ -167,6 +168,16 @@ export function descreverConflito(estado: Estado, conflito: Conflito): string {
       conflito.esperado === null ? 'que não tivesse condutor' : nomeDaPessoa(estado, conflito.esperado);
     const agora = conflito.atual === null ? 'não tem condutor' : `é ${nomeDaPessoa(estado, conflito.atual)}`;
     return `${carrinha} — condutor: esperavas ${esperado}, mas agora ${agora} (alguém mudou entretanto)`;
+  }
+  // CONTRATO DO M2 (módulo base): frases legíveis dos conflitos das fichas e dos registos (docs/m2.md).
+  if (conflito.tipo === 'campo') {
+    const quem = nomeDoRegisto(estado, conflito.entidade, conflito.id);
+    return conflito.existe
+      ? `${quem} — ${conflito.campo}: alguém mudou entretanto`
+      : `${quem} — já não existe (alguém apagou entretanto)`;
+  }
+  if (conflito.tipo === 'registo') {
+    return `${nomeDoRegisto(estado, conflito.entidade, conflito.id)} — alguém mudou entretanto`;
   }
   const { campo, esperado, atual } = conflito;
   const agora = atual === null ? SEM_VALOR[campo] : `em ${nomeDoValor(estado, campo, atual)}`;

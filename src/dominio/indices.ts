@@ -1,7 +1,23 @@
 // Índices calculados a partir do estado: quem mora em cada casa, quem vai em cada carrinha, etc.
 // Só contam pessoas ativas. As listas vêm ordenadas por nome curto.
+// M2: com `hoje` (AAAA-MM-DD no Luxemburgo), também quem está indisponível nesse dia e quantos lugares estão
+// ocupados em cada carrinha sem contar com eles (a lotação da carrinha); e os problemas abertos por casa e
+// por carrinha. Sem `hoje` (servidor, importação), ninguém está indisponível.
 
-import type { Carrinha, Casa, Cliente, Estado, Id, Local, Obra, Pessoa } from './tipos';
+import { indisponiveisEm } from './indisponibilidade';
+import { problemasAbertosPorAlvo } from './problemas';
+import type {
+  Carrinha,
+  Casa,
+  Cliente,
+  Estado,
+  Id,
+  Indisponibilidade,
+  Local,
+  Obra,
+  Pessoa,
+  Problema,
+} from './tipos';
 
 export interface Indices {
   clientes: Map<Id, Cliente>;
@@ -22,7 +38,23 @@ export interface Indices {
   semTransporte: Pessoa[];
   /** Casas por local, ordenadas por `ordem`. */
   casasPorLocal: Map<Id, Casa[]>;
+  /** M2: o dia usado para as indisponibilidades (null = ninguém indisponível). */
+  hoje: string | null;
+  /** M2: pessoas ativas indisponíveis em `hoje` → o período que inclui esse dia. */
+  indisponiveis: Map<Id, Indisponibilidade>;
+  /**
+   * M2: lugares ocupados em cada carrinha = passageiros que NÃO estão indisponíveis hoje (a lotação da
+   * carrinha; ocupacao.ts, ocupacaoDaCarrinha). Todas as carrinhas têm entrada. Na casa a cama não se liberta:
+   * os moradores contam sempre (moradores.get(id).length).
+   */
+  ocupadosCarrinha: Map<Id, number>;
+  /** M2: problemas abertos por "casa:<id>" / "carrinha:<id>" (problemas.ts, chaveAlvoProblema). */
+  problemasAbertos: Map<string, Problema[]>;
 }
+
+/** O que indexar precisa (a importação monta o estado sem indisponibilidades nem problemas). */
+export type EstadoParaIndexar = Omit<Estado, 'indisponibilidades' | 'problemas'> &
+  Partial<Pick<Estado, 'indisponibilidades' | 'problemas'>>;
 
 const comparadorNomes = new Intl.Collator('pt', { sensitivity: 'base' });
 
@@ -38,7 +70,14 @@ function listasVazias(ids: Id[]): Map<Id, Pessoa[]> {
   return new Map(ids.map((id) => [id, []]));
 }
 
-export function indexar(estado: Estado): Indices {
+/**
+ * @param hoje M2: dia (AAAA-MM-DD, no Luxemburgo) para as indisponibilidades; sem ele ninguém está
+ *   indisponível. O servidor e a importação não precisam. CONTRATO DO M2: em src/cliente (fora dos testes)
+ *   passa-se SEMPRE, explicitamente, `loja.hoje` (ou null de propósito): um teste
+ *   (src/cliente/regras-m2.test.ts) recusa `indexar(x)` sem o 2.º argumento, para a lotação das carrinhas
+ *   ser a mesma em todo o lado.
+ */
+export function indexar(estado: EstadoParaIndexar, hoje: string | null = null): Indices {
   const moradores = listasVazias(estado.casas.map((c) => c.id));
   const passageiros = listasVazias(estado.carrinhas.map((c) => c.id));
   const trabalhadores = listasVazias(estado.obras.map((o) => o.id));
@@ -73,6 +112,13 @@ export function indexar(estado: Estado): Indices {
     else casasPorLocal.set(casa.localId, [casa]);
   }
 
+  const periodos = { pessoas: estado.pessoas, indisponibilidades: estado.indisponibilidades ?? [] };
+  const indisponiveis = hoje === null ? new Map<Id, Indisponibilidade>() : indisponiveisEm(periodos, hoje);
+  const ocupadosCarrinha = new Map<Id, number>();
+  for (const [carrinhaId, lista] of passageiros) {
+    ocupadosCarrinha.set(carrinhaId, lista.filter((p) => !indisponiveis.has(p.id)).length);
+  }
+
   return {
     clientes: porId(estado.clientes),
     locais: porId(estado.locais),
@@ -86,5 +132,9 @@ export function indexar(estado: Estado): Indices {
     foraDasCasas,
     semTransporte,
     casasPorLocal,
+    hoje,
+    indisponiveis,
+    ocupadosCarrinha,
+    problemasAbertos: problemasAbertosPorAlvo({ problemas: estado.problemas ?? [] }),
   };
 }

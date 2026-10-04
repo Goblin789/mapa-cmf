@@ -2,7 +2,17 @@
 // Cada criarX() devolve um objeto completo com valores por omissão; passa só o que interessa ao teste.
 // Não usar fora dos testes.
 
-import type { Carrinha, Casa, Cliente, Estado, Local, Obra, Pessoa } from './tipos';
+import type {
+  Carrinha,
+  Casa,
+  Cliente,
+  Estado,
+  Indisponibilidade,
+  Local,
+  Obra,
+  Pessoa,
+  Problema,
+} from './tipos';
 
 let contador = 0;
 function proximo(prefixo: string): string {
@@ -116,6 +126,28 @@ export function criarEstado(parcial: Partial<Estado> = {}): Estado {
     carrinhas: [],
     obras: [],
     pessoas: [],
+    indisponibilidades: [],
+    problemas: [],
+    ...parcial,
+  };
+}
+
+/** M2: um período de indisponibilidade (só pessoa e datas, nunca motivo). */
+export function criarIndisponibilidade(parcial: Partial<Indisponibilidade> = {}): Indisponibilidade {
+  const id = parcial.id ?? proximo('indisp');
+  return { id, pessoaId: 'pessoa-?', inicio: '2026-01-01', fim: null, ...parcial };
+}
+
+/** M2: um problema aberto numa casa (por omissão). */
+export function criarProblema(parcial: Partial<Problema> = {}): Problema {
+  const id = parcial.id ?? proximo('problema');
+  return {
+    id,
+    casaId: 'casa-?',
+    carrinhaId: null,
+    texto: 'Torneira a pingar',
+    abertoEm: '2026-01-01',
+    resolvidoEm: null,
     ...parcial,
   };
 }

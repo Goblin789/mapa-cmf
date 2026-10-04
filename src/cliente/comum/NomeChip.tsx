@@ -25,6 +25,12 @@ interface Props {
   className?: string;
   /** É o condutor da carrinha onde aparece: leva um volante antes do nome. */
   condutor?: boolean;
+  /**
+   * M2 (CONTRATO DO M2): mostra "até 12/10" à vista quando a pessoa está indisponível (MarcaIndisponivel com
+   * `texto`). Lista lateral, fichas e tudo o que não seja um cartão do Mapa passam true; os cartões não
+   * (fica só o símbolo, com o "até…" no title). O módulo Indisponível e problemas liga-o.
+   */
+  textoIndisponivel?: boolean;
 }
 
 export function NomeChip({ pessoa, compacto = false, className = '', condutor = false }: Props) {

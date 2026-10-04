@@ -26,6 +26,8 @@ describe('carregarEstado', () => {
       carrinhas: [],
       obras: [],
       pessoas: [],
+      indisponibilidades: [],
+      problemas: [],
     });
   });
 

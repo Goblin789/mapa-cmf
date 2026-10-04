@@ -350,23 +350,26 @@ export function textoContagem(mostradas: number, total: number, comFiltros: bool
 
 // --- Foco e "mostrar" -----------------------------------------------------------------------------
 
-/** O que está em foco (a ficha aberta): uma pessoa, casa ou carrinha. */
-export type FocoTabela = { tipo: 'pessoa' | 'casa' | 'carrinha'; id: Id } | null;
+/** O que está em foco (a ficha aberta): uma pessoa, casa, carrinha ou (M2) obra. */
+export type FocoTabela = { tipo: 'pessoa' | 'casa' | 'carrinha' | 'obra'; id: Id } | null;
+
+/** O que o realce precisa de uma linha (a obra só para o foco numa obra, M2). */
+type LinhaParaRealce = Pick<LinhaTabela, 'pessoa' | 'casa' | 'carrinha'> & Partial<Pick<LinhaTabela, 'obra'>>;
 
 /**
  * Realce persistente de uma linha: 'foco' = a pessoa da ficha; 'marcada' = a linha em que se clicou
- * (clicar numa linha realça-a sem abrir a ficha); 'ligada' = mora na casa (ou vai na carrinha) da ficha;
- * null = nenhum.
+ * (clicar numa linha realça-a sem abrir a ficha); 'ligada' = mora na casa (ou vai na carrinha, ou trabalha
+ * na obra) da ficha; null = nenhum.
  */
 export function realceDaLinha(
-  linha: Pick<LinhaTabela, 'pessoa' | 'casa' | 'carrinha'>,
+  linha: LinhaParaRealce,
   foco: FocoTabela,
   marcada: Id | null = null,
 ): RealceLinha {
   if (foco?.tipo === 'pessoa' && foco.id === linha.pessoa.id) return 'foco';
   if (marcada === linha.pessoa.id) return 'marcada';
   if (!foco || foco.tipo === 'pessoa') return null;
-  const sitio = foco.tipo === 'casa' ? linha.casa : linha.carrinha;
+  const sitio = foco.tipo === 'casa' ? linha.casa : foco.tipo === 'carrinha' ? linha.carrinha : linha.obra;
   return sitio?.id === foco.id ? 'ligada' : null;
 }
 
@@ -395,7 +398,7 @@ export function marcadaDepoisDoClique(
  * na casa / vai na carrinha, pela ordem recebida.
  */
 export function pessoasDoElemento(
-  linhas: readonly Pick<LinhaTabela, 'pessoa' | 'casa' | 'carrinha'>[],
+  linhas: readonly LinhaParaRealce[],
   elemento: NonNullable<FocoTabela>,
 ): Id[] {
   if (elemento.tipo === 'pessoa') return [elemento.id];

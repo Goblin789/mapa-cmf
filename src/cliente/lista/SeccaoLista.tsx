@@ -187,6 +187,8 @@ export function SeccaoLista({ seccao: s, soCabecalho, recolhida, aoAlternar, com
   const mostrarNoMapa = () => {
     if (casa) definirFoco({ tipo: 'casa', id: casa.id });
     else if (carrinha) definirFoco({ tipo: 'carrinha', id: carrinha.id });
+    // M2: a obra também tem ficha ("quem vem para esta obra e de onde").
+    else if (obra) definirFoco({ tipo: 'obra', id: obra.id });
     if (destino) pedirIrPara(destino.lat, destino.lng, ZOOM_DESTINO);
   };
 

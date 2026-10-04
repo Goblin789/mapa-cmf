@@ -19,7 +19,8 @@ export function compactar(s: string): string {
 }
 
 export interface ResultadoPesquisa {
-  tipo: 'pessoa' | 'carrinha' | 'casa';
+  /** M2: também obras (CONTRATO DO M2: o módulo base acrescenta-as a `pesquisar`). */
+  tipo: 'pessoa' | 'carrinha' | 'casa' | 'obra';
   id: Id;
   rotulo: string;
   detalhe: string;

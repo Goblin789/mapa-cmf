@@ -382,7 +382,7 @@ function secaoNormalizacoes(r: ResultadoImportacao): string {
 
 function secaoDormidas(r: ResultadoImportacao): string {
   const { ind } = rotulosPessoa(r);
-  const estado = { versao: 0, geradoEm: '', ...r.entidades };
+  const estado = { versao: 0, geradoEm: '', indisponibilidades: [], problemas: [], ...r.entidades };
   const dormidas = dormidasDasCarrinhas(estado, ind);
   const vazias = r.entidades.carrinhas.filter((c) => (ind.passageiros.get(c.id)?.length ?? 0) === 0);
   const linhas = r.entidades.carrinhas.map((c): Celula[] => {

@@ -242,13 +242,15 @@ function carrinhasMexidas(pendentes: readonly Operacao[]): Id[] {
  * - carrinhas que tinham condutor e ficam com passageiros e sem condutor;
  * - pessoas que ficam fora das casas CMF ou sem transporte da empresa.
  * Primeiro os fortes (gente a mais, acima do tolerado, condutor sem carta), depois os simples.
+ * CONTRATO DO M2: no browser passam-se SEMPRE os dois índices feitos com `loja.hoje` (indexar(x, hoje)) e o
+ * `hoje`; as omissões (ninguém indisponível) são só para os testes antigos.
  */
 export function calcularAvisos(
   estadoServidor: Estado,
   estadoVisivel: Estado,
   pendentes: readonly Operacao[],
-  indServidor: Indices = indexar(estadoServidor),
-  indVisivel: Indices = indexar(estadoVisivel),
+  indServidor: Indices = indexar(estadoServidor, null),
+  indVisivel: Indices = indexar(estadoVisivel, null),
   hoje: string | null = null,
 ): AvisoGuardar[] {
   const avisos: AvisoGuardar[] = [];
@@ -397,24 +399,65 @@ export function dormidaPendente(pendentes: readonly Operacao[], carrinhaId: Id):
   return soDormidas(pendentes).findLast((op) => op.carrinhaId === carrinhaId) ?? null;
 }
 
-/** A pessoa tem alterações por guardar: muda de casa, carrinha ou obra, ou passa a (ou deixa de) conduzir. */
-export function pessoaTemAlteracoes(pendentes: readonly Operacao[], pessoaId: Id): boolean {
+/**
+ * A pessoa tem alterações por guardar: muda de casa, carrinha ou obra, passa a (ou deixa de) conduzir, a
+ * ficha dela muda, ou um período de indisponibilidade dela é criado, mudado ou apagado.
+ * CONTRATO DO M2: `estadoVisivel` (o estado com o rascunho, `useLoja.estado`) é o que deixa encontrar a pessoa
+ * de um 'campo' de um período (a operação só traz o id do período). Quem mostra a marca "alterado" (NomeChip,
+ * PecasFoco…) passa-o SEMPRE; sem ele, as datas mudadas de um período não marcam a pessoa.
+ */
+export function pessoaTemAlteracoes(
+  pendentes: readonly Operacao[],
+  pessoaId: Id,
+  estadoVisivel?: Pick<Estado, 'indisponibilidades'> | null,
+): boolean {
   return pendentes.some((op) => {
     if (op.tipo === 'condutor') return op.de === pessoaId || op.para === pessoaId;
+    if (op.tipo === 'campo' || op.tipo === 'registo') {
+      if (op.entidade === 'pessoa') return op.id === pessoaId;
+      if (op.entidade !== 'indisponibilidade') return false;
+      if (op.tipo === 'registo') return (op.de ?? op.para)?.pessoaId === pessoaId;
+      return estadoVisivel?.indisponibilidades.find((i) => i.id === op.id)?.pessoaId === pessoaId;
+    }
     return op.tipo === 'mover' && op.pessoaId === pessoaId;
   });
 }
 
 /**
  * A casa ou carrinha tem alterações por guardar: entra ou sai alguém (ou, numa carrinha, muda o condutor
- * ou onde dorme).
+ * ou onde dorme). M2: também a ficha da casa/carrinha, a morada (o local) da casa e os seus problemas.
+ * CONTRATO DO M2: com `estadoVisivel`, também um 'campo' de um problema (texto, resolvido) e da morada.
  */
-export function sitioTemAlteracoes(pendentes: readonly Operacao[], campo: CampoMovivel, id: Id): boolean {
-  return pendentes.some((op) =>
-    op.tipo === 'mover'
-      ? op.campo === campo && (op.de === id || op.para === id)
-      : campo === 'carrinhaId' && op.carrinhaId === id,
-  );
+export function sitioTemAlteracoes(
+  pendentes: readonly Operacao[],
+  campo: CampoMovivel,
+  id: Id,
+  estadoVisivel?: Pick<Estado, 'problemas' | 'casas' | 'obras'> | null,
+): boolean {
+  const entidade = campo === 'casaId' ? 'casa' : campo === 'carrinhaId' ? 'carrinha' : 'obra';
+  const doAlvo = (p: { casaId: Id | null; carrinhaId: Id | null } | null | undefined) =>
+    campo === 'casaId' ? p?.casaId === id : campo === 'carrinhaId' && p?.carrinhaId === id;
+  return pendentes.some((op) => {
+    if (op.tipo === 'mover') return op.campo === campo && (op.de === id || op.para === id);
+    if (op.tipo === 'campo' || op.tipo === 'registo') {
+      if (op.entidade === entidade) return op.id === id;
+      if (op.entidade === 'problema') {
+        if (op.tipo === 'registo') return doAlvo(op.de ?? op.para);
+        return doAlvo(estadoVisivel?.problemas.find((p) => p.id === op.id));
+      }
+      if (op.entidade === 'local' && op.tipo === 'campo' && estadoVisivel) {
+        const sitio =
+          campo === 'casaId'
+            ? estadoVisivel.casas.find((c) => c.id === id)
+            : campo === 'obraId'
+              ? estadoVisivel.obras.find((o) => o.id === id)
+              : undefined;
+        return sitio?.localId === op.id;
+      }
+      return false;
+    }
+    return campo === 'carrinhaId' && op.carrinhaId === id;
+  });
 }
 
 export interface MovimentosDoSitio {

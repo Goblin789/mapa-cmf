@@ -16,6 +16,7 @@
 
 import { create } from 'zustand';
 import { type Contadores, calcularContadores } from '../../dominio/contadores';
+import { dataNoLuxemburgo } from '../../dominio/datas';
 import { type Dormida, dormidasDasCarrinhas } from '../../dominio/dormidas';
 import { type Indices, indexar } from '../../dominio/indices';
 import {
@@ -23,6 +24,7 @@ import {
   aplicarOperacoes,
   compactarOperacoes,
   type Operacao,
+  operacaoSemEfeito,
   operacoesParaAlvo,
 } from '../../dominio/operacoes';
 import type { Estado, Id } from '../../dominio/tipos';
@@ -52,7 +54,8 @@ import {
   obterEstado,
 } from './api';
 
-export type Foco = { tipo: 'pessoa' | 'casa' | 'carrinha'; id: Id } | null;
+/** O que está em foco (a ficha aberta). M2: também uma obra ("quem vem para esta obra e de onde"). */
+export type Foco = { tipo: 'pessoa' | 'casa' | 'carrinha' | 'obra'; id: Id } | null;
 
 export interface PedidoIrPara {
   lat: number;
@@ -75,8 +78,12 @@ interface Derivados {
   dormidas: Map<Id, Dormida>;
 }
 
-function derivar(estado: Estado): Derivados {
-  const indices = indexar(estado);
+/**
+ * @param hoje M2: o dia no Luxemburgo (loja.hoje): quem está indisponível nesse dia não conta na lotação das
+ *   carrinhas (Indices.indisponiveis, Indices.ocupadosCarrinha).
+ */
+function derivar(estado: Estado, hoje: string): Derivados {
+  const indices = indexar(estado, hoje);
   return {
     estado,
     indices,
@@ -174,9 +181,17 @@ export interface Loja {
   alternarClienteDestacado: (id: Id) => void;
   definirClienteDestacado: (id: Id | null) => void;
 
-  /** Pessoa, casa ou carrinha em foco (mostra a ligação casa → carrinha → obra). */
+  /** Pessoa, casa, carrinha ou obra em foco (mostra a ligação casa → carrinha → obra). */
   foco: Foco;
   definirFoco: (foco: Foco) => void;
+
+  /**
+   * M2: o dia de hoje no Luxemburgo (AAAA-MM-DD). Decide quem está indisponível (os índices e a lotação
+   * das carrinhas usam-no). CONTRATO DO M2 (módulo base): muda sozinho à meia-noite e recalcula.
+   */
+  hoje: string;
+  /** M2: muda o dia (a meia-noite, os testes) e recalcula o que se vê. */
+  definirHoje: (dia: string) => void;
 
   /** Cartões abertos à mão. Chave: "casa:<id>", "carrinha:<id>", "grupo:<localId>". */
   expandidos: ReadonlySet<string>;
@@ -215,6 +230,18 @@ export interface Loja {
    * terminado, nada é gravado e o rascunho fica também no localStorage (ver rascunhoPendente.ts).
    */
   guardar: (comentario?: string) => Promise<boolean>;
+  /**
+   * M2: lotes cuja reversão está no rascunho ("Reverter" no Histórico). Vão no pedido de Guardar
+   * (PedidoGuardar.reverte); Cancelar limpa.
+   */
+  reverte: readonly number[];
+  /**
+   * M2: "Reverter" um lote do Histórico: entra no modo de edição (se ainda não estiver) e junta as operações
+   * inversas (dominio/reverter.ts, planearReversao) ao rascunho como UM passo. Nada é gravado. Devolve se
+   * mudou alguma coisa. CONTRATO DO M2 (módulo base): Desfazer esse passo tira o lote de `reverte`; Guardar
+   * envia `reverte`; o rascunho pendente (localStorage) guarda-o também.
+   */
+  iniciarReversao: (loteId: number, operacoes: readonly Operacao[]) => boolean;
 
   /** Pessoas selecionadas (só no modo de edição). */
   selecao: ReadonlySet<Id>;
@@ -231,7 +258,7 @@ export const useLoja = create<Loja>()((set, get) => {
   function recalcular(passos: Operacao[][], estadoServidor = get().estadoServidor) {
     if (!estadoServidor) return {};
     const pendentes = compactarOperacoes(passos.flat());
-    return { passos, pendentes, ...derivar(aplicarOperacoes(estadoServidor, passos.flat())) };
+    return { passos, pendentes, ...derivar(aplicarOperacoes(estadoServidor, passos.flat()), get().hoje) };
   }
 
   /** Fora do modo de edição, sem rascunho (o que o Cancelar deixa). */
@@ -243,6 +270,7 @@ export const useLoja = create<Loja>()((set, get) => {
       conflitos: null,
       selecao: new Set<Id>(),
       ancoraSelecao: null,
+      reverte: [],
       ...recalcular([]),
     };
   }
@@ -325,7 +353,7 @@ export const useLoja = create<Loja>()((set, get) => {
         // Já se aplicou a resposta de um pedido feito depois deste: esta é mais antiga.
         if (pedido <= ultimoAplicado) return;
         ultimoAplicado = pedido;
-        const servidor = derivar(estadoServidor);
+        const servidor = derivar(estadoServidor, get().hoje);
         set({
           estadoServidor,
           contadoresServidor: servidor.contadores,
@@ -360,6 +388,18 @@ export const useLoja = create<Loja>()((set, get) => {
     foco: null,
     definirFoco: (foco) => set({ foco }),
 
+    hoje: dataNoLuxemburgo(new Date()),
+    definirHoje: (dia) => {
+      if (dia === get().hoje) return;
+      set({ hoje: dia });
+      const { estadoServidor, passos } = get();
+      if (!estadoServidor) return;
+      set({
+        contadoresServidor: derivar(estadoServidor, dia).contadores,
+        ...recalcular(passos, estadoServidor),
+      });
+    },
+
     expandidos: new Set(),
     alternarExpandido: (chave) => {
       const novo = new Set(get().expandidos);
@@ -387,7 +427,8 @@ export const useLoja = create<Loja>()((set, get) => {
     },
     aplicar: (ops) => {
       if (!get().modoEdicao || ops.length === 0) return;
-      const passo = ops.filter((op) => op.de !== op.para);
+      // operacaoSemEfeito compara pelo conteúdo (listas e registos do M2), não pela referência.
+      const passo = ops.filter((op) => !operacaoSemEfeito(op));
       if (passo.length === 0) return;
       set({
         passosDesfeitos: [],
@@ -441,10 +482,12 @@ export const useLoja = create<Loja>()((set, get) => {
       const autor = utilizadorAtual() ?? useSessao.getState().contaAnterior?.chave ?? null;
       set({ aGuardar: true, erroGuardar: null, conflitos: null });
       try {
+        const { reverte } = get();
         const resposta = await guardarLote({
           versaoBase: estadoServidor.versao,
           operacoes: pendentes,
           comentario,
+          ...(reverte.length > 0 ? { reverte: [...reverte] } : {}),
         });
         // O servidor aplicou estas operações com a mesma função: o estado gravado passa já a ser o que se
         // via, mesmo que o recarregar a seguir falhe (senão o próximo rascunho partia de um estado antigo).
@@ -462,9 +505,10 @@ export const useLoja = create<Loja>()((set, get) => {
           selecao: new Set(),
           ancoraSelecao: null,
           estadoServidor: gravado,
-          contadoresServidor: calcularContadores(gravado),
+          contadoresServidor: derivar(gravado, get().hoje).contadores,
           lotesDesteSeparador: new Set([...get().lotesDesteSeparador, resposta.loteId]),
           avisoRascunhoRecuperado: null,
+          reverte: [],
           ...recalcular([], gravado),
         });
         await get().carregar();
@@ -501,6 +545,17 @@ export const useLoja = create<Loja>()((set, get) => {
         }
         return false;
       }
+    },
+    reverte: [],
+    iniciarReversao: (loteId, operacoes) => {
+      if (!get().estadoServidor) return false;
+      const passo = operacoes.filter((op) => !operacaoSemEfeito(op));
+      if (passo.length === 0) return false;
+      if (!get().modoEdicao) get().entrarEdicao();
+      get().aplicar(passo);
+      // CONTRATO DO M2 (módulo base): ligar o lote ao passo, para Desfazer o tirar de `reverte`.
+      set({ reverte: [...new Set([...get().reverte, loteId])] });
+      return true;
     },
 
     selecao: new Set(),

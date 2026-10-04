@@ -1,6 +1,7 @@
 // Formato dos pedidos e respostas da API, partilhado pelo browser e pelo servidor (sem I/O).
 
 import type { Conflito, Operacao } from './operacoes';
+import type { Pais } from './tipos';
 
 export interface PedidoGuardar {
   /**
@@ -10,6 +11,11 @@ export interface PedidoGuardar {
   versaoBase: number;
   operacoes: Operacao[];
   comentario?: string;
+  /**
+   * M2: lotes que este rascunho reverte ("Reverter" no Histórico pôs as operações inversas no rascunho).
+   * Fica no lote (lotes.reverte) e o Histórico diz "Reverte a gravação nº N". Sem reversões: ausente.
+   */
+  reverte?: number[];
 }
 
 export interface RespostaGuardar {
@@ -43,6 +49,49 @@ export interface EntradaHistorico {
   estado: string;
   comentario: string | null;
   alteracoes: AlteracaoHistorico[];
+  /** M2: lotes que este lote reverteu (vazio ou ausente = nenhum). */
+  reverte?: number[];
+  /** M2: lotes gravados depois que reverteram este (vazio ou ausente = nenhum). */
+  revertidoPor?: number[];
+}
+
+/**
+ * M2 — geocodificação no servidor (POST /api/geocodificar), como scripts/geocodificar.ts: geoportail.lu no
+ * Luxemburgo, IGN (Géoplateforme) em França, Nominatim na Bélgica e na Alemanha. O browser nunca fala com
+ * estes serviços (a política de conteúdo só deixa falar com o próprio servidor).
+ */
+export interface PedidoGeocodificar {
+  /** A morada como se escreveu (até 300 caracteres). */
+  morada: string;
+  pais: Pais;
+}
+
+export interface ResultadoGeocodificacao {
+  /** A morada como o serviço a devolveu (ex.: "12 Rue de Hobscheid, L-8473 Eischen"). */
+  rotulo: string;
+  lat: number;
+  lng: number;
+  pais: Pais;
+  /** "geoportail.lu", "IGN Géoplateforme", "Nominatim". */
+  fonte: string;
+  /** 0 a 1; abaixo de 0,8 o ecrã pede para confirmar o pino. */
+  confianca: number;
+}
+
+/** Até 5 resultados, o melhor primeiro ([] = nada encontrado). */
+export interface RespostaGeocodificar {
+  resultados: ResultadoGeocodificacao[];
+}
+
+/** POST /api/geocodificar/inverso: a morada de um ponto clicado no mapa. */
+export interface PedidoGeocodificarInverso {
+  lat: number;
+  lng: number;
+}
+
+/** null = o serviço não encontrou morada (a obra pode ficar só com a posição e um nome). */
+export interface RespostaGeocodificarInverso {
+  resultado: ResultadoGeocodificacao | null;
 }
 
 /** Quem tem a sessão iniciada (GET /api/auth/eu). */

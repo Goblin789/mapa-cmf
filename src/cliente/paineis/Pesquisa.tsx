@@ -21,6 +21,7 @@ const ROTULO_TIPO: Record<ResultadoPesquisa['tipo'], string> = {
   pessoa: 'pessoa',
   carrinha: 'carrinha',
   casa: 'casa',
+  obra: 'obra',
 };
 
 /** Tipo à direita do resultado: um carro da frota diz "carro". */

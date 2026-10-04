@@ -206,15 +206,16 @@ function coordenadasDaCarrinha(
 /**
  * Para onde o mapa vai quando se escolhe algo na pesquisa.
  * Pessoa: o local da casa; sem casa (ou casa sem coordenadas), o local onde dorme a carrinha.
- * Carrinha: o local onde dorme. Casa: o seu local. null se não houver sítio no mapa.
+ * Carrinha: o local onde dorme. Casa: o seu local. Obra (M2): o seu local. null se não houver sítio no mapa.
  */
 export function destinoNoMapa(
   foco: NonNullable<Foco>,
-  ind: Pick<Indices, 'pessoas' | 'casas' | 'locais'>,
+  ind: Pick<Indices, 'pessoas' | 'casas' | 'locais'> & Partial<Pick<Indices, 'obras'>>,
   dormidas: Map<Id, Dormida>,
 ): Coordenadas | null {
   if (foco.tipo === 'casa') return coordenadasDoLocal(ind.casas.get(foco.id)?.localId, ind);
   if (foco.tipo === 'carrinha') return coordenadasDaCarrinha(foco.id, ind, dormidas);
+  if (foco.tipo === 'obra') return coordenadasDoLocal(ind.obras?.get(foco.id)?.localId, ind);
   const pessoa = ind.pessoas.get(foco.id);
   if (!pessoa) return null;
   const casa = pessoa.casaId ? ind.casas.get(pessoa.casaId) : undefined;

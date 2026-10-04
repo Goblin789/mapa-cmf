@@ -74,6 +74,7 @@ import type { NivelLotacao } from '../../dominio/ocupacao';
 import type { Id } from '../../dominio/tipos';
 import { registarOuvintesArrasto } from '../arrastar/ouvintes';
 import { FiltroMultiplo, type OpcaoFiltroMultiplo } from '../comum/FiltroMultiplo';
+import { IconeProblemas } from '../comum/IconeProblemas';
 import { IconeVolante } from '../comum/IconeVolante';
 import { ESTILO_NIVEL } from '../comum/lotacao';
 import { Matricula } from '../comum/Matricula';
@@ -820,6 +821,8 @@ function BlocoVista({ bloco, letra }: { bloco: BlocoQuadro; letra: number }) {
           <span className="sr-only">alterado, por guardar</span>
         </span>
       )}
+      {/* M2: problemas abertos da casa/carrinha (comum/IconeProblemas.tsx; nada quando não há). */}
+      {id !== null && (tipo === 'casa' || tipo === 'carrinha') && <IconeProblemas alvo={{ tipo, id }} />}
       {lotacao ? (
         <PastilhaVista ocupados={lotacao.ocupados} lugares={lotacao.lugares} nivel={lotacao.nivel} />
       ) : (

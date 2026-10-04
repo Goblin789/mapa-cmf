@@ -125,12 +125,14 @@ export function estadoFicticio(): Estado {
       pessoa('C4', 'V5'),
       pessoa('C2', 'V2', { ativa: false }),
     ],
+    indisponibilidades: [],
+    problemas: [],
   };
 }
 
 export function contextoFicticio() {
   const estado = estadoFicticio();
-  const indices = indexar(estado);
+  const indices = indexar(estado, null);
   const dormidas = dormidasDasCarrinhas(estado, indices);
   return { estado, indices, dormidas };
 }
