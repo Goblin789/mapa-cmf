@@ -1,6 +1,7 @@
 // "Mover para…": lista pesquisável de destinos (casas, carrinhas, obras e os grupos especiais) com os
 // lugares livres no estado visível e o resultado se as pessoas forem para lá. É o caminho garantido
 // no telemóvel. Teclado: escrever filtra, ↑ ↓ escolhem, Enter move, Esc fecha (padrão combobox ARIA).
+// M2: as carrinhas não contam quem está indisponível hoje e dizem "1 livre até 12/10" (destinos.ts).
 
 import { type KeyboardEvent, useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { Id, Pessoa } from '../../dominio/tipos';
@@ -109,6 +110,15 @@ function Lotacao({ destino, aMover }: { destino: Destino; aMover: number }) {
           {l.ocupados}/{l.lugares}
         </span>
       </span>
+      {/* M2: lugares livres só até alguém voltar (quem está indisponível hoje não conta na lotação). */}
+      {l.temporarios && (
+        <span
+          className="font-medium text-amber-800"
+          title="Lugar de quem está indisponível: volta a ser ocupado quando a pessoa voltar"
+        >
+          {l.temporarios}
+        </span>
+      )}
       {muda && (
         <span className={excesso ? 'font-semibold text-red-700' : 'text-slate-500'}>
           {excesso && <span aria-hidden="true">▲ </span>}

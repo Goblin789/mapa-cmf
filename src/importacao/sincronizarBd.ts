@@ -1,13 +1,16 @@
 // Sincronização dos dados iniciais na base de dados: o ensaio só lê; o --aplicar grava tudo numa só
 // transação IMMEDIATE (ninguém grava pelo meio, nem o servidor) e regista UM lote no histórico
 // (autor 'dados-iniciais', tipo 'ficha') com uma linha em `alteracoes` por campo mudado.
+// M2: os campos editados no programa (lerEditados, também dentro da transação) nunca se desfazem.
 // O plano volta a calcular-se dentro da transação: o que se grava é o que a base de dados tem nesse
 // momento, não o que tinha quando se fez o ensaio. As regras estão em sincronizar.ts (funções puras).
 
 import { existsSync } from 'node:fs';
 import Database from 'better-sqlite3';
-import { eq } from 'drizzle-orm';
+import { and, asc, eq, inArray } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
+import { CAMPO_REGISTO } from '../dominio/operacoes';
+import { AUTORES_SEM_REVERTER } from '../dominio/reverter';
 import type { Estado, Id } from '../dominio/tipos';
 import * as esquema from '../servidor/db/esquema';
 import type { Bd } from '../servidor/db/ligacao';
@@ -16,6 +19,7 @@ import {
   AUTOR_SINCRONIZACAO,
   alteracoesDoPlano,
   CAMPOS_UNICOS,
+  chaveCampo,
   type EntidadeSincronizada,
   type PlanoSincronizacao,
   planearSincronizacao,
@@ -70,6 +74,46 @@ function atualizar(
   }
 }
 
+/** As entidades dos JSON (as únicas cujos campos a sincronização pode mudar). */
+const ENTIDADES_SINCRONIZADAS: readonly EntidadeSincronizada[] = ['cliente', 'local', 'casa', 'carrinha'];
+
+/**
+ * Os campos dos JSON mudados no programa, "entidade:id:campo": aqueles cuja linha MAIS RECENTE em
+ * `alteracoes` (lotes aplicados) é de um lote cujo autor não é a importação nem os dados iniciais. Um
+ * `--usar-json` grava uma linha 'dados-iniciais', por isso o campo deixa de contar até alguém o mudar outra
+ * vez no programa. "entidade:id:@registo" entra só se a linha mais recente apagou o registo (depois null):
+ * um registo apagado no programa não volta.
+ */
+export function lerEditados(tx: Pick<Bd, 'select'>): Set<string> {
+  const linhas = tx
+    .select({
+      entidade: esquema.alteracoes.entidade,
+      entidadeId: esquema.alteracoes.entidadeId,
+      campo: esquema.alteracoes.campo,
+      depois: esquema.alteracoes.depois,
+      autor: esquema.lotes.autor,
+    })
+    .from(esquema.alteracoes)
+    .innerJoin(esquema.lotes, eq(esquema.lotes.id, esquema.alteracoes.loteId))
+    .where(
+      and(
+        eq(esquema.lotes.estado, 'aplicado'),
+        inArray(esquema.alteracoes.entidade, [...ENTIDADES_SINCRONIZADAS]),
+      ),
+    )
+    .orderBy(asc(esquema.alteracoes.id))
+    .all();
+  const ultima = new Map<string, { autor: string; depois: string | null }>();
+  for (const l of linhas) ultima.set(chaveCampo(l.entidade, l.entidadeId, l.campo), l);
+  const editados = new Set<string>();
+  for (const [chave, l] of ultima) {
+    if (AUTORES_SEM_REVERTER.includes(l.autor)) continue;
+    if (chave.endsWith(`:${CAMPO_REGISTO}`) && l.depois !== null) continue;
+    editados.add(chave);
+  }
+  return editados;
+}
+
 /**
  * Abre a base de dados só para ler (o ensaio não escreve nada, nem as migrações).
  * Erro se o ficheiro não existir.
@@ -89,10 +133,16 @@ export interface Ensaio {
 }
 
 /** Calcula o plano sem gravar nada (leitura coerente, numa transação). */
-export function ensaiarSincronizacao(bd: Bd, dados: DadosReferencia, agora: Date = new Date()): Ensaio {
+export function ensaiarSincronizacao(
+  bd: Bd,
+  dados: DadosReferencia,
+  agora: Date = new Date(),
+  usarJson: ReadonlySet<string> = new Set(),
+): Ensaio {
   return bd.transaction((tx) => {
-    const estado = lerEstado(tx, agora);
-    return { plano: planearSincronizacao(dados, estado), versao: estado.versao, estado };
+    const estado = lerEstado(tx, agora, { completo: true });
+    const plano = planearSincronizacao(dados, estado, lerEditados(tx), usarJson);
+    return { plano, versao: estado.versao, estado };
   });
 }
 
@@ -120,12 +170,13 @@ export type ResultadoSincronizacao =
 export function aplicarSincronizacao(
   bd: Bd,
   dados: DadosReferencia,
-  opcoes: { agora: Date },
+  opcoes: { agora: Date; usarJson?: ReadonlySet<string> },
 ): ResultadoSincronizacao {
   return bd.transaction(
     (tx): ResultadoSincronizacao => {
-      const estado = lerEstado(tx, opcoes.agora);
-      const plano = planearSincronizacao(dados, estado);
+      // Completo: os problemas resolvidos antigos das casas e veículos que saem também se apagam.
+      const estado = lerEstado(tx, opcoes.agora, { completo: true });
+      const plano = planearSincronizacao(dados, estado, lerEditados(tx), opcoes.usarJson);
       if (plano.erros.length > 0) return { tipo: 'recusado', plano, estado };
       if (planoVazio(plano)) return { tipo: 'vazio', plano, estado };
 
@@ -165,7 +216,10 @@ export function aplicarSincronizacao(
           .run();
       }
 
-      // 3. Saídas (já ninguém aponta para elas).
+      // 3. Saídas (já ninguém aponta para elas): primeiro os problemas resolvidos delas.
+      for (const p of plano.problemasApagados) {
+        tx.delete(esquema.problemas).where(eq(esquema.problemas.id, p.id)).run();
+      }
       for (const c of plano.removidos.carrinhas) {
         tx.delete(esquema.carrinhas).where(eq(esquema.carrinhas.id, c.id)).run();
       }

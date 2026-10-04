@@ -3,14 +3,15 @@
 // em que se abriu e o dia em que se resolveu. Nunca dados pessoais nem de saúde: ao escrever há um aviso
 // discreto (avisoTextoProblema). Quem abriu e quem resolveu fica no Histórico (o autor do lote).
 //
-// CONTRATO DO M2: as assinaturas estão fechadas; o módulo base escreve os testes e afina a heurística.
+// CONTRATO DO M2: as assinaturas estão fechadas.
 
+import { LIMITES } from './campos';
 import { novoId, type Operacao, operacaoCampo, operacaoCriar } from './operacoes';
 import { normalizarTexto } from './pesquisa';
 import type { Estado, Id, Problema } from './tipos';
 
 /** Tamanho máximo do texto de um problema. */
-export const MAX_TEXTO_PROBLEMA = 120;
+export const MAX_TEXTO_PROBLEMA = LIMITES.textoProblema;
 
 /** A casa ou a carrinha onde o problema está pendurado. */
 export type AlvoProblema = { tipo: 'casa'; id: Id } | { tipo: 'carrinha'; id: Id };
@@ -54,42 +55,91 @@ export function problemasAbertosPorAlvo(estado: Pick<Estado, 'problemas'>): Map<
   return resultado;
 }
 
-/** Palavras que sugerem dados de saúde (sem acentos, minúsculas). Lista curta de propósito. */
+/**
+ * Palavras e expressões que sugerem dados de saúde (sem acentos, minúsculas; contam também no plural).
+ * Lista curta de propósito, sem falsos alarmes óbvios: "baixa" só em "de baixa"/"baixa médica" (não em
+ * "lotação mais baixa"), "acidente" só "acidente de trabalho" (um acidente com a carrinha é um problema
+ * dela), "urgências" e não "urgência" ("com urgência").
+ */
 const PALAVRAS_SAUDE = [
   'doente',
   'doenca',
-  'baixa',
+  'de baixa',
+  'baixa medica',
   'hospital',
+  'hospitalizado',
+  'internado',
+  'urgencias',
   'medico',
   'medica',
   'consulta',
+  'clinica',
   'gravida',
+  'gravidez',
   'ferido',
+  'lesao',
+  'lesionado',
+  'fratura',
   'acidente de trabalho',
   'operado',
-  'operacao',
+  'cirurgia',
   'covid',
+  'gripe',
+  'febre',
+  'depressao',
+  'psicologo',
+  'psiquiatra',
+  'saude',
 ];
 
+/** Minúsculas, sem acentos, só letras e algarismos separados por um espaço (com espaços nas pontas). */
+function palavras(texto: string): string {
+  return ` ${normalizarTexto(texto)
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim()} `;
+}
+
+/** O texto (já em `palavras`) tem a expressão inteira (palavra a palavra, também no plural). */
+function temExpressao(t: string, expressao: string): boolean {
+  return t.includes(` ${expressao} `) || t.includes(` ${expressao}s `);
+}
+
+function temSaude(t: string): boolean {
+  return PALAVRAS_SAUDE.some((p) => temExpressao(t, p));
+}
+
 /**
- * Aviso discreto enquanto se escreve: o texto parece ter dados pessoais (o nome de uma pessoa, um telefone)
- * ou de saúde. null = sem aviso. Nunca impede de gravar (é só um lembrete).
- * CONTRATO DO M2 (módulo base): afinar e testar (nomes curtos com 3+ letras, telefones com 6+ algarismos).
+ * Datas escritas à mão (2026-10-01, 01.10.2026, 01-10-2026, 1/10/26): não são telefones. Só com um mês que
+ * exista e sem algarismos colados antes ou depois, para não comer um pedaço de "621.12.10.56".
+ */
+const DATAS =
+  /(?<!\d[ ./-]?)(?:\d{4}-(?:0?[1-9]|1[0-2])-\d{1,2}|\d{1,2}[./-](?:0?[1-9]|1[0-2])[./-](?:\d{4}|\d{2}))(?![ ./-]?\d)/g;
+
+/**
+ * Um número de telefone: 6 ou mais algarismos seguidos (separados só por espaços, pontos ou hífenes), sem
+ * contar as datas (tiram-se antes; o resto do texto continua a contar).
+ */
+function temTelefone(texto: string): boolean {
+  return /(?:^|[^\d])\+?\d(?:[ .-]?\d){5,}(?!\d)/.test(texto.replace(DATAS, ' '));
+}
+
+/**
+ * Aviso discreto enquanto se escreve: o texto parece ter dados pessoais (o nome no mapa de uma pessoa, com 3
+ * ou mais letras; um telefone, com 6 ou mais algarismos) ou de saúde. null = sem aviso. Nunca impede de
+ * gravar (é só um lembrete). "Pneu furado", "janela partida" e "lotação mais baixa" não avisam.
  */
 export function avisoTextoProblema(texto: string, estado: Pick<Estado, 'pessoas'>): string | null {
-  const t = ` ${normalizarTexto(texto)} `;
+  const t = palavras(texto);
   if (t.trim() === '') return null;
-  if (/\d[\d\s]{5,}\d/.test(texto))
-    return 'Parece um número de telefone: o problema é sobre a casa ou a carrinha.';
-  if (PALAVRAS_SAUDE.some((p) => t.includes(` ${p} `) || t.includes(` ${p}`))) {
-    return 'Não escrevas dados de saúde: o problema é sobre a casa ou a carrinha.';
-  }
+  if (temTelefone(texto)) return 'Parece um número de telefone: o problema é sobre a casa ou a carrinha.';
+  if (temSaude(t)) return 'Não escrevas dados de saúde: o problema é sobre a casa ou a carrinha.';
   const nome = estado.pessoas.find((p) => {
-    const n = normalizarTexto(p.nomeCurto);
-    return n.length >= 3 && t.includes(` ${n} `);
+    const n = palavras(p.nomeCurto).trim();
+    return n.replace(/[^\p{L}]/gu, '').length >= 3 && t.includes(` ${n} `);
   });
-  if (nome)
+  if (nome) {
     return 'Parece o nome de uma pessoa: o problema é sobre a casa ou a carrinha, não sobre quem lá está.';
+  }
   return null;
 }
 
@@ -101,13 +151,13 @@ export const AVISO_COMENTARIO_SEM_MOTIVO = 'Não escrevas o motivo da indisponib
 
 /**
  * Aviso discreto para um texto livre que não é de um problema (o comentário do Guardar): só as palavras de
- * saúde (nomes de pessoas são normais num comentário). null = sem aviso. Nunca impede de gravar.
- * CONTRATO DO M2 (módulo base): afinar com avisoTextoProblema (mesma lista, sem falsos alarmes óbvios).
+ * saúde, as mesmas de avisoTextoProblema (nomes de pessoas são normais num comentário). null = sem aviso.
+ * Nunca impede de gravar.
  */
 export function avisoTextoSaude(texto: string): string | null {
-  const t = ` ${normalizarTexto(texto)} `;
+  const t = palavras(texto);
   if (t.trim() === '') return null;
-  return PALAVRAS_SAUDE.some((p) => t.includes(` ${p} `)) ? AVISO_COMENTARIO_SEM_MOTIVO : null;
+  return temSaude(t) ? AVISO_COMENTARIO_SEM_MOTIVO : null;
 }
 
 /** Operação para abrir um problema novo na casa/carrinha, aberto hoje. O texto chega já aparado. */

@@ -7,23 +7,35 @@
 // - 'registo': cria (`de` = null) ou apaga (`para` = null) um registo inteiro, com o id gerado no browser
 //   (novoId): pessoas novas, obras e os seus locais, períodos de indisponibilidade e problemas.
 // Todas têm `de` (o que se esperava encontrar: os conflitos vêm daí) e `para`. CONTRATO DO M2: os tipos e as
-// assinaturas estão fechados; dobrar os 'campo' num 'registo' ao compactar, validar as operações novas, os
-// conflitos escondidos e as frases finais são do módulo base (ver os comentários "CONTRATO DO M2").
+// assinaturas estão fechados. Compactar dobra os 'campo' de um registo criado/apagado no 'registo';
+// validarOperacoes vê as regras de docs/m2.md ("Validar") no estado final; descreverOperacao dá as frases do
+// histórico ("Frases do histórico").
 
 import {
   type CampoEditavel,
+  chaveMatricula,
+  ENTIDADES_APAGAVEIS,
+  ENTIDADES_CRIAVEIS,
   type EntidadeApagavel,
   type EntidadeCriavel,
   type EntidadeEditavel,
+  eCampoEditavel,
+  eEntidadeEditavel,
   encontrarRegisto,
+  localCriadoNoPrograma,
   PREFIXO_ID,
   type RegistosEditaveis,
   ROTULO_CAMPO,
+  registosDe,
   type ValorCampo,
   type ValorDoCampo,
+  validarRegisto,
+  validarValorCampo,
 } from './campos';
+import { formatarDiaCompleto } from './datas';
 import { formatarMatricula } from './matricula';
-import type { Carrinha, Estado, Id, Pessoa } from './tipos';
+import { normalizarTexto } from './pesquisa';
+import type { Carrinha, Casa, Estado, Id, Indisponibilidade, Local, Pessoa } from './tipos';
 
 export type CampoMovivel = 'casaId' | 'carrinhaId' | 'obraId';
 
@@ -303,31 +315,37 @@ const LISTA_DA_ENTIDADE = {
 
 /**
  * Aplica as operações 'campo' e 'registo' (M2), por fases: 1) cria os registos novos (no fim da lista);
- * 2) muda os campos; 3) as outras operações (aplicarOperacoes); 4) apaga os registos apagados. Assim uma
- * pessoa pode ir para uma obra criada no mesmo rascunho, e uma obra só desaparece depois de as pessoas saírem.
- * CONTRATO DO M2: o módulo base revê e testa (ordem das listas criadas, campos de registos inexistentes).
+ * 2) muda os campos (os de registos que não existem ignoram-se); 3) as outras operações (aplicarOperacoes);
+ * 4) apaga os registos apagados. Assim uma pessoa pode ir para uma obra criada no mesmo rascunho, e uma obra
+ * só desaparece depois de as pessoas saírem. Seja qual for a ordem das operações no pedido.
  */
 function aplicarRegistosECampos(estado: Estado, ops: readonly Operacao[], fase: 'antes' | 'depois'): Estado {
   let resultado = estado;
   const mudar = <K extends keyof Estado>(lista: K, valor: Estado[K]) => {
     resultado = { ...resultado, [lista]: valor };
   };
-  for (const op of ops) {
-    if (op.tipo === 'registo') {
-      const lista = LISTA_DA_ENTIDADE[op.entidade];
-      const atuais = resultado[lista] as readonly { id: Id }[];
-      if (fase === 'antes' && op.de === null && op.para !== null) {
-        if (!atuais.some((r) => r.id === op.id)) mudar(lista, [...atuais, op.para] as never);
-      } else if (fase === 'depois' && op.para === null) {
-        mudar(lista, atuais.filter((r) => r.id !== op.id) as never);
-      }
-      continue;
+  const lista = (entidade: EntidadeEditavel) => LISTA_DA_ENTIDADE[entidade];
+  const atuais = (entidade: EntidadeEditavel) => resultado[lista(entidade)] as readonly { id: Id }[];
+  if (fase === 'depois') {
+    for (const op of ops) {
+      if (op.tipo !== 'registo' || op.para !== null) continue;
+      mudar(lista(op.entidade), atuais(op.entidade).filter((r) => r.id !== op.id) as never);
     }
-    if (op.tipo !== 'campo' || fase !== 'antes') continue;
-    const lista = LISTA_DA_ENTIDADE[op.entidade];
-    const atuais = resultado[lista] as readonly { id: Id }[];
-    if (!atuais.some((r) => r.id === op.id)) continue;
-    mudar(lista, atuais.map((r) => (r.id === op.id ? { ...r, [op.campo]: op.para } : r)) as never);
+    return resultado;
+  }
+  for (const op of ops) {
+    if (op.tipo !== 'registo' || op.de !== null || op.para === null) continue;
+    if (atuais(op.entidade).some((r) => r.id === op.id)) continue;
+    mudar(lista(op.entidade), [...atuais(op.entidade), op.para] as never);
+  }
+  for (const op of ops) {
+    if (op.tipo !== 'campo' || !Object.hasOwn(LISTA_DA_ENTIDADE, op.entidade)) continue;
+    const registos = atuais(op.entidade);
+    if (!registos.some((r) => r.id === op.id)) continue;
+    mudar(
+      lista(op.entidade),
+      registos.map((r) => (r.id === op.id ? { ...r, [op.campo]: op.para } : r)) as never,
+    );
   }
   return resultado;
 }
@@ -404,17 +422,75 @@ export function chaveOperacao(op: Operacao): string {
   }
 }
 
+/** Prefixo das chaves (chaveOperacao) das operações 'campo' de um registo. */
+function prefixoCampos(entidade: EntidadeEditavel, id: Id): string {
+  return `f\u0000${entidade}\u0000${id}\u0000`;
+}
+
+/** Chave (chaveOperacao) da operação 'registo' de um registo. */
+function chaveDoRegisto(entidade: EntidadeEditavel, id: Id): string {
+  return `r\u0000${entidade}\u0000${id}`;
+}
+
+/**
+ * Campos que NÃO se dobram no `para` de um registo criado no rascunho: a forma de criar recusa-os com outro
+ * valor (validarRegisto: problema aberto; pessoa ativa e sem marcas). Ficam como 'campo' a seguir à criação,
+ * que o aplicar, o validar e o servidor tratam pelas fases (ex.: abrir e resolver um problema no mesmo
+ * rascunho; uma pessoa nova que sai logo da empresa ou fica com a casa a confirmar).
+ */
+const CAMPOS_FORA_DA_CRIACAO: Readonly<Partial<Record<EntidadeEditavel, readonly string[]>>> = {
+  problema: ['resolvidoEm'],
+  pessoa: ['ativa', 'casaAConfirmar', 'carrinhaAConfirmar'],
+};
+
 /**
  * Junta os movimentos da mesma pessoa no mesmo campo num só (o `de` do primeiro, o `para` do último)
  * e tira os que acabam onde começaram. Mantém a ordem da primeira ocorrência. Vale igual para as operações
- * do M2 (mesmo campo do mesmo registo; mesmo registo criado/apagado).
- * CONTRATO DO M2 (módulo base): os 'campo' de um registo criado no rascunho dobram-se no `para` do 'registo';
- * os de um registo apagado no rascunho dobram-se no `de` (o valor gravado); criar e apagar no mesmo rascunho
- * não deixa nada (nem os 'campo' desse registo). Ver docs/m2.md, "Compactar".
+ * do M2 (mesmo campo do mesmo registo; mesmo registo criado/apagado), com as DOBRAS (docs/m2.md, "Compactar"):
+ * - os 'campo' de um registo criado no rascunho entram no `para` do 'registo' (sai um registo já acabado),
+ *   menos os de CAMPOS_FORA_DA_CRIACAO, que ficam 'campo' a seguir à criação;
+ * - os 'campo' de um registo que depois se apaga entram no `de` do 'registo' (o valor gravado, que é o `de`
+ *   do 1.º 'campo' de cada campo) e saem: o servidor compara o `de` com o que está gravado;
+ * - criar e apagar o mesmo registo no rascunho não deixa nada (nem os 'campo' dele).
  */
 export function compactarOperacoes(ops: readonly Operacao[]): Operacao[] {
   const juntas = new Map<string, Operacao>();
   for (const op of ops) {
+    if (op.tipo === 'campo') {
+      const chaveRegisto = chaveDoRegisto(op.entidade, op.id);
+      const registo = juntas.get(chaveRegisto);
+      if (
+        registo?.tipo === 'registo' &&
+        registo.de === null &&
+        registo.para !== null &&
+        !CAMPOS_FORA_DA_CRIACAO[op.entidade]?.includes(op.campo)
+      ) {
+        juntas.set(chaveRegisto, {
+          ...registo,
+          para: { ...registo.para, [op.campo]: op.para },
+        } as Operacao);
+        continue;
+      }
+    }
+    if (op.tipo === 'registo' && op.de !== null && op.para === null) {
+      const chave = chaveOperacao(op);
+      const anterior = juntas.get(chave);
+      // Os campos mudados antes de apagar: o registo gravado tinha o `de` do 1.º 'campo' de cada um.
+      let gravado: Record<string, unknown> = { ...op.de };
+      const prefixo = prefixoCampos(op.entidade, op.id);
+      for (const [k, v] of juntas) {
+        if (!k.startsWith(prefixo) || v.tipo !== 'campo') continue;
+        gravado = { ...gravado, [v.campo]: v.de };
+        juntas.delete(k);
+      }
+      if (anterior?.tipo === 'registo' && anterior.de === null) {
+        // Criado e apagado no mesmo rascunho: não fica nada.
+        juntas.delete(chave);
+        continue;
+      }
+      juntas.set(chave, (anterior ? { ...anterior, para: null } : { ...op, de: gravado }) as Operacao);
+      continue;
+    }
     const chave = chaveOperacao(op);
     const anterior = juntas.get(chave);
     // A chave garante que as duas operações são do mesmo tipo (e o mesmo campo).
@@ -451,7 +527,7 @@ export type Conflito =
  * Operações cujo `de` já não corresponde ao estado (alguém mudou entretanto).
  * M2: 'campo' compara o valor atual com o `de` (e dá conflito se o registo já não existir, a não ser que seja
  * criado no mesmo lote); 'registo' de criar dá conflito se o id já existir; de apagar, se o registo mudou ou
- * já não existe. CONTRATO DO M2: o módulo base testa (e revê os registos criados no mesmo lote).
+ * já não existe. Os registos são comparados pelo conteúdo (valoresIguais: a ordem das chaves não conta).
  */
 export function encontrarConflitos(estado: Estado, ops: readonly Operacao[]): Conflito[] {
   const pessoas = new Map(estado.pessoas.map((p) => [p.id, p]));
@@ -519,48 +595,160 @@ export function encontrarConflitos(estado: Estado, ops: readonly Operacao[]): Co
   return conflitos;
 }
 
+/** "A casa", "O problema"…: o registo de que se fala quando já não se sabe o nome. */
+const ARTIGO_ENTIDADE: Readonly<Record<EntidadeEditavel, string>> = {
+  pessoa: 'A pessoa',
+  casa: 'A casa',
+  carrinha: 'A carrinha',
+  obra: 'A obra',
+  local: 'A morada',
+  indisponibilidade: 'O período de indisponibilidade',
+  problema: 'O problema',
+};
+
+type Mexidos = { [E in EntidadeEditavel]: Set<Id> };
+
+function semMexidos(): Mexidos {
+  return {
+    pessoa: new Set(),
+    casa: new Set(),
+    carrinha: new Set(),
+    obra: new Set(),
+    local: new Set(),
+    indisponibilidade: new Set(),
+    problema: new Set(),
+  };
+}
+
+/** "2026-10-06" → "06/10/2026"; null → "—". */
+function dia(valor: unknown): string {
+  return typeof valor === 'string' ? formatarDiaCompleto(valor) : '—';
+}
+
 /**
- * Erros de referência (pessoa, carrinha ou destino que não existem, pessoa inativa) e a regra do condutor:
- * no fim das operações, o condutor de cada carrinha mexida tem de ir nela. Lista vazia = válido.
- * CONTRATO DO M2 (módulo base): validar também as operações 'campo' e 'registo' (docs/m2.md, "Validar"):
- * valores (validarValorCampo), referências e unicidade no estado FINAL, só se apagam as entidades apagáveis e
- * sem nada que as use, sem períodos sobrepostos, quem sai da empresa fica sem casa/carrinha/obra/condutor; e
- * as referências das operações antigas passam a ver os registos criados no mesmo lote. O `ativa` de quem é
- * movido ou passa a conduzir vê-se DEPOIS dos 'campo' do mesmo lote ("Voltou à empresa" + pôr numa casa no
- * mesmo rascunho é válido; reverter um "Saiu da empresa" também).
+ * Erros (frases prontas a mostrar, com nomes e não ids) que impedem gravar as operações. Lista vazia =
+ * válido. É a mesma no browser e no servidor (que a corre sobre o estado COMPLETO, com os períodos e os
+ * problemas antigos). Vê:
+ * - cada valor (validarValorCampo) e a forma de cada registo criado (validarRegisto); o id novo não existe;
+ *   só se criam ENTIDADES_CRIAVEIS e só se apagam ENTIDADES_APAGAVEIS;
+ * - no estado FINAL (aplicarOperacoes, com os registos criados no mesmo lote): as referências (cliente,
+ *   local, estacionamento, casa/carrinha do problema, pessoa do período, destinos de 'mover', condutor,
+ *   onde dorme); o `ativa` de quem é movido ou passa a conduzir (depois dos 'campo': "Voltou à empresa" +
+ *   pôr numa casa no mesmo lote é válido);
+ * - só nos registos mexidos ('campo' e criados): nome no mapa (sem acentos nem maiúsculas) entre TODAS as
+ *   pessoas, nº, matrícula e nome da casa únicos; períodos da mesma pessoa sem sobreposição e fim ≥ início;
+ *   resolvido ≥ aberto; tolerado ≥ máx. do contrato; sem carta (ou "não sei") não há validade;
+ * - apagar: a obra sem pessoas no fim; o local só se foi criado no programa e sem nada que o use;
+ * - quem sai da empresa fica sem casa, carrinha, obra e sem conduzir; e a regra do condutor de sempre (o
+ *   condutor de cada carrinha mexida vai nela), vista só quando o resto está certo.
  */
 export function validarOperacoes(estado: Estado, ops: readonly Operacao[]): string[] {
-  const pessoas = new Map(estado.pessoas.map((p) => [p.id, p]));
-  const carrinhas = new Map(estado.carrinhas.map((c) => [c.id, c]));
-  const existe: Record<CampoMovivel, Set<Id>> = {
-    casaId: new Set(estado.casas.map((c) => c.id)),
-    carrinhaId: new Set(estado.carrinhas.map((c) => c.id)),
-    obraId: new Set(estado.obras.map((o) => o.id)),
+  const final = aplicarOperacoes(estado, ops);
+  /** O nome do registo: no estado final (os criados) ou no de partida (os apagados). */
+  const nome = (entidade: EntidadeEditavel, id: Id): string =>
+    encontrarRegisto(final, entidade, id)
+      ? nomeDoRegisto(final, entidade, id)
+      : encontrarRegisto(estado, entidade, id)
+        ? nomeDoRegisto(estado, entidade, id)
+        : ARTIGO_ENTIDADE[entidade];
+  const pessoasFinal = new Map(final.pessoas.map((p) => [p.id, p]));
+  const carrinhasIniciais = new Map(estado.carrinhas.map((c) => [c.id, c]));
+  const existeNoFim: Record<CampoMovivel, Set<Id>> = {
+    casaId: new Set(final.casas.map((c) => c.id)),
+    carrinhaId: new Set(final.carrinhas.map((c) => c.id)),
+    obraId: new Set(final.obras.map((o) => o.id)),
   };
   const erros: string[] = [];
+  const mexidos = semMexidos();
+  const criados = new Set<string>();
+  const apagados: OperacaoRegisto[] = [];
   const carrinhasMexidas = new Set<Id>();
-  const casas = new Set(estado.casas.map((c) => c.id));
-  const locais = new Set(estado.locais.map((l) => l.id));
+  /** Quem passa a ativa = false neste lote ("Saiu da empresa"). */
+  const saidas = new Set<Id>();
+  /** "entidade:id:campo" dos 'campo' do lote. */
+  const camposMexidos = new Set<string>();
+
   for (const op of ops) {
-    // CONTRATO DO M2: as operações 'campo' e 'registo' validam-se no módulo base.
-    if (op.tipo === 'campo' || op.tipo === 'registo') continue;
+    if (op.tipo === 'campo') {
+      if (op.entidade === 'pessoa' && op.campo === 'ativa' && op.para === false) saidas.add(op.id);
+      if (!eEntidadeEditavel(op.entidade) || !eCampoEditavel(op.entidade, op.campo)) {
+        erros.push(`O campo ${String(op.campo)} não se pode mudar no programa.`);
+        continue;
+      }
+      const erro = validarValorCampo(op.entidade, op.campo, op.para);
+      if (erro) erros.push(`${nome(op.entidade, op.id)} — ${erro}`);
+      if (!encontrarRegisto(final, op.entidade, op.id) && !encontrarRegisto(estado, op.entidade, op.id)) {
+        erros.push(`${ARTIGO_ENTIDADE[op.entidade]} que estavas a mudar já não existe.`);
+        continue;
+      }
+      mexidos[op.entidade].add(op.id);
+      camposMexidos.add(`${op.entidade}:${op.id}:${op.campo}`);
+      continue;
+    }
+    if (op.tipo === 'registo') {
+      const { entidade } = op;
+      if (op.de === null && op.para !== null) {
+        const quem = nomeDeRegisto(final, entidade, op.para as unknown as Record<string, unknown>);
+        if (!(ENTIDADES_CRIAVEIS as readonly string[]).includes(entidade)) {
+          erros.push(`${quem} — não se cria no programa.`);
+          continue;
+        }
+        for (const e of validarRegisto(entidade, op.para)) erros.push(`${quem} — ${e}`);
+        const chave = `${entidade}:${op.id}`;
+        if (op.para.id !== op.id) erros.push(`${quem} — registo inválido (o identificador não bate certo).`);
+        else if (encontrarRegisto(estado, entidade, op.id) || criados.has(chave)) {
+          erros.push(`${quem} — já existe (identificador repetido).`);
+        }
+        criados.add(chave);
+        mexidos[entidade].add(op.id);
+        continue;
+      }
+      if (op.de !== null && op.para === null) {
+        const quem = nome(entidade, op.id);
+        if (!(ENTIDADES_APAGAVEIS as readonly string[]).includes(entidade)) {
+          erros.push(
+            entidade === 'pessoa'
+              ? `${quem} — uma pessoa não se apaga: usa "Saiu da empresa".`
+              : `${quem} — não se apaga no programa.`,
+          );
+          continue;
+        }
+        const atual = encontrarRegisto(estado, entidade, op.id);
+        if (!atual) {
+          erros.push(`${ARTIGO_ENTIDADE[entidade]} que querias apagar já não existe.`);
+          continue;
+        }
+        if (entidade === 'local' && !localCriadoNoPrograma(atual as Local)) {
+          erros.push(`${quem} — esta morada veio dos dados iniciais e não se apaga no programa.`);
+          continue;
+        }
+        apagados.push(op);
+        continue;
+      }
+      erros.push(`${nome(entidade, op.id)} — um registo cria-se ou apaga-se (não as duas coisas).`);
+      continue;
+    }
     if (op.tipo === 'dormida') {
-      if (!carrinhas.has(op.carrinhaId)) erros.push(`A carrinha ${op.carrinhaId} não existe.`);
+      if (!carrinhasIniciais.has(op.carrinhaId)) erros.push(`A carrinha ${op.carrinhaId} não existe.`);
       if (op.para !== null) {
         const lida = lerChaveDormida(op.para);
-        const existe = lida && (lida.tipo === 'casa' ? casas.has(lida.id) : locais.has(lida.id));
+        const existe =
+          lida &&
+          (lida.tipo === 'casa'
+            ? final.casas.some((c) => c.id === lida.id)
+            : final.locais.some((l) => l.id === lida.id));
         if (!existe) erros.push(`O sítio onde dormir "${op.para}" não existe.`);
       }
       continue;
     }
     if (op.tipo === 'condutor') {
-      if (!carrinhas.has(op.carrinhaId)) {
+      if (!carrinhasIniciais.has(op.carrinhaId)) {
         erros.push(`A carrinha ${op.carrinhaId} não existe.`);
         continue;
       }
       carrinhasMexidas.add(op.carrinhaId);
       if (op.para !== null) {
-        const c = pessoas.get(op.para);
+        const c = pessoasFinal.get(op.para);
         if (!c) erros.push(`A pessoa ${op.para} não existe.`);
         else if (!c.ativa) erros.push(`${c.nomeCurto} não está ativa.`);
       }
@@ -570,29 +758,255 @@ export function validarOperacoes(estado: Estado, ops: readonly Operacao[]): stri
       if (op.de) carrinhasMexidas.add(op.de);
       if (op.para) carrinhasMexidas.add(op.para);
     }
-    const p = pessoas.get(op.pessoaId);
+    const p = pessoasFinal.get(op.pessoaId);
     if (!p) {
       erros.push(`A pessoa ${op.pessoaId} não existe.`);
       continue;
     }
-    if (!p.ativa) erros.push(`${p.nomeCurto} não está ativa.`);
-    if (op.para !== null && !existe[op.campo].has(op.para)) {
+    // O `ativa` vê-se depois dos 'campo' do lote: tirar alguém que saiu da empresa (para null) é sempre válido.
+    if (op.para !== null && !p.ativa) erros.push(`${p.nomeCurto} não está ativa.`);
+    if (op.para !== null && !existeNoFim[op.campo].has(op.para)) {
       erros.push(`${p.nomeCurto}: o destino ${op.para} não existe.`);
     }
   }
+
+  /** O registo foi criado no lote, ou algum destes campos mudou. */
+  const mudou = (entidade: EntidadeEditavel, id: Id, ...campos: string[]) =>
+    criados.has(`${entidade}:${id}`) || campos.some((c) => camposMexidos.has(`${entidade}:${id}:${c}`));
+  erros.push(...errosDosRegistos(final, mexidos, mudou, saidas, apagados, nome));
+
+  // Quem sai da empresa deixa de conduzir: a carrinha que conduzia conta como mexida.
+  for (const id of saidas) {
+    for (const c of final.carrinhas) if (c.condutorId === id) carrinhasMexidas.add(c.id);
+  }
+
   if (erros.length > 0 || carrinhasMexidas.size === 0) return erros;
-  const final = aplicarOperacoes(estado, ops);
-  const pessoasFinal = new Map(final.pessoas.map((p) => [p.id, p]));
   for (const c of final.carrinhas) {
     if (!carrinhasMexidas.has(c.id) || c.condutorId === null) continue;
     const condutor = pessoasFinal.get(c.condutorId);
-    if (!condutor || condutor.carrinhaId !== c.id) {
+    if (!condutor || condutor.carrinhaId !== c.id || !condutor.ativa) {
       erros.push(
         `${condutor?.nomeCurto ?? c.condutorId} não vai na carrinha ${formatarMatricula(c.matricula)}: não pode ser o condutor.`,
       );
     }
   }
   return erros;
+}
+
+/**
+ * Referências, unicidade, datas e apagados dos registos mexidos, no estado final. Cada regra só olha para os
+ * registos criados no lote ou cujos campos dessa regra mudaram (dados antigos incoerentes não bloqueiam outra
+ * mudança na mesma ficha).
+ */
+function errosDosRegistos(
+  final: Estado,
+  mexidos: Mexidos,
+  mudou: (entidade: EntidadeEditavel, id: Id, ...campos: string[]) => boolean,
+  saidas: ReadonlySet<Id>,
+  apagados: readonly OperacaoRegisto[],
+  nome: (entidade: EntidadeEditavel, id: Id) => string,
+): string[] {
+  const erros: string[] = [];
+  const ids = <T extends { id: Id }>(lista: readonly T[]) => new Set(lista.map((x) => x.id));
+  const clientes = ids(final.clientes);
+  const locais = ids(final.locais);
+  const casas = ids(final.casas);
+  const carrinhas = ids(final.carrinhas);
+  const pessoas = ids(final.pessoas);
+  const mexido = <E extends EntidadeEditavel>(entidade: E): RegistosEditaveis[E][] =>
+    registosDe(final, entidade).filter((r) => mexidos[entidade].has(r.id));
+
+  // --- Pessoas -------------------------------------------------------------------------------------
+  const nomesCurtos = new Map<string, Pessoa[]>();
+  const numeros = new Map<string, Pessoa[]>();
+  for (const p of final.pessoas) {
+    juntar(nomesCurtos, normalizarTexto(p.nomeCurto ?? ''), p);
+    if (p.numero) juntar(numeros, normalizarTexto(p.numero), p);
+  }
+  for (const p of mexido('pessoa')) {
+    if (mudou('pessoa', p.id, 'clienteId') && !clientes.has(p.clienteId)) {
+      erros.push(`${p.nomeCurto} — o cliente escolhido não existe.`);
+    }
+    const outroNome = mudou('pessoa', p.id, 'nomeCurto')
+      ? nomesCurtos.get(normalizarTexto(p.nomeCurto ?? ''))?.find((x) => x.id !== p.id)
+      : undefined;
+    if (outroNome) {
+      erros.push(`${p.nomeCurto} — nome no mapa repetido: já há outra pessoa com «${outroNome.nomeCurto}».`);
+    }
+    const outroNumero =
+      p.numero && mudou('pessoa', p.id, 'numero')
+        ? numeros.get(normalizarTexto(p.numero))?.find((x) => x.id !== p.id)
+        : undefined;
+    if (outroNumero) erros.push(`${p.nomeCurto} — o nº ${p.numero} já é de ${outroNumero.nomeCurto}.`);
+    if (
+      mudou('pessoa', p.id, 'temCarta', 'cartaValidade') &&
+      p.temCarta !== true &&
+      p.cartaValidade !== null
+    ) {
+      erros.push(`${p.nomeCurto} — sem carta (ou sem saber) não há validade da carta.`);
+    }
+    if (saidas.has(p.id) && !p.ativa) {
+      if (p.casaId !== null || p.carrinhaId !== null || p.obraId !== null) {
+        erros.push(`${p.nomeCurto} — quem sai da empresa sai também da casa, da carrinha e da obra.`);
+      }
+      const conduz = final.carrinhas.find((c) => c.condutorId === p.id);
+      if (conduz) {
+        erros.push(
+          `${p.nomeCurto} — quem sai da empresa deixa de conduzir a ${formatarMatricula(conduz.matricula)}.`,
+        );
+      }
+    }
+  }
+
+  // --- Casas e carrinhas ---------------------------------------------------------------------------
+  const nomesCasas = new Map<string, Casa[]>();
+  for (const c of final.casas) juntar(nomesCasas, normalizarTexto(c.nome ?? ''), c);
+  for (const c of mexido('casa')) {
+    if (mudou('casa', c.id, 'localId') && !locais.has(c.localId)) {
+      erros.push(`${c.nome} — a morada escolhida não existe.`);
+    }
+    if (mudou('casa', c.id, 'nome') && (nomesCasas.get(normalizarTexto(c.nome ?? ''))?.length ?? 0) > 1) {
+      erros.push(`${c.nome} — já há outra casa com este nome.`);
+    }
+    const contrato = mudou('casa', c.id, 'maxContrato', 'tolerado');
+    if (contrato && c.maxContrato !== null && c.tolerado !== null && c.tolerado < c.maxContrato) {
+      erros.push(
+        `${c.nome} — o tolerado (${c.tolerado}) não pode ser menor do que o máx. do contrato (${c.maxContrato}).`,
+      );
+    }
+  }
+  const matriculas = new Map<string, Carrinha[]>();
+  for (const c of final.carrinhas) juntar(matriculas, chaveMatricula(c.matricula ?? ''), c);
+  // As outras matrículas também encontram o veículo (pesquisa, Mover para…): não podem ser de outro.
+  const alternativas = new Map<string, Carrinha[]>();
+  for (const c of final.carrinhas) {
+    for (const m of new Set((c.matriculasAlternativas ?? []).map(chaveMatricula))) juntar(alternativas, m, c);
+  }
+  const deOutro = (chave: string, id: Id): Carrinha | undefined =>
+    [...(matriculas.get(chave) ?? []), ...(alternativas.get(chave) ?? [])].find((o) => o.id !== id);
+  for (const c of mexido('carrinha')) {
+    if (mudou('carrinha', c.id, 'matricula') && deOutro(chaveMatricula(c.matricula), c.id)) {
+      erros.push(`${formatarMatricula(c.matricula)} — já há outro veículo com esta matrícula.`);
+    }
+    if (mudou('carrinha', c.id, 'matriculasAlternativas')) {
+      const vistas = new Set<string>();
+      for (const m of c.matriculasAlternativas ?? []) {
+        const chave = chaveMatricula(m);
+        const outro = deOutro(chave, c.id);
+        // As repetidas na própria lista já as recusa o validarValorCampo.
+        if (vistas.has(chave)) continue;
+        if (chave === chaveMatricula(c.matricula)) {
+          erros.push(
+            `${formatarMatricula(c.matricula)} — ${formatarMatricula(m)} já é a matrícula principal deste veículo.`,
+          );
+        } else if (outro) {
+          erros.push(
+            `${formatarMatricula(c.matricula)} — ${formatarMatricula(m)} já é de outro veículo (${formatarMatricula(outro.matricula)}).`,
+          );
+        }
+        vistas.add(chave);
+      }
+    }
+  }
+
+  // --- Obras, problemas e períodos -----------------------------------------------------------------
+  for (const o of mexido('obra')) {
+    if (mudou('obra', o.id, 'clienteId') && !clientes.has(o.clienteId)) {
+      erros.push(`${o.nome} — o cliente escolhido não existe.`);
+    }
+    if (mudou('obra', o.id, 'localId') && !locais.has(o.localId)) {
+      erros.push(`${o.nome} — a morada escolhida não existe.`);
+    }
+    const estacionamento = o.estacionamentoLocalId;
+    if (
+      mudou('obra', o.id, 'estacionamentoLocalId') &&
+      estacionamento !== null &&
+      !locais.has(estacionamento)
+    ) {
+      erros.push(`${o.nome} — o estacionamento escolhido não existe.`);
+    }
+  }
+  for (const p of mexido('problema')) {
+    const alvoExiste =
+      p.casaId !== null ? casas.has(p.casaId) : p.carrinhaId !== null && carrinhas.has(p.carrinhaId);
+    if (mudou('problema', p.id) && !alvoExiste)
+      erros.push('O problema é de uma casa ou carrinha que não existe.');
+    if (p.resolvidoEm !== null && p.resolvidoEm < p.abertoEm) {
+      erros.push(
+        `${nome('problema', p.id)} — o problema não pode ficar resolvido (${dia(p.resolvidoEm)}) antes de ser aberto (${dia(p.abertoEm)}).`,
+      );
+    }
+  }
+  const pessoasComPeriodos = new Set<Id>();
+  for (const periodo of mexido('indisponibilidade')) {
+    if (!pessoas.has(periodo.pessoaId)) {
+      erros.push('O período de indisponibilidade é de uma pessoa que não existe.');
+      continue;
+    }
+    if (periodo.fim !== null && periodo.fim < periodo.inicio) {
+      erros.push(
+        `${nome('indisponibilidade', periodo.id)} — o período acaba (${dia(periodo.fim)}) antes de começar (${dia(periodo.inicio)}).`,
+      );
+    }
+    pessoasComPeriodos.add(periodo.pessoaId);
+  }
+  for (const pessoaId of pessoasComPeriodos) {
+    const periodos = final.indisponibilidades.filter((x) => x.pessoaId === pessoaId);
+    for (const [i, a] of periodos.entries()) {
+      for (const b of periodos.slice(i + 1)) {
+        if (!mexidos.indisponibilidade.has(a.id) && !mexidos.indisponibilidade.has(b.id)) continue;
+        if (!sobrepoem(a, b)) continue;
+        const [velho, novo] = mexidos.indisponibilidade.has(b.id) ? [a, b] : [b, a];
+        erros.push(
+          `${nome('indisponibilidade', novo.id)} — já está indisponível ${textoDoPeriodo(velho)}: os períodos não se podem sobrepor.`,
+        );
+      }
+    }
+  }
+
+  // --- Apagados --------------------------------------------------------------------------------------
+  for (const op of apagados) {
+    const quem = nome(op.entidade, op.id);
+    if (op.entidade === 'obra') {
+      const n = final.pessoas.filter((p) => p.obraId === op.id).length;
+      if (n > 0) {
+        erros.push(
+          `${quem} — ainda tem ${n === 1 ? '1 pessoa' : `${n} pessoas`}: muda-as para outra obra antes de a apagar.`,
+        );
+      }
+    } else if (op.entidade === 'local') {
+      const usos = [
+        ...final.casas.filter((c) => c.localId === op.id).map((c) => c.nome),
+        ...final.obras
+          .filter((o) => o.localId === op.id || o.estacionamentoLocalId === op.id)
+          .map((o) => o.nome),
+        ...final.carrinhas
+          .filter((c) => c.dormeLocalId === op.id)
+          .map((c) => `${formatarMatricula(c.matricula)} (dorme lá)`),
+      ];
+      if (usos.length > 0)
+        erros.push(`${quem} — esta morada ainda é usada por ${usos.join(', ')}: não se apaga.`);
+    }
+  }
+  return erros;
+}
+
+/** Dois períodos têm pelo menos um dia em comum (o mesmo que periodosSobrepoem, em indisponibilidade.ts). */
+function sobrepoem(a: Indisponibilidade, b: Indisponibilidade): boolean {
+  return a.inicio <= (b.fim ?? '9999-12-31') && b.inicio <= (a.fim ?? '9999-12-31');
+}
+
+function juntar<T>(mapa: Map<string, T[]>, chave: string, valor: T): void {
+  const lista = mapa.get(chave);
+  if (lista) lista.push(valor);
+  else mapa.set(chave, [valor]);
+}
+
+/** "de 06/10/2026 a 10/10/2026", "a 06/10/2026", "a partir de 06/10/2026 (sem data de regresso)". */
+function textoDoPeriodo(p: Pick<Indisponibilidade, 'inicio' | 'fim'>): string {
+  if (p.fim === null) return `a partir de ${dia(p.inicio)} (sem data de regresso)`;
+  if (p.fim === p.inicio) return `a ${dia(p.inicio)}`;
+  return `de ${dia(p.inicio)} a ${dia(p.fim)}`;
 }
 
 const NOME_CAMPO: Record<CampoMovivel, string> = { casaId: 'casa', carrinhaId: 'carrinha', obraId: 'obra' };
@@ -624,45 +1038,169 @@ export function nomeDaDormida(estado: Estado, chave: ChaveDormida | null): strin
 }
 
 /**
- * Quem é o registo de uma operação do M2, para as frases ("Ana T.", "Casa Um", "CF 5001", "Obra X").
- * CONTRATO DO M2: o módulo base afina (indisponibilidade → nome da pessoa; problema → casa/carrinha).
+ * O nome de um registo para as frases (mesmo um que já não está no estado, ex.: apagado): pessoa → nome no
+ * mapa; casa e obra → nome; carrinha → matrícula formatada; local → a obra que o usa (ou o estacionamento
+ * dela), senão a casa, senão o nome do local; indisponibilidade → a pessoa; problema → a casa ou a matrícula.
  */
-export function nomeDoRegisto(estado: Estado, entidade: EntidadeEditavel, id: Id): string {
-  const r = encontrarRegisto(estado, entidade, id) as Record<string, unknown> | undefined;
-  if (!r) return id;
-  if (entidade === 'pessoa') return String(r.nomeCurto ?? id);
-  if (entidade === 'carrinha') return formatarMatricula(String(r.matricula ?? id));
-  if (typeof r.nome === 'string') return r.nome;
-  return id;
+export function nomeDeRegisto(
+  estado: Estado,
+  entidade: EntidadeEditavel,
+  registo: Readonly<Record<string, unknown>>,
+): string {
+  const texto = (v: unknown, omissao: string) => (typeof v === 'string' && v !== '' ? v : omissao);
+  const id = texto(registo.id, '?');
+  switch (entidade) {
+    case 'pessoa':
+      return texto(registo.nomeCurto, id);
+    case 'carrinha':
+      return formatarMatricula(texto(registo.matricula, id));
+    case 'casa':
+    case 'obra':
+      return texto(registo.nome, id);
+    case 'local': {
+      const obra =
+        estado.obras.find((o) => o.localId === id) ??
+        estado.obras.find((o) => o.estacionamentoLocalId === id);
+      if (obra) return obra.nome;
+      const casas = estado.casas.filter((c) => c.localId === id);
+      // Uma morada partilhada (Himeling: 4 casas) diz-se pelo local, para a frase não parecer de uma só casa.
+      if (casas.length > 1) {
+        const nomeLocal = estado.locais.find((l) => l.id === id)?.nome ?? texto(registo.nome, '');
+        return nomeLocal ? `${nomeLocal} (${casas.length} casas)` : casas.map((c) => c.nome).join(', ');
+      }
+      return casas[0]?.nome ?? texto(registo.nome, id);
+    }
+    case 'indisponibilidade': {
+      const pessoaId = texto(registo.pessoaId, '');
+      return estado.pessoas.find((p) => p.id === pessoaId)?.nomeCurto ?? (pessoaId || id);
+    }
+    case 'problema': {
+      if (typeof registo.casaId === 'string') {
+        return estado.casas.find((c) => c.id === registo.casaId)?.nome ?? registo.casaId;
+      }
+      if (typeof registo.carrinhaId === 'string') {
+        const carrinha = estado.carrinhas.find((c) => c.id === registo.carrinhaId);
+        return formatarMatricula(carrinha?.matricula ?? registo.carrinhaId);
+      }
+      return id;
+    }
+  }
 }
 
 /**
- * Ex.: "Ana Exemplo — casa: Casa A → Casa B"; "ZZ 1001 — condutor: sem condutor → Ana Exemplo";
- * "ZZ 1001 — onde dorme: por definir → Casa A".
- * M2 (frase provisória, CONTRATO DO M2 — o módulo base faz as frases legíveis de docs/m2.md, "Frases"):
- * "Casa Um — lotação: 8 → 9"; "Obra Nova — criada"; "Obra Nova — apagada".
+ * Quem é o registo de uma operação do M2, para as frases ("Ana T.", "Casa Um", "CF 5001", "Obra X"): ver
+ * nomeDeRegisto. O id quando o registo não está no estado.
+ */
+export function nomeDoRegisto(estado: Estado, entidade: EntidadeEditavel, id: Id): string {
+  const r = encontrarRegisto(estado, entidade, id);
+  return r ? nomeDeRegisto(estado, entidade, r as unknown as Record<string, unknown>) : id;
+}
+
+/** A morada de um local para as frases ("Rue X, Luxembourg"; o nome quando não tem morada). */
+function moradaDoLocal(estado: Estado, id: unknown): string {
+  if (typeof id !== 'string') return '—';
+  const local = estado.locais.find((l) => l.id === id);
+  if (!local) return id;
+  return local.morada.trim() || local.nome;
+}
+
+/** Um valor de um campo, legível: "—", sim/não/não sei, dias dd/mm/aaaa, matrículas, nomes em vez de ids. */
+export function valorLegivel(
+  estado: Estado,
+  entidade: EntidadeEditavel,
+  campo: string,
+  v: ValorCampo,
+): string {
+  if (campo === 'temCarta') return v === true ? 'sim' : v === false ? 'não' : 'não sei';
+  if (campo === 'fim' && entidade === 'indisponibilidade' && v === null) return 'sem data de regresso';
+  if (campo === 'estacionamentoLocalId' && v === null) return 'sem estacionamento';
+  if (v === null || v === '') return '—';
+  if (v === true) return 'sim';
+  if (v === false) return 'não';
+  if (Array.isArray(v)) return v.length > 0 ? v.map((m) => formatarMatricula(String(m))).join(', ') : '—';
+  if (campo === 'clienteId') return estado.clientes.find((c) => c.id === v)?.nome ?? String(v);
+  if (campo === 'localId' || campo === 'estacionamentoLocalId') return moradaDoLocal(estado, v);
+  if (campo === 'matricula') return formatarMatricula(String(v));
+  if (['cartaValidade', 'inicio', 'fim', 'resolvidoEm', 'abertoEm'].includes(campo)) return dia(v);
+  if (typeof v === 'number') return String(v).replace('.', ',');
+  return String(v);
+}
+
+/** A frase de uma operação 'campo' (sem o "quem — "). */
+function fraseDoCampo(estado: Estado, op: OperacaoCampo): string {
+  const { entidade, campo, de, para } = op;
+  if (entidade === 'pessoa' && campo === 'ativa')
+    return para === false ? 'saiu da empresa' : 'voltou à empresa';
+  if (entidade === 'pessoa' && (campo === 'casaAConfirmar' || campo === 'carrinhaAConfirmar')) {
+    const qual = campo === 'casaAConfirmar' ? 'casa' : 'carrinha';
+    return para === true ? `${qual} a confirmar` : `${qual} confirmada`;
+  }
+  if (entidade === 'local' && (campo === 'lat' || campo === 'lng')) return 'pino mudado de sítio';
+  if (entidade === 'problema') {
+    const problema = encontrarRegisto(estado, 'problema', op.id);
+    const texto = `«${problema?.texto ?? '…'}»`;
+    if (campo === 'texto') return `problema: «${String(de ?? '')}» → «${String(para ?? '')}»`;
+    if (de === null && para !== null) return `problema resolvido: ${texto}`;
+    if (de !== null && para === null) return `problema reaberto: ${texto}`;
+  }
+  const rotulo = (ROTULO_CAMPO[entidade] as Record<string, string>)[campo] ?? campo;
+  return `${rotulo}: ${valorLegivel(estado, entidade, campo, de)} → ${valorLegivel(estado, entidade, campo, para)}`;
+}
+
+/** A frase de uma operação 'registo' (sem o "quem — "). */
+function fraseDoRegisto(estado: Estado, op: OperacaoRegisto): string {
+  const criado = op.de === null;
+  const r = (op.para ?? op.de) as unknown as Record<string, unknown> | null;
+  if (!r) return 'sem mudança';
+  switch (op.entidade) {
+    case 'pessoa': {
+      const cliente = estado.clientes.find((c) => c.id === r.clienteId)?.nome;
+      return criado ? `entrou${cliente ? ` (${cliente})` : ''}` : 'apagada';
+    }
+    case 'obra': {
+      if (!criado) return 'apagada';
+      const partes = [
+        estado.clientes.find((c) => c.id === r.clienteId)?.nome,
+        moradaDoLocal(estado, r.localId),
+      ].filter((x) => x && x !== '—');
+      return partes.length > 0 ? `criada (${partes.join(', ')})` : 'criada';
+    }
+    case 'local': {
+      const qual = r.tipo === 'estacionamento' ? 'estacionamento' : 'local';
+      if (!criado) return `${qual} apagado`;
+      const morada = typeof r.morada === 'string' && r.morada.trim() ? r.morada.trim() : 'sem morada';
+      return `${qual} criado: ${morada}`;
+    }
+    case 'indisponibilidade':
+      return criado
+        ? `indisponível ${textoDoPeriodo(r as unknown as Indisponibilidade)}`
+        : 'período de indisponibilidade apagado';
+    case 'problema':
+      return `problema ${criado ? 'aberto' : 'apagado'}: «${String(r.texto ?? '')}»`;
+  }
+}
+
+/**
+ * A frase do histórico de uma operação, sempre "quem — o quê", com os nomes do estado:
+ * "Ana Exemplo — casa: Casa A → Casa B"; "ZZ 1001 — condutor: sem condutor → Ana Exemplo";
+ * "ZZ 1001 — onde dorme: por definir → Casa A"; "Casa Um — lotação: 8 → 9"; "Ana T. — telefone: — → 691";
+ * "Ana T. — saiu da empresa"; "Ana T. — casa confirmada"; "Ana T. — entrou (Costantini)";
+ * "Ana T. — indisponível de 06/10/2026 a 10/10/2026"; "Ana T. — indisponível até: 10/10/2026 → 08/10/2026";
+ * "Casa Um — problema aberto: «esquentador avariado»"; "Obra Nova — criada (Costantini, Rue X)";
+ * "Obra Nova — pino mudado de sítio"; "Obra Nova — apagada" (docs/m2.md, "Frases do histórico").
  */
 export function descreverOperacao(estado: Estado, op: Operacao): string {
   if (op.tipo === 'campo') {
-    const rotulo = (ROTULO_CAMPO[op.entidade] as Record<string, string>)[op.campo] ?? op.campo;
-    const texto = (v: ValorCampo) =>
-      v === null
-        ? '—'
-        : v === true
-          ? 'sim'
-          : v === false
-            ? 'não'
-            : Array.isArray(v)
-              ? v.join(', ')
-              : String(v);
-    return `${nomeDoRegisto(estado, op.entidade, op.id)} — ${rotulo}: ${texto(op.de)} → ${texto(op.para)}`;
+    return `${nomeDoRegisto(estado, op.entidade, op.id)} — ${fraseDoCampo(estado, op)}`;
   }
   if (op.tipo === 'registo') {
+    const r = (op.para ?? op.de) as unknown as Record<string, unknown> | null;
+    // O nome atual quando o registo ainda existe (como nas outras frases do lote); o gravado, se não.
     const quem =
-      op.para && 'nome' in op.para && typeof op.para.nome === 'string'
-        ? op.para.nome
+      r && !encontrarRegisto(estado, op.entidade, op.id)
+        ? nomeDeRegisto(estado, op.entidade, r)
         : nomeDoRegisto(estado, op.entidade, op.id);
-    return `${quem} — ${op.de === null ? 'criado' : 'apagado'}`;
+    return `${quem} — ${fraseDoRegisto(estado, op)}`;
   }
   if (op.tipo === 'dormida') {
     const matricula = estado.carrinhas.find((c) => c.id === op.carrinhaId)?.matricula;

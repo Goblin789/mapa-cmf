@@ -86,9 +86,14 @@ const CLASSES_LUGAR: Record<LugarFicha, string> = {
  * - Inteira: até 60 % da área da vista, ou até 16 rem se a área der, mas deixando sempre 6 rem da vista à
  *   mostra (num ecrã baixo, a editar, a área fica com uns 320 px: 16 rem tapava-a quase toda).
  * - Recolhida: o que precisa (cabeçalho, resumo, ações), até 45 % da área (ou 9 rem, se a área der).
+ * - Com um campo aberto (M2, CamposFicha.tsx: o formulário tem data-campo-aberto): a ficha passa a ocupar
+ *   o ecrã todo (fixed, com 0,5 rem de margem, por cima da barra do modo de edição, z 1060, e por baixo
+ *   dos avisos e popovers, 1090+) até o campo fechar. A editar, a área da Tabela e do Quadro fica com uns
+ *   230 px e a ficha inteira tinha uns 130: o campo, o aviso e o erro não cabiam.
  */
 const ALTURA_VISTA_TELEMOVEL = {
-  inteira: 'max-h-[max(60%,min(16rem,calc(100%-6rem)))]',
+  inteira:
+    'max-h-[max(60%,min(16rem,calc(100%-6rem)))] max-sm:has-data-campo-aberto:fixed max-sm:has-data-campo-aberto:top-2 max-sm:has-data-campo-aberto:z-[1070] max-sm:has-data-campo-aberto:max-h-none',
   recolhida: 'max-h-[max(45%,min(9rem,calc(100%-1rem)))]',
 } as const;
 

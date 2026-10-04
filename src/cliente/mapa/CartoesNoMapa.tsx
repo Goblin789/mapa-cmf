@@ -2,6 +2,8 @@
 // pinos dos locais, blocos de cartões (ou pastilhas de resumo) e linhas de foco.
 // O layout recalcula-se só quando mudam o zoom, o tamanho do mapa, os dados (incluindo o rascunho do
 // modo de edição), as camadas ou os blocos abertos; deslocar o mapa não faz nada (o pane anda com o mapa).
+// O foco (pessoa, casa, carrinha ou, no M2, obra: layout/foco.ts) realça o cartão em foco e os ligados a ele;
+// a obra em foco liga-se às casas e às carrinhas de quem lá trabalha.
 
 import { useMemo } from 'react';
 import { useLoja } from '../estado/loja';

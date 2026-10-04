@@ -2,6 +2,8 @@
 // por cliente, com os nomes por baixo. Funções puras: agrupar, filtrar e ordenar.
 // Nas carrinhas, o condutor aparece sempre em primeiro. Nas casas que contam sempre como cheias
 // (ex.: Walferdange), os lugares são os moradores: não há lugares livres.
+// M2: nas carrinhas, quem está indisponível hoje não ocupa lugar na lotação (Seccao.ocupados, de
+// Indices.ocupadosCarrinha), como no Mapa e no Quadro; o nome continua desenhado na sua caixa.
 
 import { clienteEfetivoId } from '../../dominio/cores';
 import { compararPessoas, type Indices } from '../../dominio/indices';
@@ -108,8 +110,13 @@ export interface Seccao {
   grupo: { chave: string; titulo: string } | null;
   /** Pessoas que passam os filtros, já ordenadas. */
   pessoas: Pessoa[];
-  /** Pessoas ativas na secção, sem filtros (é o que conta para a lotação). */
+  /** Pessoas ativas na secção, sem filtros. */
   total: number;
+  /**
+   * M2: lugares ocupados, o que conta para a lotação: nas carrinhas, sem quem está indisponível hoje
+   * (Indices.ocupadosCarrinha; ocupacaoDaCarrinha); nas outras secções, o total.
+   */
+  ocupados: number;
   /**
    * Lugares (lotação da casa, lugares da carrinha); null onde não há lugares. Numa casa que conta sempre
    * como cheia, são os moradores.
@@ -120,7 +127,7 @@ export interface Seccao {
 }
 
 function criarSeccao(
-  base: Omit<Seccao, 'pessoas' | 'total' | 'grupo' | 'porCliente'> &
+  base: Omit<Seccao, 'pessoas' | 'total' | 'ocupados' | 'grupo' | 'porCliente'> &
     Partial<Pick<Seccao, 'grupo' | 'porCliente'>>,
   todas: readonly Pessoa[],
   filtro: (p: Pessoa) => boolean,
@@ -132,6 +139,10 @@ function criarSeccao(
     ...base,
     pessoas: ordenarPorClienteENome(todas.filter(filtro), ind),
     total: todas.length,
+    ocupados:
+      base.tipo === 'carrinha' && base.id !== null
+        ? (ind.ocupadosCarrinha.get(base.id) ?? todas.length)
+        : todas.length,
   };
 }
 
@@ -347,7 +358,12 @@ export function seccoesVisiveis(
   });
 }
 
-/** Lugares vazios a desenhar (tracejados). Com filtros não se desenham: a lista não está completa. */
+/**
+ * Lugares vazios a desenhar (tracejados): a lotação menos os nomes desenhados. Numa carrinha, quem está
+ * indisponível hoje continua na lista (com a marca) e ocupa a sua caixa: o lugar libertado lê-se na
+ * pastilha (`ocupados`) e na marca do nome, e a lista desenha tantas caixas como o cartão do Mapa
+ * (`grupos.ts`), nunca mais do que os lugares. Com filtros não se desenham: a lista não está completa.
+ */
 export function lugaresVazios(seccao: Seccao, comFiltros: boolean): number {
   if (comFiltros || seccao.lugares === null) return 0;
   return Math.max(0, seccao.lugares - seccao.total);

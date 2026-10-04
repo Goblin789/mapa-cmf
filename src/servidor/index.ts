@@ -2,7 +2,7 @@
 // abre-a, arranca as cópias automáticas e o tempo real, cria a app e fica à escuta em HOST:PORT.
 // Nunca escreve segredos (client secret, chaves, tokens) na consola.
 
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { serve } from '@hono/node-server';
@@ -13,9 +13,22 @@ import { type ConfigCopias, iniciarCopias, lerConfigCopias, prepararBd } from '.
 import { abrirBd } from './db/ligacao';
 import { contarPessoas } from './estado';
 import { criarCanalEventos } from './eventos';
+import { criarGeocodificador } from './geocodificacao';
 
 /** Build de produção do browser (`npm run build`). Em desenvolvimento quem o serve é o Vite. */
 const PASTA_CLIENTE = fileURLToPath(new URL('../../dist/cliente', import.meta.url));
+
+/** Versão do package.json (vai no User-Agent dos pedidos aos serviços de moradas). */
+function versaoDaAplicacao(): string {
+  try {
+    const pacote = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')) as {
+      version?: unknown;
+    };
+    return typeof pacote.version === 'string' ? pacote.version : '0';
+  } catch {
+    return '0';
+  }
+}
 
 /** Mensagem de um erro de arranque (as das cópias já vêm sem segredos). */
 function mensagem(erro: unknown): string {
@@ -64,7 +77,7 @@ try {
   // Antes de abrir a BD: restaura (se faltar e RESTAURAR_AO_ARRANCAR) ou copia antes das migrações. Com s3
   // fora de produção só se passa a config quando a BD falta (restaurar ou recusar só leem o destino).
   const configPreparar = s3ForaDeProducao && existsSync(config.bd) ? null : configCopias;
-  await prepararBd(config.bd, configPreparar, process.env);
+  await prepararBd(config.bd, configPreparar, process.env, { producao: config.producao });
 } catch (erro) {
   desistir('Não foi possível preparar a base de dados', erro);
 }
@@ -75,6 +88,7 @@ const copias = iniciarCopias(bd, configAutomaticas, { producao: config.producao 
 const eventos = criarCanalEventos();
 const pararLimpeza = config.modo === 'entra' ? iniciarLimpezaSessoes(bd) : () => {};
 const temCliente = existsSync(join(PASTA_CLIENTE, 'index.html'));
+const moradasDesligadas = process.env.MORADAS?.trim().toLowerCase() === 'desligadas';
 const app = criarApp({
   bd,
   pastaCliente: temCliente ? PASTA_CLIENTE : undefined,
@@ -83,7 +97,16 @@ const app = criarApp({
   eventos,
   copias,
   commit: process.env.RENDER_GIT_COMMIT?.trim() || undefined,
+  // MORADAS=desligadas (ensaios com dados fictícios): sem geocodificador, as rotas respondem 503 e nenhum
+  // pedido vai para os serviços verdadeiros (geoportail, IGN, Nominatim).
+  geocodificador: moradasDesligadas
+    ? undefined
+    : criarGeocodificador({
+        fetch: globalThis.fetch,
+        agente: `MapaCMF/${versaoDaAplicacao()} (moradas de obras da empresa)`,
+      }),
 });
+if (moradasDesligadas) console.log('Serviço de moradas desligado (MORADAS=desligadas).');
 
 const servidor = serve({ fetch: app.fetch, port: config.porta, hostname: config.host }, (info) => {
   if (config.modo === 'entra') {

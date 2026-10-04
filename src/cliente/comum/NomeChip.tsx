@@ -7,14 +7,21 @@
 // por guardar leva uma marca discreta.
 // O realce por cliente da legenda (clienteDestacado) só esbate nomes no Mapa: nas fichas abertas na Tabela e
 // no Quadro não conta (essas vistas têm os seus filtros de clientes).
+// M2: quem está indisponível hoje leva a marca (MarcaIndisponivel: pausa e o nome esbatido); com
+// `textoIndisponivel` também "até 12/10" à vista. Por omissão o texto aparece em todo o lado menos nos
+// nomes compactos (os cartões do Mapa, que só têm o símbolo). A marca de alterado conta também as fichas e
+// os períodos de indisponibilidade da pessoa (pessoaTemAlteracoes, com o estado visível).
 
 import { useContext } from 'react';
 import { COR_TEXTO_NOMES, clienteEfetivoId } from '../../dominio/cores';
 import type { Pessoa } from '../../dominio/tipos';
 import { modoDoClique } from '../arrastar/selecao';
+import { pessoaTemAlteracoes } from '../edicao/resumo';
 import { useLoja } from '../estado/loja';
+import { descricaoIndisponivel } from '../vistas/linhasTabela';
 import { useVista } from '../vistas/vista';
 import { IconeVolante } from './IconeVolante';
+import { CLASSE_NOME_INDISPONIVEL, MarcaIndisponivel, usePeriodoHoje } from './MarcaIndisponivel';
 import { ContextoOrdemPessoas } from './ordemPessoas';
 
 interface Props {
@@ -28,12 +35,18 @@ interface Props {
   /**
    * M2 (CONTRATO DO M2): mostra "até 12/10" à vista quando a pessoa está indisponível (MarcaIndisponivel com
    * `texto`). Lista lateral, fichas e tudo o que não seja um cartão do Mapa passam true; os cartões não
-   * (fica só o símbolo, com o "até…" no title). O módulo Indisponível e problemas liga-o.
+   * (fica só o símbolo, com o "até…" no title). Por omissão: true, menos nos nomes `compacto` (os cartões).
    */
   textoIndisponivel?: boolean;
 }
 
-export function NomeChip({ pessoa, compacto = false, className = '', condutor = false }: Props) {
+export function NomeChip({
+  pessoa,
+  compacto = false,
+  className = '',
+  condutor = false,
+  textoIndisponivel = !compacto,
+}: Props) {
   const indices = useLoja((s) => s.indices);
   const clienteDestacado = useLoja((s) => s.clienteDestacado);
   const noMapa = useVista((s) => s.vista === 'mapa');
@@ -41,15 +54,9 @@ export function NomeChip({ pessoa, compacto = false, className = '', condutor = 
   const definirFoco = useLoja((s) => s.definirFoco);
   const modoEdicao = useLoja((s) => s.modoEdicao);
   const selecionado = useLoja((s) => s.modoEdicao && s.selecao.has(pessoa.id));
-  const alterado = useLoja(
-    (s) =>
-      s.modoEdicao &&
-      s.pendentes.some((op) =>
-        op.tipo === 'condutor'
-          ? op.de === pessoa.id || op.para === pessoa.id
-          : op.tipo === 'mover' && op.pessoaId === pessoa.id,
-      ),
-  );
+  // O estado visível (3.º argumento) é obrigatório: sem ele, as datas mudadas de um período não marcam a pessoa.
+  const alterado = useLoja((s) => s.modoEdicao && pessoaTemAlteracoes(s.pendentes, pessoa.id, s.estado));
+  const indisponivel = usePeriodoHoje(pessoa.id);
   const selecionar = useLoja((s) => s.selecionar);
   const ordem = useContext(ContextoOrdemPessoas);
   if (!indices) return null;
@@ -66,6 +73,7 @@ export function NomeChip({ pessoa, compacto = false, className = '', condutor = 
     condutor ? 'condutor' : null,
     cliente?.nome,
     aConfirmar ? 'a confirmar' : null,
+    indisponivel ? descricaoIndisponivel(indisponivel) : null,
     alterado ? 'alterado, por guardar' : null,
     modoEdicao ? 'arraste para mudar' : null,
   ]
@@ -103,7 +111,10 @@ export function NomeChip({ pessoa, compacto = false, className = '', condutor = 
       style={{ backgroundColor: fundo, color: COR_TEXTO_NOMES }}
     >
       {condutor && <IconeVolante tamanho={compacto ? 9 : 11} rotulo="condutor" />}
-      <span className="min-w-0 flex-1 truncate">{pessoa.nomeCurto}</span>
+      <span className={`min-w-0 flex-1 truncate ${indisponivel ? CLASSE_NOME_INDISPONIVEL : ''}`}>
+        {pessoa.nomeCurto}
+      </span>
+      <MarcaIndisponivel pessoaId={pessoa.id} compacto={compacto} texto={textoIndisponivel} />
       {aConfirmar && (
         <span className="shrink-0 rounded-sm bg-white/80 px-0.5 font-bold text-amber-800" aria-hidden="true">
           ?

@@ -1,4 +1,4 @@
-// "Mostrar" uma pessoa, casa ou carrinha SEM mudar de vista (docs/vistas-edicao.md). Quem pede (pesquisa
+// "Mostrar" uma pessoa, casa, carrinha ou (M2) obra SEM mudar de vista (docs/vistas-edicao.md). Quem pede (pesquisa
 // do cabeçalho, ligações da ficha) chama mostrarElemento: põe o elemento em foco (a ficha abre na vista ativa) e leva a vista
 // ativa até lá.
 // - Mapa: com noMapa 'ir' (pesquisa) pede ao mapa para ir até lá, como sempre; com 'so-foco'
@@ -8,7 +8,8 @@
 // Ir ao Mapa é só com o botão explícito "Ver no mapa" (navegar.ts: verNoMapa).
 //
 // Cada vista marca no DOM o que se pode mostrar com data-elemento="pessoa:<id>" | "casa:<id>" |
-// "carrinha:<id>" (chaveElemento). O realce de instantes é o atributo data-realce (CSS em estilos.css).
+// "carrinha:<id>" | "obra:<id>" (chaveElemento; o bloco da obra no Quadro por obras). No Mapa, a obra vai
+// para o sítio dela (destinoNoMapa). O realce de instantes é o atributo data-realce (CSS em estilos.css).
 // Ao deslizar, o elemento fica fora da ficha da vista (data-ficha="vista"): por cima dela no telemóvel
 // (onde a ficha ocupa a parte de baixo) e, no PC, por cima ou por baixo dela quando lhe fica atrás.
 
@@ -18,7 +19,7 @@ import { type Foco, useLoja } from '../estado/loja';
 import { destinoNoMapa, ZOOM_DESTINO } from '../paineis/fichas';
 import { useVista } from './vista';
 
-/** Pessoa, casa ou carrinha que se quer mostrar. */
+/** Pessoa, casa, carrinha ou obra que se quer mostrar. */
 export type ElementoVista = NonNullable<Foco>;
 
 /** Atributo que marca, numa vista, o sítio de um elemento (o valor é chaveElemento). */
@@ -27,7 +28,7 @@ export const ATRIBUTO_ELEMENTO = 'data-elemento';
 export const ATRIBUTO_REALCE = 'data-realce';
 export const DURACAO_REALCE_MS = 1600;
 
-/** "pessoa:<id>", "casa:<id>", "carrinha:<id>". */
+/** "pessoa:<id>", "casa:<id>", "carrinha:<id>", "obra:<id>". */
 export function chaveElemento(elemento: ElementoVista): string {
   return `${elemento.tipo}:${elemento.id}`;
 }

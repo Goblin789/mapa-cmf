@@ -1,10 +1,20 @@
 // Textos do fantasma: quem se está a arrastar ("Gil N. +2") e o que acontece se se largar no alvo
 // debaixo do ponteiro ("Steinsel: 12 + 2 = 14/12 ▲"). Calculado sobre o estado VISÍVEL (com o rascunho).
+// M2: numa carrinha, quem está indisponível hoje não conta — nem quem lá está, nem quem entra
+// ("CF 5005: 6 + 3 = 9/9"); e, se há lugares que só estão livres até alguém voltar, o texto di-lo
+// ("CF 5005 (1 livre até 12/10): 6 + 3 = 9/9"). Nas casas a cama não se liberta: contam todos.
 
 import type { Indices } from '../../dominio/indices';
-import { type NivelLotacao, ocupacaoCarrinha, ocupacaoCasa } from '../../dominio/ocupacao';
+import {
+  lugaresTemporarios,
+  type NivelLotacao,
+  ocupacaoCarrinha,
+  ocupacaoCasa,
+  ocupacaoDaCarrinha,
+  textoLugaresTemporarios,
+} from '../../dominio/ocupacao';
 import { type Alvo, operacoesParaAlvo } from '../../dominio/operacoes';
-import type { Estado, Id } from '../../dominio/tipos';
+import type { Estado, Id, Pessoa } from '../../dominio/tipos';
 import { ESTILO_NIVEL } from '../comum/lotacao';
 import { formatarMatricula } from '../comum/Matricula';
 import { ROTULO_FORA_DAS_CASAS, ROTULO_SEM_TRANSPORTE } from '../paineis/textos';
@@ -34,16 +44,20 @@ export function descricaoArrastados(nomePrincipal: string, total: number): strin
 export interface Previsao {
   /** Nome do alvo: "Steinsel", "CF 5005", "Fora das casas CMF"… */
   rotulo: string;
-  /** Pessoas que lá estão agora. */
+  /** Pessoas que lá estão agora (numa carrinha, só as que ocupam lugar: sem as indisponíveis hoje). */
   antes: number;
   /** Quantas pessoas se estão a arrastar. */
   arrastadas: number;
   /** Das arrastadas, quantas mudam de facto (as que já lá estão não contam). */
+  mudam: number;
+  /** Das que mudam, quantas ocupam lugar (numa carrinha, as indisponíveis hoje não contam). */
   entram: number;
   depois: number;
   /** Lugares do alvo (casa ou carrinha); null nos grupos sem lugares e nas obras. */
   lugares: number | null;
   nivel: NivelLotacao | null;
+  /** M2: "1 livre até 12/10" quando a carrinha fica com lugares que só estão livres até alguém voltar. */
+  temporarios: string | null;
 }
 
 /** Ids das pessoas que mudam de facto se forem largadas no alvo (quem já lá está não conta). */
@@ -74,16 +88,21 @@ function semObra(estado: Estado, ind: Pick<Indices, 'obras'>): number {
 export function preverLargada(estado: Estado, ind: Indices, ids: readonly Id[], alvo: Alvo): Previsao | null {
   // Só contam as ativas, como nos índices (são as únicas que ocupam lugares). As operações de condutor
   // que vêm junto (quem sai da carrinha que conduz) não são pessoas a entrar.
-  const entram = pessoasQueMudam(estado, ids, alvo).filter((id) => ind.pessoas.get(id)?.ativa).length;
+  const queMudam = pessoasQueMudam(estado, ids, alvo)
+    .map((id) => ind.pessoas.get(id))
+    .filter((p): p is Pessoa => p?.ativa === true);
+  const mudam = queMudam.length;
   const arrastadas = new Set(ids).size;
   const semLugares = (rotulo: string, antes: number): Previsao => ({
     rotulo,
     antes,
     arrastadas,
-    entram,
-    depois: antes + entram,
+    mudam,
+    entram: mudam,
+    depois: antes + mudam,
     lugares: null,
     nivel: null,
+    temporarios: null,
   });
 
   switch (alvo.tipo) {
@@ -91,30 +110,48 @@ export function preverLargada(estado: Estado, ind: Indices, ids: readonly Id[], 
       const casa = ind.casas.get(alvo.id);
       if (!casa) return null;
       const antes = ind.moradores.get(casa.id)?.length ?? 0;
-      const oc = ocupacaoCasa(casa, antes + entram);
+      // Na casa, quem está indisponível continua a ocupar a cama.
+      const oc = ocupacaoCasa(casa, antes + mudam);
       return {
         rotulo: casa.nome,
         antes,
         arrastadas,
-        entram,
+        mudam,
+        entram: mudam,
         depois: oc.ocupados,
         lugares: oc.lotacao,
         nivel: oc.nivel,
+        temporarios: null,
       };
     }
     case 'carrinha': {
       const carrinha = ind.carrinhas.get(alvo.id);
       if (!carrinha) return null;
-      const antes = ind.passageiros.get(carrinha.id)?.length ?? 0;
+      // Quem está indisponível hoje (já lá ou a entrar) não ocupa lugar (Indices.ocupadosCarrinha).
+      const antes = ocupacaoDaCarrinha(ind, carrinha).ocupados;
+      const entram = queMudam.filter((p) => !ind.indisponiveis.has(p.id)).length;
+      // Um número calculado de propósito: a ocupação DEPOIS de largar, que os índices ainda não têm.
       const oc = ocupacaoCarrinha(carrinha, antes + entram);
+      // Os lugares que ficam livres só até alguém voltar: os de quem lá está e os de quem entra.
+      const temporarios = textoLugaresTemporarios(
+        lugaresTemporarios(
+          {
+            passageiros: new Map([[carrinha.id, [...(ind.passageiros.get(carrinha.id) ?? []), ...queMudam]]]),
+            indisponiveis: ind.indisponiveis,
+          },
+          carrinha.id,
+        ),
+      );
       return {
         rotulo: formatarMatricula(carrinha.matricula),
         antes,
         arrastadas,
+        mudam,
         entram,
         depois: oc.ocupados,
         lugares: oc.lugares,
         nivel: oc.nivel,
+        temporarios,
       };
     }
     case 'obra': {
@@ -139,9 +176,12 @@ export interface PartesPrevisao {
   simbolo: string | null;
 }
 
-/** A previsão em partes, para o fantasma pintar só o resultado com a cor do nível. */
+/**
+ * A previsão em partes, para o fantasma pintar só o resultado com a cor do nível. Com lugares que só estão
+ * livres até alguém voltar, o rótulo leva-o entre parênteses: "CF 5005 (1 livre até 12/10): 6 + 3 = ".
+ */
 export function partesPrevisao(p: Previsao): PartesPrevisao {
-  if (p.entram === 0) {
+  if (p.mudam === 0) {
     return {
       texto: `${p.rotulo}: já ${p.arrastadas === 1 ? 'está' : 'estão'} aqui`,
       resultado: null,
@@ -149,8 +189,9 @@ export function partesPrevisao(p: Previsao): PartesPrevisao {
     };
   }
   const resultado = p.lugares === null ? String(p.depois) : `${p.depois}/${p.lugares}`;
+  const rotulo = p.temporarios ? `${p.rotulo} (${p.temporarios})` : p.rotulo;
   return {
-    texto: `${p.rotulo}: ${p.antes} + ${p.entram} = `,
+    texto: `${rotulo}: ${p.antes} + ${p.entram} = `,
     resultado,
     simbolo: p.nivel ? ESTILO_NIVEL[p.nivel].simbolo : null,
   };

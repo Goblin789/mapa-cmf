@@ -23,6 +23,7 @@
 //
 // Funções puras sobre um armazenamento (o localStorage, ou um falso nos testes); nunca lançam.
 
+import { ENTIDADES_CRIAVEIS, eCampoEditavel, eEntidadeEditavel } from '../../dominio/campos';
 import type { Operacao } from '../../dominio/operacoes';
 
 /** Chave base: os registos ficam em `<base>:<origem>` (ou na própria base, ver acima). */
@@ -67,6 +68,18 @@ export interface RascunhoPendente {
   origem?: string;
   /** Outro separador já ficou com estas alterações; o que as tinha em memória larga a sua cópia. */
   recuperadoPor?: string;
+  /** M2: lotes revertidos neste rascunho ("Reverter" no Histórico), com o passo onde entraram. */
+  reversoes?: ReversaoPendente[];
+}
+
+/**
+ * M2: um lote cuja reversão está no rascunho: o passo onde entrou (índice em `passos`) e as chaves
+ * (chaveOperacao) das suas operações. Ver estado/loja.ts.
+ */
+export interface ReversaoPendente {
+  loteId: number;
+  passo: number;
+  chaves: string[];
 }
 
 /** Um registo tal como se lê: com a origem sempre preenchida. */
@@ -90,10 +103,17 @@ export function armazenamentoLocal(): Armazenamento | null {
   }
 }
 
-/** Sem saber quem fez ou quem está, conta como a mesma pessoa. */
+/**
+ * Sem saber quem fez ou quem está, conta como a mesma pessoa. Um rascunho do modo local (autor 'local', sem
+ * login) serve a quem estiver agora: o modo local só se abre no próprio PC, na mesma origem, por isso um
+ * rascunho feito antes de ligar o login não fica preso.
+ */
 export function autorCompativel(autor: string | null, autorAtual: string | null): boolean {
-  return autor === null || autorAtual === null || autor === autorAtual;
+  return autor === null || autorAtual === null || autor === autorAtual || autor === AUTOR_MODO_LOCAL;
 }
+
+/** Utilizador.chave no modo local (servidor sem login). */
+const AUTOR_MODO_LOCAL = 'local';
 
 // --- Leitura e escrita: uma chave por registo -------------------------------------------------------
 
@@ -378,10 +398,8 @@ function validarTexto(texto: string): RegistoRascunho | null {
 
 function validarRascunho(valor: unknown): RegistoRascunho | null {
   if (typeof valor !== 'object' || valor === null || Array.isArray(valor)) return null;
-  const { passos, versaoBase, data, autor, separador, vivoEm, origem, recuperadoPor } = valor as Record<
-    string,
-    unknown
-  >;
+  const { passos, versaoBase, data, autor, separador, vivoEm, origem, recuperadoPor, reversoes } =
+    valor as Record<string, unknown>;
   if (typeof versaoBase !== 'number' || !Number.isInteger(versaoBase) || versaoBase < 0) return null;
   if (typeof data !== 'string') return null;
   if (autor !== null && autor !== undefined && typeof autor !== 'string') return null;
@@ -406,7 +424,25 @@ function validarRascunho(valor: unknown): RegistoRascunho | null {
     origem: origem ?? separador ?? `${data}|${autor ?? ''}`,
   };
   if (typeof recuperadoPor === 'string') registo.recuperadoPor = recuperadoPor;
+  // As reversões estragadas não estragam o rascunho: só se perdem elas.
+  const validas = Array.isArray(reversoes) ? reversoes.filter(eReversao) : [];
+  if (validas.length > 0) registo.reversoes = validas;
   return registo;
+}
+
+function eReversao(valor: unknown): valor is ReversaoPendente {
+  if (typeof valor !== 'object' || valor === null) return false;
+  const r = valor as Record<string, unknown>;
+  return (
+    typeof r.loteId === 'number' &&
+    Number.isInteger(r.loteId) &&
+    r.loteId > 0 &&
+    typeof r.passo === 'number' &&
+    Number.isInteger(r.passo) &&
+    r.passo >= 0 &&
+    Array.isArray(r.chaves) &&
+    r.chaves.every((c) => typeof c === 'string')
+  );
 }
 
 const CAMPOS = new Set(['casaId', 'carrinhaId', 'obraId']);
@@ -415,9 +451,43 @@ function eIdOuNulo(valor: unknown): boolean {
   return valor === null || (typeof valor === 'string' && valor.length > 0);
 }
 
+/** Um valor de um campo (ValorCampo): texto, número, sim/não, null ou lista de textos. */
+function eValorCampo(valor: unknown): boolean {
+  if (valor === null || ['string', 'number', 'boolean'].includes(typeof valor)) return true;
+  return Array.isArray(valor) && valor.every((x) => typeof x === 'string');
+}
+
+/** Um registo inteiro (de uma operação 'registo') ou null. */
+function eRegistoOuNulo(valor: unknown, id: unknown): boolean {
+  if (valor === null) return true;
+  return typeof valor === 'object' && !Array.isArray(valor) && (valor as Record<string, unknown>).id === id;
+}
+
 function eOperacao(valor: unknown): boolean {
   if (typeof valor !== 'object' || valor === null) return false;
   const op = valor as Record<string, unknown>;
+  // M2: os campos das fichas e os registos criados/apagados.
+  if (op.tipo === 'campo') {
+    return (
+      eEntidadeEditavel(op.entidade) &&
+      eCampoEditavel(op.entidade, op.campo) &&
+      typeof op.id === 'string' &&
+      op.id !== '' &&
+      eValorCampo(op.de) &&
+      eValorCampo(op.para)
+    );
+  }
+  if (op.tipo === 'registo') {
+    return (
+      typeof op.entidade === 'string' &&
+      (ENTIDADES_CRIAVEIS as readonly string[]).includes(op.entidade) &&
+      typeof op.id === 'string' &&
+      op.id !== '' &&
+      eRegistoOuNulo(op.de, op.id) &&
+      eRegistoOuNulo(op.para, op.id) &&
+      (op.de === null) !== (op.para === null)
+    );
+  }
   if (!eIdOuNulo(op.de) || !eIdOuNulo(op.para)) return false;
   switch (op.tipo) {
     case 'mover':

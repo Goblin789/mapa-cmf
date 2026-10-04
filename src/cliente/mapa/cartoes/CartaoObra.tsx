@@ -1,14 +1,14 @@
 // Obra: cartão com uma faixa fina da cor do cliente, capacete, nome da obra e as pessoas em lista.
-// No modo de edição é um alvo onde se largam pessoas. Não há foco de obra (o foco da loja é pessoa, casa
-// ou carrinha), por isso o cartão não é um botão (era um botão sem ação, uma paragem inútil do Tab): a
-// descrição fica no tooltip e num texto só para leitores de ecrã.
+// M2: clicar no cartão abre a ficha da obra ("quem vem para esta obra e de onde"), como nas casas: um botão
+// por baixo dos nomes, com aria-pressed, que põe a obra em foco (outro clique tira-a). No modo de edição
+// continua a ser um alvo onde se largam pessoas (data-alvo).
 
 import { chaveAlvo } from '../../../dominio/operacoes';
 import type { Id } from '../../../dominio/tipos';
 import { useLoja } from '../../estado/loja';
 import { chaveObra } from '../layout/grupos';
 import type { GeometriaObra } from '../layout/medidas';
-import { classeDestaque, type Destaque, posicao } from './comum';
+import { CLASSE_FOCO_TECLADO, classeDestaque, type Destaque, posicao } from './comum';
 import { IconeObra } from './Icones';
 import { Lugares } from './Lugar';
 
@@ -22,11 +22,13 @@ interface Props {
 
 export function CartaoObra({ obraId, geometria: g, x, y, destaque }: Props) {
   const indices = useLoja((s) => s.indices);
+  const definirFoco = useLoja((s) => s.definirFoco);
   const obra = indices?.obras.get(obraId);
   if (!indices || !obra) return null;
   const cliente = indices.clientes.get(obra.clienteId);
   const pessoas = indices.trabalhadores.get(obraId) ?? [];
   const descricao = `Obra ${obra.nome}${cliente ? ` · ${cliente.nome}` : ''} · ${pessoas.length} ${pessoas.length === 1 ? 'pessoa' : 'pessoas'}`;
+  const emFoco = destaque === 'foco';
 
   return (
     <div
@@ -37,9 +39,16 @@ export function CartaoObra({ obraId, geometria: g, x, y, destaque }: Props) {
       style={{ left: x, top: y, width: g.largura, height: g.altura }}
       data-cartao={chaveObra(obraId)}
       data-alvo={chaveAlvo({ tipo: 'obra', id: obraId })}
-      title={descricao}
     >
-      <span className="sr-only">{descricao}</span>
+      {/* O cartão inteiro põe a obra em foco (abre a ficha); os nomes ficam por cima. */}
+      <button
+        type="button"
+        className={`absolute inset-0 cursor-pointer ${CLASSE_FOCO_TECLADO}`}
+        title={descricao}
+        aria-label={`${descricao}. Mostrar quem vem para esta obra e de onde.`}
+        aria-pressed={emFoco}
+        onClick={() => definirFoco(emFoco ? null : { tipo: 'obra', id: obraId })}
+      />
       <span
         aria-hidden="true"
         className="pointer-events-none absolute"

@@ -2,7 +2,7 @@
 // cada migração do _journal.json cujo `when` é posterior ao maior `created_at` da tabela __drizzle_migrations
 // (todas, se a tabela não existir).
 
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import Database from 'better-sqlite3';
 
@@ -36,4 +36,25 @@ export function migracoesPendentes(caminhoBd: string, journal = lerJournal()): s
   } finally {
     cliente.close();
   }
+}
+
+/**
+ * As migrações aplicam-se só no arranque do servidor, que faz antes a cópia de segurança (no PC, a cópia
+ * simples em copias/, ao lado da BD: servidor/copias/preparar.ts). Os scripts que abrem a BD (sincronizar,
+ * importar, sessoes) nunca migram uma BD que já existe: recusam com esta frase.
+ */
+export const TEXTO_FALTAM_MIGRACOES =
+  'Faltam as migrações mais recentes: arranque o servidor uma vez (npm run dev), que faz uma cópia da base de dados e as aplica, e volte a correr.';
+
+/**
+ * Para os scripts, antes do abrirBd (que migra sem cópia): null se a BD não existe (uma BD nova não tem
+ * nada a perder) ou já tem as migrações todas; senão, a frase a mostrar (quais faltam + o que fazer).
+ */
+export function recusaPorMigracoesPendentes(caminhoBd: string, journal = lerJournal()): string | null {
+  if (!existsSync(caminhoBd)) return null;
+  const pendentes = migracoesPendentes(caminhoBd, journal);
+  if (pendentes.length === 0) return null;
+  const quais =
+    pendentes.length === 1 ? '1 migração por aplicar' : `${pendentes.length} migrações por aplicar`;
+  return `A base de dados tem ${quais} (${pendentes.join(', ')}): não se fez nada. ${TEXTO_FALTAM_MIGRACOES}`;
 }

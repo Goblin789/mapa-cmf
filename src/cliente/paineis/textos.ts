@@ -1,9 +1,22 @@
 // Textos dos painéis: formatação pura, sem browser.
 
+import { type EntidadeEditavel, ROTULO_CAMPO, type ValorCampo } from '../../dominio/campos';
 import type { Dormida } from '../../dominio/dormidas';
 import type { Indices } from '../../dominio/indices';
+import { textoAte } from '../../dominio/indisponibilidade';
+import { valorLegivel } from '../../dominio/operacoes';
 import { normalizarTexto } from '../../dominio/pesquisa';
-import type { Carrinha, Casa, Id, Pessoa, TipoLocal, TipoVeiculo } from '../../dominio/tipos';
+import type {
+  Carrinha,
+  Casa,
+  Estado,
+  Id,
+  Indisponibilidade,
+  Local,
+  Pessoa,
+  TipoLocal,
+  TipoVeiculo,
+} from '../../dominio/tipos';
 
 export const ROTULO_FORA_DAS_CASAS = 'Fora das casas CMF';
 export const ROTULO_SEM_TRANSPORTE = 'Sem transporte da empresa';
@@ -23,7 +36,10 @@ export function nomeCompleto(p: Pessoa): string {
   return completo || p.nomeCurto;
 }
 
-/** Data de hoje no fuso local, em AAAA-MM-DD (comparável com as datas ISO do estado). */
+/**
+ * Data de hoje no fuso local, em AAAA-MM-DD (comparável com as datas ISO do estado).
+ * M2: as fichas comparam com `loja.hoje` (o dia no Luxemburgo), não com isto.
+ */
 export function hojeISO(agora: Date = new Date()): string {
   const d2 = (n: number) => String(n).padStart(2, '0');
   return `${agora.getFullYear()}-${d2(agora.getMonth() + 1)}-${d2(agora.getDate())}`;
@@ -137,6 +153,68 @@ export function detalheCarrinha(
 ): string {
   const marcaModelo = textoMarcaModelo(c);
   return `${passageiros}/${c.lugares} lugares${marcaModelo ? ` · ${marcaModelo}` : ''}`;
+}
+
+// --- M2: campos das fichas ------------------------------------------------------------------------
+
+/** "Não tem" / "Não sei" / "Tem": a carta como se escolhe na ficha. */
+export const ROTULO_ESCOLHA_CARTA = { tem: 'Tem', 'nao-tem': 'Não tem', 'nao-sei': 'Não sei' } as const;
+
+/**
+ * O valor de um campo editável como aparece na ficha: "—" quando está vazio, "Sim"/"Não", a carta
+ * "Tem"/"Não tem"/"Não sei", dias dd/mm/aaaa, matrículas formatadas, o nome do cliente e a morada do
+ * local em vez dos ids (as mesmas regras das frases do Histórico, valorLegivel).
+ */
+export function textoValorCampo(
+  estado: Estado,
+  entidade: EntidadeEditavel,
+  campo: string,
+  valor: ValorCampo,
+): string {
+  if (campo === 'temCarta')
+    return ROTULO_ESCOLHA_CARTA[valor === true ? 'tem' : valor === false ? 'nao-tem' : 'nao-sei'];
+  if (valor === true) return 'Sim';
+  if (valor === false) return 'Não';
+  return valorLegivel(estado, entidade, campo, valor);
+}
+
+/** O rótulo do campo no domínio, com maiúscula ("Nome no mapa", "Máx. do contrato"). */
+export function rotuloDoCampo(entidade: EntidadeEditavel, campo: string): string {
+  const rotulo = (ROTULO_CAMPO[entidade] as Record<string, string>)[campo] ?? campo;
+  return rotulo.charAt(0).toLocaleUpperCase('pt') + rotulo.slice(1);
+}
+
+/** A morada como se mostra: "1 Rue X", com o país quando não é o Luxemburgo; sem morada, o nome do local. */
+export function textoMorada(local: Pick<Local, 'morada' | 'pais' | 'nome'>): string {
+  const morada = local.morada.trim() || local.nome;
+  return local.pais === 'LU' ? morada : `${morada} (${local.pais})`;
+}
+
+/** Por baixo de um campo que mudou no rascunho: "antes: 8" (o valor gravado, como no Histórico). */
+export function textoAntes(
+  estado: Estado,
+  entidade: EntidadeEditavel,
+  campo: string,
+  de: ValorCampo,
+): string {
+  return `antes: ${valorLegivel(estado, entidade, campo, de)}`;
+}
+
+/**
+ * Na ficha da carrinha, quando o condutor está indisponível hoje: "O condutor está indisponível até 12/10."
+ * ou "O condutor está indisponível (sem data de regresso)." Não muda o condutor.
+ */
+export function textoCondutorIndisponivel(periodo: Indisponibilidade): string {
+  return periodo.fim === null
+    ? 'O condutor está indisponível (sem data de regresso).'
+    : `O condutor está indisponível ${textoAte(periodo)}.`;
+}
+
+/** A nota da cor na ficha da pessoa com obra: a cor (e a sigla) são as do cliente da obra. */
+export function notaCorDaObra(clienteDaObra: string | null, obra: string): string {
+  return clienteDaObra
+    ? `No mapa tem a cor de ${clienteDaObra}, o cliente da obra ${obra}.`
+    : `No mapa tem a cor do cliente da obra ${obra}.`;
 }
 
 /** Tipo de um local por palavras ("estacionamento", "oficina"…). */

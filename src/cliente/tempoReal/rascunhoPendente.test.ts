@@ -4,6 +4,7 @@ import {
   type Armazenamento,
   apagarRegisto,
   apagarSeForDeste,
+  autorCompativel,
   CHAVE_RASCUNHO_PENDENTE,
   comTrancaRascunhos,
   guardarRascunhoPendente,
@@ -377,5 +378,66 @@ describe('textos', () => {
     );
     expect(textoRascunhoNoutroSeparador(1)).toMatch(/^A alteração por guardar .* foi recuperada noutro/);
     expect(textoRascunhoNoutroSeparador(2)).toMatch(/^As 2 alterações por guardar .* foram recuperadas/);
+  });
+});
+
+describe('M2: rascunhos com fichas, registos e reversões', () => {
+  const CAMPO: Operacao = { tipo: 'campo', entidade: 'casa', id: 'casa-1', campo: 'lotacao', de: 3, para: 4 };
+  const LISTA: Operacao = {
+    tipo: 'campo',
+    entidade: 'carrinha',
+    id: 'zz1003',
+    campo: 'matriculasAlternativas',
+    de: ['QQ9999'],
+    para: [],
+  };
+  const PERIODO: Operacao = {
+    tipo: 'registo',
+    entidade: 'indisponibilidade',
+    id: 'indisp-00000001',
+    de: null,
+    para: { id: 'indisp-00000001', pessoaId: 'p-ana', inicio: '2026-10-05', fim: null },
+  };
+
+  it('as operações do M2 voltam como foram guardadas, com as reversões', () => {
+    const a = armazenamentoFalso();
+    const reversoes = [{ loteId: 4, passo: 1, chaves: ['chave-da-lotacao'] }];
+    guardarRascunhoPendente(a, rascunho({ passos: [[CAMPO, LISTA], [PERIODO]], reversoes }));
+    const [lido] = lerRegistos(a);
+    expect(lido?.passos).toStrictEqual([[CAMPO, LISTA], [PERIODO]]);
+    expect(lido?.reversoes).toStrictEqual(reversoes);
+  });
+
+  it('operações do M2 estragadas invalidam o registo; reversões estragadas só se perdem elas', () => {
+    const a = armazenamentoFalso();
+    const maus: unknown[] = [
+      { ...CAMPO, campo: 'ordem' },
+      { ...CAMPO, entidade: 'cliente' },
+      { ...CAMPO, para: { x: 1 } },
+      { ...PERIODO, entidade: 'casa' },
+      { ...PERIODO, para: { id: 'outro' } },
+      { ...PERIODO, de: PERIODO.para },
+    ];
+    for (const mau of maus) {
+      a.dados.set(chaveDe('m'), JSON.stringify(rascunho({ origem: 'm', passos: [[mau as Operacao]] })));
+      expect(lerRegistos(a), JSON.stringify(mau)).toEqual([]);
+    }
+    a.dados.set(
+      chaveDe('r'),
+      JSON.stringify(rascunho({ origem: 'r', reversoes: [{ loteId: 0, passo: -1, chaves: [3] }] as never })),
+    );
+    const [lido] = lerRegistos(a);
+    expect(lido).toBeDefined();
+    expect(lido?.reversoes).toBeUndefined();
+  });
+
+  it('um rascunho do modo local (sem login) serve a quem entrar depois com a conta Microsoft', () => {
+    expect(autorCompativel('local', 'ana@exemplo.lu')).toBe(true);
+    expect(autorCompativel('ana@exemplo.lu', 'ana@exemplo.lu')).toBe(true);
+    expect(autorCompativel('rui@exemplo.lu', 'ana@exemplo.lu')).toBe(false);
+    expect(autorCompativel('ana@exemplo.lu', 'local')).toBe(false);
+    const a = armazenamentoFalso();
+    guardarRascunhoPendente(a, rascunho({ autor: 'local', separador: null }));
+    expect(lerRascunhoPendente(a, AGORA, 'ana@exemplo.lu', 'outro-separador')).not.toBeNull();
   });
 });

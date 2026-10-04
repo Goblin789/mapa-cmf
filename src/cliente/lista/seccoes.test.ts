@@ -296,6 +296,30 @@ describe('lugaresVazios', () => {
     if (!tres) throw new Error('Falta a secção');
     expect(lugaresVazios(tres, true)).toBe(0);
   });
+
+  it('M2: numa carrinha, quem está indisponível hoje não ocupa lugar na lotação, mas o nome continua na sua caixa', () => {
+    const carrinhas = seccoesDaVista('carrinhas', estado, ind, SEM_FILTROS);
+    const comGente = carrinhas.find((s) => s.tipo === 'carrinha' && s.total > 0);
+    if (!comGente || comGente.id === null || comGente.lugares === null)
+      throw new Error('Sem carrinha com gente');
+    const quem = comGente.pessoas[0];
+    if (!quem) throw new Error('Sem passageiros');
+    const comPeriodo = {
+      ...estado,
+      indisponibilidades: [{ id: 'indisp-ficticio-1', pessoaId: quem.id, inicio: '2026-10-01', fim: null }],
+    };
+    const indH = indexar(comPeriodo, '2026-10-04');
+    const s = seccoesDaVista('carrinhas', comPeriodo, indH, SEM_FILTROS).find(
+      (x) => x.chave === comGente.chave,
+    );
+    expect(s?.total).toBe(comGente.total);
+    expect(s?.ocupados).toBe(comGente.total - 1);
+    // As caixas desenhadas (nomes + vazios) são as do cartão do Mapa: nunca mais do que os lugares.
+    expect(s && lugaresVazios(s, false)).toBe(Math.max(0, comGente.lugares - comGente.total));
+    // Nas casas a cama não se liberta: ocupados = total.
+    const casas = seccoesDaVista('casas', comPeriodo, indH, SEM_FILTROS);
+    expect(casas.every((c) => c.ocupados === c.total)).toBe(true);
+  });
 });
 
 describe('juntarEmBlocos', () => {

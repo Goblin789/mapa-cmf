@@ -5,13 +5,17 @@
 // Tabela (o ficheiro diz "filtrado"; as folhas Casas e Carrinhas ficam inteiras).
 // As linhas montam-se em funções puras (testadas); a biblioteca (write-excel-file, versão do browser)
 // só se descarrega quando se carrega no botão (import dinâmico).
+// M2: na folha Pessoas, "Indisponível até" (dd/mm/aaaa ou "sem data"; só a data, nunca o motivo); nas
+// folhas Casas e Carrinhas, "Problemas abertos" (o número); a ocupação das carrinhas não conta quem está
+// indisponível hoje (ocupacaoDaCarrinha).
 
 import type { Cell, CellObject, SheetData } from 'write-excel-file/browser';
 import { COR_TEXTO_NOMES, clienteEfetivoId } from '../../dominio/cores';
 import type { Dormida } from '../../dominio/dormidas';
 import type { Indices } from '../../dominio/indices';
 import { formatarMatricula } from '../../dominio/matricula';
-import { type NivelLotacao, ocupacaoCarrinha, ocupacaoCasa } from '../../dominio/ocupacao';
+import { type NivelLotacao, ocupacaoCasa, ocupacaoDaCarrinha } from '../../dominio/ocupacao';
+import { type AlvoProblema, chaveAlvoProblema } from '../../dominio/problemas';
 import type { Estado, Id, Pessoa } from '../../dominio/tipos';
 import { ESTILO_NIVEL } from '../comum/lotacao';
 import { ordenarPorClienteENome } from '../lista/seccoes';
@@ -31,6 +35,7 @@ import {
   ORDEM_INICIAL,
   ordenarLinhas,
   textoAConfirmar,
+  textoIndisponivelExcel,
 } from './linhasTabela';
 
 export interface FolhaExcel {
@@ -99,6 +104,12 @@ function celulaLotacao(ocupados: number, lugares: number, nivel: NivelLotacao): 
   };
 }
 
+/** M2: número de problemas por resolver da casa/carrinha (vazio sem nenhum). */
+function celulaProblemas(ind: Pick<Indices, 'problemasAbertos'>, alvo: AlvoProblema): Cell {
+  const n = ind.problemasAbertos.get(chaveAlvoProblema(alvo))?.length ?? 0;
+  return n > 0 ? { ...numero(n), align: 'center', textColor: '#973C00', fontWeight: 'bold' } : null;
+}
+
 /** Cabeçalho "Moradores" (ou "Passageiros") a ocupar as colunas dos nomes. */
 function cabecalhoNomes(rotulo: string, colunas: number): Cell[] {
   const n = Math.max(1, colunas);
@@ -119,13 +130,22 @@ export function folhaPessoas(
   const linhas = soEstas ?? ordenarLinhas(linhasDaTabela(estado, ind), ORDEM_INICIAL);
   return {
     nome: 'Pessoas',
-    larguras: [30, 12, 16, 22, 26, 11, 10, 18],
+    larguras: [30, 12, 16, 22, 26, 11, 10, 16, 18],
     linhas: [
-      ['Nome', 'Nº', 'Cliente', 'Obra', 'Casa', 'Carrinha', 'Condutor', 'A confirmar'].map((t) =>
-        cabecalho(t),
-      ),
+      [
+        'Nome',
+        'Nº',
+        'Cliente',
+        'Obra',
+        'Casa',
+        'Carrinha',
+        'Condutor',
+        'Indisponível até',
+        'A confirmar',
+      ].map((t) => cabecalho(t)),
       ...linhas.map((l): Cell[] => [
-        celulaNome(l.pessoa, ind, l.nomeMostrado),
+        // Quem saiu da empresa só vem com "Mostrar quem saiu" (Tabela): diz-se.
+        celulaNome(l.pessoa, ind, l.saiu ? `${l.nomeMostrado} (saiu)` : l.nomeMostrado),
         texto(l.numero),
         texto(l.cliente?.nome),
         texto(l.obra?.nome ?? 'sem obra', l.obra ? {} : { fontStyle: 'italic', textColor: '#70706F' }),
@@ -138,6 +158,7 @@ export function folhaPessoas(
           l.carrinha ? {} : { fontStyle: 'italic', textColor: '#70706F' },
         ),
         texto(l.condutor ? 'Sim' : null, { align: 'center' }),
+        texto(textoIndisponivelExcel(l.indisponivel), { align: 'center' }),
         texto(textoAConfirmar(l), { textColor: '#92400E', fontWeight: 'bold' }),
       ]),
     ],
@@ -162,7 +183,7 @@ export function folhaCasas(estado: Estado, ind: Indices, dormidas: Map<Id, Dormi
   const maxNomes = Math.max(1, fora.length, ...linhasCasas.map((l) => l.moradores.length));
   return {
     nome: 'Casas',
-    larguras: [26, 28, 10, 8, 26, ...Array.from({ length: maxNomes }, () => LARGURA_NOME)],
+    larguras: [26, 28, 10, 8, 26, 11, ...Array.from({ length: maxNomes }, () => LARGURA_NOME)],
     linhas: [
       [
         cabecalho('Casa'),
@@ -170,6 +191,7 @@ export function folhaCasas(estado: Estado, ind: Indices, dormidas: Map<Id, Dormi
         cabecalho('Lotação', { align: 'center' }),
         cabecalho('Livres', { align: 'right' }),
         cabecalho('Carrinhas que lá dormem'),
+        cabecalho('Problemas abertos', { align: 'center' }),
         ...cabecalhoNomes('Moradores', maxNomes),
       ],
       ...linhasCasas.map(({ casa, moradores, oc, carrinhas }): Cell[] => [
@@ -178,12 +200,14 @@ export function folhaCasas(estado: Estado, ind: Indices, dormidas: Map<Id, Dormi
         celulaLotacao(oc.ocupados, oc.lotacao, oc.nivel),
         numero(oc.livres),
         texto(carrinhas),
+        celulaProblemas(ind, { tipo: 'casa', id: casa.id }),
         ...moradores.map((p) => celulaNome(p, ind)),
       ]),
       [
         texto(ROTULO_FORA_DAS_CASAS, { fontWeight: 'bold', fontStyle: 'italic' }),
         null,
         texto(String(fora.length), { align: 'center', fontWeight: 'bold' }),
+        null,
         null,
         null,
         ...fora.map((p) => celulaNome(p, ind)),
@@ -200,7 +224,8 @@ export function folhaCarrinhas(estado: Estado, ind: Indices, dormidas: Map<Id, D
     const todos = ordenarPorClienteENome(ind.passageiros.get(carrinha.id) ?? [], ind);
     const condutor = condutorDaCarrinha(carrinha, ind);
     const passageiros = todos.filter((p) => p.id !== condutor?.id);
-    const oc = ocupacaoCarrinha(carrinha, todos.length);
+    // Quem está indisponível hoje continua na lista, mas não conta na ocupação (o lugar está livre).
+    const oc = ocupacaoDaCarrinha(ind, carrinha);
     const dormidaCarrinha = dormidas.get(carrinha.id);
     const d = textoDormida(dormidaCarrinha, ind);
     const dormida = d.desconhecida
@@ -214,7 +239,17 @@ export function folhaCarrinhas(estado: Estado, ind: Indices, dormidas: Map<Id, D
   const maxNomes = Math.max(1, sem.length, ...linhasCarrinhas.map((l) => l.passageiros.length));
   return {
     nome: 'Carrinhas',
-    larguras: [12, 10, 22, 8, 10, LARGURA_NOME, 28, ...Array.from({ length: maxNomes }, () => LARGURA_NOME)],
+    larguras: [
+      12,
+      10,
+      22,
+      8,
+      10,
+      LARGURA_NOME,
+      28,
+      11,
+      ...Array.from({ length: maxNomes }, () => LARGURA_NOME),
+    ],
     linhas: [
       [
         cabecalho('Matrícula'),
@@ -224,6 +259,7 @@ export function folhaCarrinhas(estado: Estado, ind: Indices, dormidas: Map<Id, D
         cabecalho('Ocupação', { align: 'center' }),
         cabecalho('Condutor'),
         cabecalho('Onde dorme'),
+        cabecalho('Problemas abertos', { align: 'center' }),
         ...cabecalhoNomes('Passageiros', maxNomes),
       ],
       ...linhasCarrinhas.map(({ carrinha, condutor, passageiros, oc, dormida, desconhecida }): Cell[] => [
@@ -239,6 +275,7 @@ export function folhaCarrinhas(estado: Estado, ind: Indices, dormidas: Map<Id, D
               textColor: '#70706F',
             }),
         texto(dormida, desconhecida ? { fontStyle: 'italic', textColor: '#70706F' } : {}),
+        celulaProblemas(ind, { tipo: 'carrinha', id: carrinha.id }),
         ...passageiros.map((p) => celulaNome(p, ind)),
       ]),
       [
@@ -247,6 +284,7 @@ export function folhaCarrinhas(estado: Estado, ind: Indices, dormidas: Map<Id, D
         null,
         null,
         texto(String(sem.length), { align: 'center', fontWeight: 'bold' }),
+        null,
         null,
         null,
         ...sem.map((p) => celulaNome(p, ind)),
@@ -303,7 +341,8 @@ function descarregar(conteudo: Blob, nome: string): void {
 
 /**
  * Monta o ficheiro e entrega-o ao browser para guardar. A biblioteca só se descarrega aqui. `pessoas` = as
- * linhas filtradas da Tabela (null = toda a gente, como no Quadro ou na Tabela sem filtros).
+ * linhas que a Tabela mostra (null = toda a gente, como no Quadro ou na Tabela sem filtros nem "Mostrar quem
+ * saiu"). `filtrado` põe "(filtrado)" no nome (por omissão, quando vêm linhas).
  */
 export async function exportarExcel(
   estado: Estado,
@@ -311,6 +350,7 @@ export async function exportarExcel(
   dormidas: Map<Id, Dormida>,
   simulacao: boolean,
   pessoas: readonly LinhaTabela[] | null = null,
+  filtrado = pessoas !== null,
 ): Promise<void> {
   const { default: escreverXlsx } = await import('write-excel-file/browser');
   const folhas = montarFolhasExcel(estado, ind, dormidas, pessoas);
@@ -323,5 +363,5 @@ export async function exportarExcel(
     })),
     { fontFamily: 'Calibri', fontSize: 11 },
   ).toBlob();
-  descarregar(conteudo, nomeFicheiroExcel(new Date(), simulacao, pessoas !== null));
+  descarregar(conteudo, nomeFicheiroExcel(new Date(), simulacao, filtrado));
 }

@@ -1,8 +1,9 @@
-// Pesquisa rápida por nome, Nº, matrícula ou casa (combobox ARIA com lista de resultados).
+// Pesquisa rápida por nome, Nº, matrícula, casa ou (M2) obra (combobox ARIA com lista de resultados).
 // ↑ ↓ escolhem, Enter abre, Esc fecha a lista (e depois limpa o texto).
 // "/" e Ctrl+K levam o foco para aqui (em todas as vistas). Escolher um resultado põe-no em foco e leva a
 // vista ativa até lá, sem mudar de vista (vistas/mostrar.ts): no Mapa o mapa desloca-se e o nome aparece
-// na lista lateral (como sempre); na Tabela e no Quadro a vista desliza até ele e acende-o.
+// na lista lateral (como sempre); na Tabela e no Quadro a vista desliza até ele e acende-o. Uma obra abre a
+// ficha dela (no Mapa, o mapa vai até ao sítio da obra; no Quadro por obras acende-se o bloco).
 
 import { type KeyboardEvent, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { clienteEfetivoId } from '../../dominio/cores';
@@ -30,11 +31,14 @@ function rotuloTipo(r: ResultadoPesquisa, ind: Indices | null): string {
   return ROTULO_TIPO[r.tipo];
 }
 
-/** Detalhe do resultado. Numa carrinha: "3/9 lugares · Ford Transit Custom" (com a marca). */
+/**
+ * Detalhe do resultado. Numa carrinha: "3/9 lugares · Ford Transit Custom" (com a marca; M2: quem está
+ * indisponível hoje não conta, como no resto do ecrã). Numa obra: "Cliente · N pessoas" (vem da pesquisa).
+ */
 function detalheResultado(r: ResultadoPesquisa, ind: Indices | null): string {
   const carrinha = r.tipo === 'carrinha' ? ind?.carrinhas.get(r.id) : undefined;
   if (!carrinha || !ind) return r.detalhe;
-  return detalheCarrinha(carrinha, ind.passageiros.get(carrinha.id)?.length ?? 0);
+  return detalheCarrinha(carrinha, ind.ocupadosCarrinha.get(carrinha.id) ?? 0);
 }
 
 /** Se a pessoa estiver numa caixa lateral, mostra o nome dela lá (sem mexer no mapa nem no painel). */
@@ -143,7 +147,7 @@ export function Pesquisa() {
   return (
     <div className="relative">
       <label htmlFor={idCampo} className="sr-only">
-        Pesquisar pessoa, Nº, matrícula ou casa
+        Pesquisar pessoa, Nº, matrícula, casa ou obra
       </label>
       <input
         ref={campo}

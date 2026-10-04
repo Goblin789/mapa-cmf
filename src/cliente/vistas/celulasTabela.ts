@@ -2,10 +2,12 @@
 // os grupos especiais no fim), o alvo de cada escolha, o "antes: …" das células que mudaram no rascunho,
 // os textos do botão do condutor e o que faz cada tecla nas listas. Funções puras (a Tabela calcula as
 // opções uma vez por estado).
+// M2: a lotação das carrinhas não conta quem está indisponível hoje (ocupacaoDaCarrinha); a célula
+// "Indisponível" tem, no modo de edição, um botão pequeno "Marcar…" ou "Já voltou" (acaoIndisponivel).
 
 import type { Indices } from '../../dominio/indices';
 import { formatarMatricula } from '../../dominio/matricula';
-import { ocupacaoCarrinha, ocupacaoCasa } from '../../dominio/ocupacao';
+import { ocupacaoCasa, ocupacaoDaCarrinha } from '../../dominio/ocupacao';
 import type { Alvo, CampoMovivel, Operacao } from '../../dominio/operacoes';
 import type { Carrinha, Estado, Id } from '../../dominio/tipos';
 import { type AcaoAtalho, acaoDoAtalho } from '../edicao/atalhos';
@@ -44,14 +46,17 @@ export function opcoesCasa(estado: Estado, ind: Indices): OpcaoCelula[] {
   ];
 }
 
-/** Carrinhas pela matrícula formatada, "CF 5005 · 6/9", e no fim "Sem transporte da empresa". */
+/**
+ * Carrinhas pela matrícula formatada, "CF 5005 · 6/9" (quem está indisponível hoje não conta), e no fim
+ * "Sem transporte da empresa".
+ */
 export function opcoesCarrinha(estado: Estado, ind: Indices): OpcaoCelula[] {
   return [
     ...estado.carrinhas
       .map((c) => ({ carrinha: c, matricula: formatarMatricula(c.matricula) }))
       .sort((a, b) => comparador.compare(a.matricula, b.matricula))
       .map(({ carrinha, matricula }) => {
-        const oc = ocupacaoCarrinha(carrinha, ind.passageiros.get(carrinha.id)?.length ?? 0);
+        const oc = ocupacaoDaCarrinha(ind, carrinha);
         return { valor: carrinha.id, rotulo: `${matricula} · ${oc.ocupados}/${oc.lugares}` };
       }),
     { valor: SEM, rotulo: ROTULO_SEM_TRANSPORTE },
@@ -190,6 +195,43 @@ export function rotuloBotaoCondutor(
   return conduz
     ? `Tirar ${nomeCurto} de condutor ${daCarrinha}`
     : `Tornar ${nomeCurto} condutor ${daCarrinha}`;
+}
+
+// --- Indisponível (M2) ----------------------------------------------------------------------------
+
+/** O botão pequeno da célula "Indisponível" no modo de edição. */
+export type AcaoIndisponivel =
+  | { tipo: 'marcar' }
+  /** `apaga`: o período começou hoje, por isso "Já voltou" apaga-o (operacoesTerminarPeriodo). */
+  | { tipo: 'voltou'; periodoId: Id; apaga: boolean };
+
+/**
+ * Quem está indisponível hoje tem "Já voltou" (o período acaba ontem; se começou hoje, apaga-se); os
+ * outros "Marcar…" (abre o diálogo). Quem saiu da empresa não tem botão (null).
+ */
+export function acaoIndisponivel(
+  linha: Pick<LinhaTabela, 'indisponivel' | 'saiu'>,
+  hoje: string,
+): AcaoIndisponivel | null {
+  if (linha.saiu) return null;
+  const periodo = linha.indisponivel;
+  return periodo
+    ? { tipo: 'voltou', periodoId: periodo.id, apaga: periodo.inicio >= hoje }
+    : { tipo: 'marcar' };
+}
+
+/** Texto visível e nome (aria-label) do botão: "Marcar…" / "Marcar Ana T. indisponível…". */
+export function rotulosAcaoIndisponivel(
+  nome: string,
+  acao: AcaoIndisponivel,
+): { texto: string; nome: string } {
+  if (acao.tipo === 'marcar') return { texto: 'Marcar…', nome: `Marcar ${nome} indisponível…` };
+  return {
+    texto: 'Já voltou',
+    nome: acao.apaga
+      ? `${nome} já voltou (o período apaga-se: começou hoje)`
+      : `${nome} já voltou (o período acaba ontem)`,
+  };
 }
 
 // --- Teclado nas listas das células ---------------------------------------------------------------

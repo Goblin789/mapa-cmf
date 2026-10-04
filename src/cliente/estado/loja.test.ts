@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Operacao } from '../../dominio/operacoes';
 import { estadoExemplo } from '../../dominio/teste-fabrica';
 import type { Estado } from '../../dominio/tipos';
+import { porDeParteRascunhoDaContaAnterior, protegerRascunho } from '../entrar/protegerRascunho';
 import { useSessao } from '../entrar/sessao';
 import {
   guardarRascunhoPendente,
@@ -15,7 +16,7 @@ import {
   registoDoSeparador,
   VALIDADE_RASCUNHO_MS,
 } from '../tempoReal/rascunhoPendente';
-import { SEPARADOR, useLoja } from './loja';
+import { INTERVALO_HOJE_MS, reversoesDoRascunho, SEPARADOR, useLoja } from './loja';
 
 const INICIAL = useLoja.getState();
 const SESSAO_INICIAL = useSessao.getState();
@@ -642,5 +643,147 @@ describe('recuperar o rascunho depois de voltar a entrar (página nova)', () => 
     await useLoja.getState().carregar();
     await useLoja.getState().guardar();
     expect(useLoja.getState().avisoRascunhoRecuperado).toBeNull();
+  });
+});
+
+describe('M2: hoje', () => {
+  it('definirHoje recalcula quem está indisponível (a lotação das carrinhas)', async () => {
+    pedirEstado = async () =>
+      respostaJson(
+        200,
+        estadoNaVersao(7, (e) => ({
+          ...e,
+          indisponibilidades: [{ id: 'indisp-1', pessoaId: 'p-ana', inicio: '2026-10-05', fim: null }],
+        })),
+      );
+    useLoja.setState({ hoje: '2026-10-04' });
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-10-04T10:00:00Z'));
+    useLoja.getState().limparDepoisDeSair();
+    useLoja.setState({ hoje: '2026-10-04' });
+    await useLoja.getState().carregar();
+    expect(useLoja.getState().indices?.indisponiveis.size).toBe(0);
+    const antes = useLoja.getState().indices?.ocupadosCarrinha.get('zz1001') ?? 0;
+    // Passa a meia-noite no Luxemburgo (22:00 UTC no verão): no minuto seguinte, o dia muda sozinho.
+    vi.setSystemTime(new Date('2026-10-04T22:00:30Z'));
+    vi.advanceTimersByTime(INTERVALO_HOJE_MS);
+    expect(useLoja.getState().hoje).toBe('2026-10-05');
+    expect([...(useLoja.getState().indices?.indisponiveis.keys() ?? [])]).toEqual(['p-ana']);
+    expect(useLoja.getState().indices?.ocupadosCarrinha.get('zz1001')).toBe(antes - 1);
+    // Sair pára o relógio.
+    useLoja.getState().limparDepoisDeSair();
+    vi.setSystemTime(new Date('2026-10-06T10:00:00Z'));
+    vi.advanceTimersByTime(INTERVALO_HOJE_MS * 2);
+    expect(useLoja.getState().hoje).not.toBe('2026-10-06');
+  });
+});
+
+describe('M2: reverter no rascunho', () => {
+  const VOLTA_ANA: Operacao = { ...MOVER_ANA, de: 'casa-2', para: 'casa-1' };
+
+  it('Desfazer o passo tira o lote de `reverte`; Refazer volta a pô-lo; um passo novo depois de desfazer esquece-o', async () => {
+    await useLoja.getState().carregar();
+    expect(useLoja.getState().iniciarReversao(5, [MOVER_ANA])).toBe(true);
+    expect(useLoja.getState().modoEdicao).toBe(true);
+    expect(useLoja.getState().reverte).toEqual([5]);
+    useLoja.getState().desfazer();
+    expect(useLoja.getState().reverte).toEqual([]);
+    useLoja.getState().refazer();
+    expect(useLoja.getState().reverte).toEqual([5]);
+    useLoja.getState().desfazer();
+    useLoja.getState().aplicar([MOVER_ANA_CARRINHA]);
+    useLoja.getState().refazer();
+    expect(useLoja.getState().reverte).toEqual([]);
+    // Nada a reverter: não entra no rascunho.
+    expect(useLoja.getState().iniciarReversao(6, [])).toBe(false);
+    useLoja.getState().cancelarEdicao();
+    expect(useLoja.getState().reverte).toEqual([]);
+  });
+
+  it('reversoesDoRascunho: só as dos passos ainda no rascunho, em cópia (para o registo do localStorage)', async () => {
+    await useLoja.getState().carregar();
+    expect(reversoesDoRascunho()).toEqual([]);
+    useLoja.getState().iniciarReversao(5, [MOVER_ANA]);
+    const reversoes = reversoesDoRascunho();
+    expect(reversoes).toEqual([{ loteId: 5, passo: 0, chaves: [expect.any(String)] }]);
+    reversoes[0]?.chaves.push('mexida');
+    expect(reversoesDoRascunho()[0]?.chaves).toHaveLength(1);
+    useLoja.getState().desfazer();
+    expect(reversoesDoRascunho()).toEqual([]);
+    useLoja.getState().refazer();
+    expect(reversoesDoRascunho().map((r) => r.loteId)).toEqual([5]);
+    useLoja.getState().cancelarEdicao();
+    expect(reversoesDoRascunho()).toEqual([]);
+  });
+
+  it('o Guardar envia só os lotes com alguma operação ainda nos pendentes, e limpa', async () => {
+    const corpos: unknown[] = [];
+    gravar = async (corpo) => {
+      corpos.push(corpo);
+      return respostaJson(201, { loteId: 8, versao: 8 });
+    };
+    await useLoja.getState().carregar();
+    useLoja.getState().iniciarReversao(5, [MOVER_ANA]);
+    useLoja.getState().iniciarReversao(6, [MOVER_ANA_CARRINHA]);
+    // A mudança do lote 5 foi desfeita à mão (outro passo): já não há nada dele por guardar.
+    useLoja.getState().aplicar([VOLTA_ANA]);
+    expect(useLoja.getState().reverte).toEqual([5, 6]);
+    expect(await useLoja.getState().guardar()).toBe(true);
+    expect(corpos).toEqual([{ versaoBase: 7, operacoes: [MOVER_ANA_CARRINHA], reverte: [6] }]);
+    expect(useLoja.getState().reverte).toEqual([]);
+  });
+
+  it('sem reversões o pedido não leva `reverte`', async () => {
+    const corpos: unknown[] = [];
+    gravar = async (corpo) => {
+      corpos.push(corpo);
+      return respostaJson(201, { loteId: 8, versao: 8 });
+    };
+    await comEstadoEEdicao();
+    await useLoja.getState().guardar('x');
+    expect(corpos).toEqual([{ versaoBase: 7, operacoes: [MOVER_ANA], comentario: 'x' }]);
+  });
+
+  it('a sessão termina ao guardar: o reverte vai no rascunho pendente e volta ao recuperar', async () => {
+    dentroComo('ana@exemplo.lu');
+    gravar = async () => respostaJson(401, { erro: 'Sem sessão.' });
+    await useLoja.getState().carregar();
+    useLoja.getState().iniciarReversao(5, [MOVER_ANA]);
+    expect(await useLoja.getState().guardar()).toBe(false);
+    expect(registo()?.reversoes).toEqual([{ loteId: 5, passo: 0, chaves: [expect.any(String)] }]);
+
+    // Página nova (outro separador): o rascunho volta com o lote revertido.
+    const guardado = registo();
+    useLoja.getState().cancelarEdicao();
+    useLoja.setState(INICIAL, true);
+    dentroComo('ana@exemplo.lu');
+    if (guardado) guardarRegisto({ ...guardado, separador: null, origem: 'pagina-que-fechou' });
+    await useLoja.getState().carregar();
+    expect(useLoja.getState().modoEdicao).toBe(true);
+    expect(useLoja.getState().reverte).toEqual([5]);
+  });
+
+  it('a sessão termina (aviso da sessão): o protegerRascunho leva o reverte e ele volta ao recuperar', async () => {
+    dentroComo('ana@exemplo.lu');
+    await useLoja.getState().carregar();
+    useLoja.getState().iniciarReversao(5, [MOVER_ANA]);
+    expect(protegerRascunho('ana@exemplo.lu', { armazenamento })).toBe('guardado');
+    expect(registo()?.reversoes).toEqual([{ loteId: 5, passo: 0, chaves: [expect.any(String)] }]);
+
+    const guardado = registo();
+    porDeParteRascunhoDaContaAnterior({ armazenamento: null });
+    useLoja.setState(INICIAL, true);
+    dentroComo('ana@exemplo.lu');
+    if (guardado) guardarRegisto({ ...guardado, separador: null, origem: 'pagina-que-fechou' });
+    await useLoja.getState().carregar();
+    expect(useLoja.getState().modoEdicao).toBe(true);
+    expect(useLoja.getState().reverte).toEqual([5]);
+  });
+
+  it('um rascunho do modo local recupera-se depois de entrar com a conta Microsoft', async () => {
+    dentroComo('ana@exemplo.lu');
+    guardarRegisto({ autor: 'local' });
+    await useLoja.getState().carregar();
+    expect(useLoja.getState().modoEdicao).toBe(true);
   });
 });

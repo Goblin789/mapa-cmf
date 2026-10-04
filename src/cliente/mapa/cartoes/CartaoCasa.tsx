@@ -4,10 +4,13 @@
 // Uma casa que conta sempre como cheia (Walferdange, Schifflange) não tem lugares vazios: os lugares são
 // os moradores (ocupacaoCasa) e a pastilha mostra n/n.
 // Clicar na casa põe-na em foco; no modo de edição é um alvo onde se largam pessoas (data-alvo).
+// M2: o ícone dos problemas abertos fica na linha de estado, antes da pastilha (o aviso do contrato encolhe
+// para lhe dar lugar). Quem está indisponível continua a ocupar a cama: a lotação da casa não muda.
 
 import { ocupacaoCasa } from '../../../dominio/ocupacao';
 import { chaveAlvo } from '../../../dominio/operacoes';
 import type { Casa, Id } from '../../../dominio/tipos';
+import { descricaoProblemas, IconeProblemas, useProblemasAbertos } from '../../comum/IconeProblemas';
 import { ESTILO_AVISO_CONTRATO, ESTILO_NIVEL } from '../../comum/lotacao';
 import { useLoja } from '../../estado/loja';
 import { chaveCasa } from '../layout/grupos';
@@ -86,6 +89,7 @@ function textoAviso(casa: Casa, forte: boolean): string {
 export function CartaoCasa({ casaId, geometria: g, x, y, destaque }: Props) {
   const indices = useLoja((s) => s.indices);
   const definirFoco = useLoja((s) => s.definirFoco);
+  const problemas = useProblemasAbertos({ tipo: 'casa', id: casaId });
   const casa = indices?.casas.get(casaId);
   if (!indices || !casa) return null;
 
@@ -107,6 +111,8 @@ export function CartaoCasa({ casaId, geometria: g, x, y, destaque }: Props) {
     `${oc.ocupados}/${oc.lotacao} lugares`,
     estilo.rotulo,
     casa.sempreCheia ? 'conta sempre como cheia' : null,
+    // O ícone dos problemas está numa linha sem rato (o title dele não se vê): a lista vai aqui.
+    descricaoProblemas(problemas) || null,
   ]
     .filter(Boolean)
     .join(' · ');
@@ -151,6 +157,7 @@ export function CartaoCasa({ casaId, geometria: g, x, y, destaque }: Props) {
             <span className="truncate">{textoAviso(casa, forte)}</span>
           </span>
         )}
+        <IconeProblemas alvo={{ tipo: 'casa', id: casaId }} tamanho="mapa" />
         <PastilhaLotacao ocupados={oc.ocupados} lugares={oc.lotacao} nivel={oc.nivel} />
       </div>
       <Lugares pessoas={moradores} lugares={g.lugares} capacidade={oc.lotacao} />

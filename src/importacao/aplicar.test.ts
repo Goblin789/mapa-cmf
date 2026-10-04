@@ -59,6 +59,7 @@ describe('aplicarNaBd', () => {
         criadoEm: '2026-10-03T10:00:00.000Z',
         efetivoEm: '2026-10-03T10:00:00.000Z',
         comentario: '6 pessoas',
+        reverte: null,
       },
     ]);
   });

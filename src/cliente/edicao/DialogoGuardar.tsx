@@ -2,6 +2,9 @@
 // aceita um comentário e grava num lote. Se o servidor recusar por conflito (alguém mudou entretanto as
 // mesmas pessoas, o condutor das mesmas carrinhas ou onde elas dormem), nada foi gravado: mostra o que
 // mudou e oferece deitar fora o rascunho e recarregar, ou voltar à edição.
+// M2: as alterações novas agrupadas (Fichas, Pessoas novas e saídas, Indisponível, Problemas, Obras), os avisos
+// novos (resumo.ts, calcularAvisos) e, junto ao comentário, a frase fixa AVISO_COMENTARIO_SEM_MOTIVO quando
+// o rascunho tem indisponibilidades ou problemas e o aviso de avisoTextoSaude enquanto se escreve.
 
 import { useEffect, useId, useRef, useState } from 'react';
 import type { ConflitoServidor } from '../../dominio/api';
@@ -10,14 +13,27 @@ import { dormidasDasCarrinhas } from '../../dominio/dormidas';
 import { indexar } from '../../dominio/indices';
 import { IconeVolante } from '../comum/IconeVolante';
 import { Matricula } from '../comum/Matricula';
-import { useLoja } from '../estado/loja';
+import { reversoesDoRascunho, useLoja } from '../estado/loja';
 import { MarcaCliente } from '../paineis/pecas';
 import { comPlural, ROTULO_TIPO_VEICULO } from '../paineis/textos';
 import { BOTAO_PERIGO, BOTAO_PRIMARIO, BOTAO_SECUNDARIO } from './classes';
 import { Dialogo } from './Dialogo';
 import { textoDoErro } from './erros';
+import { gravacoesConhecidas, lotesDaReversaoAEnviar, notaReversaoNoGuardar } from './historico';
 import { IconeAviso, IconeDormir, IconeGuardar, IconeRodar } from './icones';
-import { agruparAlteracoes, agruparCondutores, agruparDormidas, calcularAvisos } from './resumo';
+import {
+  agruparAlteracoes,
+  agruparAlteracoesM2,
+  agruparCondutores,
+  agruparDormidas,
+  avisoDoComentario,
+  calcularAvisos,
+  contarAlteracoes,
+  fraseFixaDoComentario,
+  frasesDosConflitos,
+  type GrupoAlteracoes,
+  type SeccaoAlteracoes,
+} from './resumo';
 import { useUiEdicao } from './ui';
 
 const LIMITE_COMENTARIO = 500;
@@ -31,8 +47,17 @@ function useInstantaneo() {
     // "antes" e o "depois" dos avisos contarem da mesma maneira que o Mapa.
     const indServidor = indexar(estadoServidor, hoje);
     return {
-      n: pendentes.length,
-      grupos: agruparAlteracoes(estadoServidor, pendentes),
+      // O pino (lat e lng) conta uma vez, como na lista e na barra.
+      n: contarAlteracoes(pendentes),
+      // Os nomes de quem só existe no rascunho (pessoa nova, obra nova) vêm do estado visível.
+      grupos: agruparAlteracoes(estadoServidor, pendentes, estado),
+      m2: agruparAlteracoesM2(estadoServidor, estado, pendentes),
+      fraseFixa: fraseFixaDoComentario(pendentes),
+      // Só as reversões que vão MESMO no pedido (a regra da loja), pela data e pelo autor da gravação.
+      notaReversao: notaReversaoNoGuardar(
+        lotesDaReversaoAEnviar(reversoesDoRascunho(), pendentes),
+        gravacoesConhecidas(),
+      ),
       condutores: agruparCondutores(estadoServidor, pendentes),
       dormidas: agruparDormidas(estadoServidor, pendentes, dormidasDasCarrinhas(estadoServidor, indServidor)),
       avisos: calcularAvisos(estadoServidor, estado, pendentes, indServidor, indices, hoje),
@@ -48,6 +73,58 @@ function useInstantaneo() {
 /** Há conflitos que não são só de pessoas (condutor ou onde dorme de uma carrinha). */
 function conflitoDeCarrinhas(conflitos: readonly ConflitoServidor[] | null): boolean {
   return conflitos?.some((c) => c.tipo !== 'mover') ?? false;
+}
+
+/** M2: há conflitos em fichas ou registos (obras, períodos, problemas…). */
+function conflitoDeFichas(conflitos: readonly ConflitoServidor[] | null): boolean {
+  return conflitos?.some((c) => c.tipo === 'campo' || c.tipo === 'registo') ?? false;
+}
+
+/** O que mexe nas mesmas … (frase dos conflitos). */
+function oQueMudou(conflitos: readonly ConflitoServidor[] | null): string {
+  if (conflitoDeFichas(conflitos)) return 'coisas';
+  return conflitoDeCarrinhas(conflitos) ? 'pessoas ou carrinhas' : 'pessoas';
+}
+
+/** A parte do resumo do título de cada secção nova ("2 fichas mudam"). */
+function resumoDaSeccao(seccao: SeccaoAlteracoes, n: number): string {
+  switch (seccao) {
+    case 'fichas':
+      return comPlural(n, 'ficha muda', 'fichas mudam');
+    case 'pessoas':
+      return comPlural(n, 'pessoa entra ou sai', 'pessoas entram ou saem');
+    case 'indisponivel':
+      return `indisponível: ${comPlural(n, 'pessoa', 'pessoas')}`;
+    case 'problemas':
+      return `problemas: ${comPlural(n, 'casa ou carrinha', 'casas ou carrinhas')}`;
+    case 'obras':
+      return comPlural(n, 'obra muda', 'obras mudam');
+  }
+}
+
+/** Uma secção nova do Guardar: quem (a negrito) e as frases do que muda. */
+function SeccaoM2({ grupo }: { grupo: GrupoAlteracoes }) {
+  return (
+    <>
+      <h4 className="mt-3 mb-1.5 text-xs font-semibold tracking-wide text-slate-600 uppercase">
+        {grupo.titulo} ({grupo.itens.length})
+      </h4>
+      <ul className="divide-y divide-slate-200 rounded-md border border-slate-200">
+        {grupo.itens.map((item) => (
+          <li key={item.quem} className="px-3 py-2">
+            {item.quem && <p className="text-sm font-semibold break-words text-slate-900">{item.quem}</p>}
+            <ul className="mt-0.5 space-y-0.5">
+              {item.frases.map((f) => (
+                <li key={f} className="text-sm break-words text-slate-700">
+                  {f}
+                </li>
+              ))}
+            </ul>
+          </li>
+        ))}
+      </ul>
+    </>
+  );
 }
 
 function chaveConflito(c: ConflitoServidor): string {
@@ -69,12 +146,14 @@ function Conflitos({ aoVoltar, aoDescartar }: { aoVoltar: () => void; aoDescarta
       <div className="rounded-md border border-red-300 bg-red-50 px-3 py-2.5 text-sm text-red-950">
         <p className="flex items-start gap-2 font-semibold">
           <IconeAviso className="mt-0.5 h-4 w-4 text-red-700" />
-          {conflitoDeCarrinhas(conflitos)
-            ? 'Alguém mudou entretanto algumas destas pessoas ou carrinhas. Nada foi gravado.'
-            : (erroGuardar ?? 'Alguém mudou entretanto algumas destas pessoas. Nada foi gravado.')}
+          {conflitoDeFichas(conflitos)
+            ? 'Alguém mudou entretanto algumas destas coisas. Nada foi gravado.'
+            : conflitoDeCarrinhas(conflitos)
+              ? 'Alguém mudou entretanto algumas destas pessoas ou carrinhas. Nada foi gravado.'
+              : (erroGuardar ?? 'Alguém mudou entretanto algumas destas pessoas. Nada foi gravado.')}
         </p>
         <ul className="mt-2 list-disc space-y-1 pl-9">
-          {conflitos.map((c) => (
+          {frasesDosConflitos(conflitos).map((c) => (
             <li key={chaveConflito(c)}>{c.descricao}</li>
           ))}
         </ul>
@@ -108,13 +187,28 @@ export function DialogoGuardar({ aoFechar }: { aoFechar: () => void }) {
   const [aRecarregar, setARecarregar] = useState(false);
   const idComentario = useId();
   const idAvisos = useId();
+  const idFraseFixa = useId();
+  const idAvisoComentario = useId();
 
   if (!instantaneo) return null;
-  const { n, grupos, condutores, dormidas, avisos, indices, matriculas, tiposVeiculo } = instantaneo;
+  const {
+    n,
+    grupos,
+    m2,
+    fraseFixa,
+    notaReversao,
+    condutores,
+    dormidas,
+    avisos,
+    indices,
+    matriculas,
+    tiposVeiculo,
+  } = instantaneo;
+  // Enquanto se escreve (nunca impede de gravar).
+  const avisoComentario = avisoDoComentario(comentario);
   const tipoVeiculo = (id: string) => tiposVeiculo.get(id) ?? ROTULO_TIPO_VEICULO.carrinha;
   const ocupado = aGuardar || aRecarregar;
   const emConflito = tentou && conflitos !== null && conflitos.length > 0;
-  const conflitoDeCondutor = conflitoDeCarrinhas(conflitos);
   const resumo = [
     grupos.length > 0 ? comPlural(grupos.length, 'pessoa muda', 'pessoas mudam') : null,
     condutores.length > 0
@@ -123,6 +217,7 @@ export function DialogoGuardar({ aoFechar }: { aoFechar: () => void }) {
     dormidas.length > 0
       ? comPlural(dormidas.length, 'carrinha muda onde dorme', 'carrinhas mudam onde dormem')
       : null,
+    ...m2.map((g) => resumoDaSeccao(g.seccao, g.itens.length)),
   ]
     .filter(Boolean)
     .join(', ');
@@ -150,9 +245,7 @@ export function DialogoGuardar({ aoFechar }: { aoFechar: () => void }) {
       titulo={emConflito ? 'Não foi possível guardar' : `Guardar ${comPlural(n, 'alteração', 'alterações')}`}
       descricao={
         emConflito
-          ? `Houve uma gravação entretanto que mexe nas mesmas ${
-              conflitoDeCondutor ? 'pessoas ou carrinhas' : 'pessoas'
-            }.`
+          ? `Houve uma gravação entretanto que mexe nas mesmas ${oQueMudou(conflitos)}.`
           : `${resumo}. Revê antes de gravar.`
       }
       aoFechar={aoFechar}
@@ -233,6 +326,11 @@ export function DialogoGuardar({ aoFechar }: { aoFechar: () => void }) {
             <h3 className="mb-1.5 text-xs font-semibold tracking-wide text-slate-600 uppercase">
               Alterações ({n})
             </h3>
+            {notaReversao && (
+              <p className="mb-2 rounded-md border border-violet-300 bg-violet-50 px-3 py-1.5 text-sm text-violet-950">
+                {notaReversao}
+              </p>
+            )}
             {grupos.length > 0 && (
               <ul className="divide-y divide-slate-200 rounded-md border border-slate-200">
                 {grupos.map((g) => {
@@ -344,6 +442,9 @@ export function DialogoGuardar({ aoFechar }: { aoFechar: () => void }) {
                 </ul>
               </>
             )}
+            {m2.map((g) => (
+              <SeccaoM2 key={g.seccao} grupo={g} />
+            ))}
             {avisos.length === 0 && (
               <p className="mt-2 flex items-center gap-2 text-sm text-slate-700">
                 <IconeGuardar className="h-4 w-4 text-emerald-700" />
@@ -356,6 +457,15 @@ export function DialogoGuardar({ aoFechar }: { aoFechar: () => void }) {
             <label htmlFor={idComentario} className="mb-1 block text-sm font-medium text-slate-800">
               Comentário <span className="font-normal text-slate-500">(opcional)</span>
             </label>
+            {fraseFixa && (
+              <p
+                id={idFraseFixa}
+                className="mb-1 flex items-start gap-1.5 text-xs font-medium text-slate-700"
+              >
+                <IconeAviso className="mt-px h-3.5 w-3.5 text-amber-700" />
+                {fraseFixa}
+              </p>
+            )}
             <textarea
               id={idComentario}
               value={comentario}
@@ -364,8 +474,22 @@ export function DialogoGuardar({ aoFechar }: { aoFechar: () => void }) {
               rows={2}
               disabled={ocupado}
               placeholder="Ex.: troca combinada com o encarregado"
+              aria-describedby={[fraseFixa ? idFraseFixa : null, idAvisoComentario].filter(Boolean).join(' ')}
               className="block w-full resize-y rounded-md border border-slate-300 px-2.5 py-1.5 text-base placeholder:text-slate-400 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-blue-700 sm:text-sm"
             />
+            {/* Sempre no DOM (aria-live só anuncia o que muda dentro de uma região que já existia). */}
+            <p
+              id={idAvisoComentario}
+              aria-live="polite"
+              className={
+                avisoComentario
+                  ? 'mt-1 flex items-start gap-1.5 rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-xs text-amber-950'
+                  : 'sr-only'
+              }
+            >
+              {avisoComentario && <IconeAviso className="mt-px h-3.5 w-3.5 text-amber-700" />}
+              {avisoComentario}
+            </p>
           </div>
         </div>
       )}

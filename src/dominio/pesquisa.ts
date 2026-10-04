@@ -1,4 +1,5 @@
-// Pesquisa rápida por nome, número ou matrícula. Indiferente a acentos e maiúsculas.
+// Pesquisa rápida por nome, número ou matrícula (pessoas, carrinhas, casas e, no M2, obras).
+// Indiferente a acentos e maiúsculas.
 
 import type { Indices } from './indices';
 import type { Estado, Id } from './tipos';
@@ -19,7 +20,7 @@ export function compactar(s: string): string {
 }
 
 export interface ResultadoPesquisa {
-  /** M2: também obras (CONTRATO DO M2: o módulo base acrescenta-as a `pesquisar`). */
+  /** M2: também obras (rótulo = nome, detalhe "Cliente · N pessoas"). */
   tipo: 'pessoa' | 'carrinha' | 'casa' | 'obra';
   id: Id;
   rotulo: string;
@@ -81,7 +82,8 @@ export function pesquisar(estado: Estado, ind: Indices, termoBruto: string, limi
       pontuar([c.marca, c.modelo].filter(Boolean).join(' '), termo) * 0.6,
     );
     if (pontuacao > 0) {
-      const n = ind.passageiros.get(c.id)?.length ?? 0;
+      // M2: sem quem está indisponível hoje (o lugar fica livre), como a pastilha e o Mover para….
+      const n = ind.ocupadosCarrinha.get(c.id) ?? ind.passageiros.get(c.id)?.length ?? 0;
       resultados.push({
         tipo: 'carrinha',
         id: c.id,
@@ -101,6 +103,21 @@ export function pesquisar(estado: Estado, ind: Indices, termoBruto: string, limi
         id: casa.id,
         rotulo: casa.nome,
         detalhe: `${n}/${casa.lotacao} lugares`,
+        pontuacao,
+      });
+    }
+  }
+
+  for (const obra of estado.obras) {
+    const pontuacao = pontuar(obra.nome, termo);
+    if (pontuacao > 0) {
+      const n = ind.trabalhadores.get(obra.id)?.length ?? 0;
+      const cliente = ind.clientes.get(obra.clienteId)?.nome ?? '?';
+      resultados.push({
+        tipo: 'obra',
+        id: obra.id,
+        rotulo: obra.nome,
+        detalhe: `${cliente} · ${n === 1 ? '1 pessoa' : `${n} pessoas`}`,
         pontuacao,
       });
     }

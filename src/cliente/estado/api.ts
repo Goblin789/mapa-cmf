@@ -5,7 +5,11 @@ import type {
   AlteracaoHistorico,
   ConflitoServidor,
   EntradaHistorico,
+  PedidoGeocodificar,
+  PedidoGeocodificarInverso,
   PedidoGuardar,
+  RespostaGeocodificar,
+  RespostaGeocodificarInverso,
   RespostaGuardar,
   ResultadoGeocodificacao,
 } from '../../dominio/api';
@@ -100,24 +104,41 @@ export async function obterHistorico(limite = 50): Promise<EntradaHistorico[]> {
   return (await resposta.json()) as EntradaHistorico[];
 }
 
+/** POST JSON à API: a resposta já lida; num erro, Error com a frase do servidor (ErroSessao num 401). */
+async function postarJson<T>(caminho: string, corpo: unknown): Promise<T> {
+  const resposta = await pedirApi(caminho, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', accept: 'application/json' },
+    body: JSON.stringify(corpo),
+  });
+  const lido = (await resposta.json().catch(() => ({}))) as T & { erro?: string; erros?: string[] };
+  if (!resposta.ok) {
+    const detalhe = lido.erros?.length ? ` ${lido.erros.join(' ')}` : '';
+    throw new ErroServidor(
+      resposta.status,
+      `${lido.erro ?? `O servidor respondeu ${resposta.status}.`}${detalhe}`,
+    );
+  }
+  return lido;
+}
+
 /**
  * M2 — POST /api/geocodificar: até 5 sítios para a morada, o melhor primeiro ([] = nada encontrado).
  * Lança Error com a frase do servidor (ex.: "O serviço de moradas não respondeu. Tenta outra vez ou
  * escolhe o sítio no mapa.") e ErroSessao num 401.
- * CONTRATO DO M2: o módulo base implementa (o servidor e este pedido).
  */
 export async function geocodificarMorada(morada: string, pais: Pais): Promise<ResultadoGeocodificacao[]> {
-  void morada;
-  void pais;
-  throw new Error('A procura de moradas ainda não está disponível.');
+  const corpo: PedidoGeocodificar = { morada, pais };
+  const { resultados } = await postarJson<RespostaGeocodificar>('/api/geocodificar', corpo);
+  return Array.isArray(resultados) ? resultados : [];
 }
 
 /**
  * M2 — POST /api/geocodificar/inverso: a morada (e o país) do ponto escolhido no mapa; null se não houver.
- * CONTRATO DO M2: o módulo base implementa.
+ * Lança Error com a frase do servidor e ErroSessao num 401.
  */
 export async function geocodificarPosicao(lat: number, lng: number): Promise<ResultadoGeocodificacao | null> {
-  void lat;
-  void lng;
-  return null;
+  const corpo: PedidoGeocodificarInverso = { lat, lng };
+  const { resultado } = await postarJson<RespostaGeocodificarInverso>('/api/geocodificar/inverso', corpo);
+  return resultado ?? null;
 }

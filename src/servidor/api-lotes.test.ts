@@ -89,6 +89,7 @@ describe('POST /api/lotes — gravar', () => {
       estado: 'aplicado',
       tipo: 'mudanca',
       comentario: 'Troca de teste',
+      reverte: null,
     });
     expect(bd.select().from(esquema.alteracoes).all()).toStrictEqual([
       {
@@ -519,7 +520,11 @@ describe('POST /api/lotes — pedidos inválidos (400)', () => {
       [mover('p-ze', 'obraId', 'obra-vale', 'obra-nada')],
       ['Zé Teste: o destino obra-nada não existe.'],
     ],
-    ['pessoa inativa', [mover('p-bruno', 'casaId', 'casa-monte', null)], ['Bruno Fictício não está ativa.']],
+    [
+      'pessoa inativa',
+      [mover('p-bruno', 'casaId', 'casa-monte', 'casa-ribeira')],
+      ['Bruno Fictício não está ativa.'],
+    ],
   ])('%s', async (_nome, operacoes, erros) => {
     const antes = fotografia();
     const resposta = await postar({ versaoBase: 1, operacoes });
@@ -761,6 +766,8 @@ describe('GET /api/historico', () => {
         estado: 'aplicado',
         comentario: 'Importação de teste',
         alteracoes: [],
+        reverte: [],
+        revertidoPor: [],
       },
     ]);
   });
@@ -787,10 +794,7 @@ describe('GET /api/historico', () => {
         'Zé Teste — carrinha: ZZ 0002 → Sem transporte da empresa',
         'Zé Teste — obra: Obra do Vale → sem obra',
       ],
-      [
-        'Álvaro Exemplo — casa: Fora das casas CMF → Casa Ribeira',
-        'Álvaro Exemplo — casa a confirmar: sim → não',
-      ],
+      ['Álvaro Exemplo — casa: Fora das casas CMF → Casa Ribeira', 'Álvaro Exemplo — casa confirmada'],
       [],
     ]);
     expect(lista[0]?.alteracoes[0]).toStrictEqual({

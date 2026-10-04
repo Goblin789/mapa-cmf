@@ -4,21 +4,36 @@
 //
 // Dois modos (docs/m1.md): local (sem login, só o próprio PC, autor 'local') e entra (login Microsoft:
 // tudo em /api/* exige sessão, exceto /api/auth/* e /api/saude; o autor é o e-mail de quem grava).
+// M2: POST /api/geocodificar e /api/geocodificar/inverso (moradas das obras), atrás da sessão e da
+// verificação da origem como as gravações, com um limite de pedidos por utilizador.
 
 import { serveStatic } from '@hono/node-server/serve-static';
-import { Hono } from 'hono';
+import { type Context, Hono, type MiddlewareHandler } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { HTTPException } from 'hono/http-exception';
 import { secureHeaders } from 'hono/secure-headers';
-import type { EstadoCopiasPublico, RespostaSaude } from '../dominio/api';
+import type {
+  EstadoCopiasPublico,
+  RespostaGeocodificar,
+  RespostaGeocodificarInverso,
+  RespostaSaude,
+} from '../dominio/api';
 import { type AmbienteApp, type ConfigAuth, criarAutenticacao } from './auth';
 import type { FetchOidc } from './auth/oidc';
 import type { ServicoCopias } from './copias';
 import type { Bd } from './db/ligacao';
 import { carregarEstado, lerVersao } from './estado';
 import type { CanalEventos } from './eventos';
+import { ErroGeocodificacao, type Geocodificador } from './geocodificacao';
 import { gravarLote, lerHistorico } from './lotes';
-import { eJson, lerLimiteHistorico, lerPedidoGuardar, origemLocal } from './pedidos';
+import {
+  eJson,
+  lerLimiteHistorico,
+  lerPedidoGeocodificar,
+  lerPedidoGeocodificarInverso,
+  lerPedidoGuardar,
+  origemLocal,
+} from './pedidos';
 
 export interface OpcoesApp {
   bd: Bd;
@@ -44,10 +59,50 @@ export interface OpcoesApp {
   agora?: () => Date;
   /** fetch para o OpenID (os testes usam o fornecedor falso em processo). */
   fetchOidc?: FetchOidc;
+  /**
+   * M2: moradas (POST /api/geocodificar e /inverso). Sem isto as rotas respondem 503 e o ecrã deixa escolher
+   * o sítio no mini-mapa. Os testes usam um falso (nunca os serviços verdadeiros).
+   */
+  geocodificador?: Geocodificador;
 }
 
 /** Tamanho máximo do corpo de POST /api/lotes (500 operações cabem folgadamente). */
 export const TAMANHO_MAXIMO_LOTE = 100 * 1024;
+
+/** Tamanho máximo do corpo de POST /api/geocodificar(/inverso) (uma morada até 300 caracteres). */
+export const TAMANHO_MAXIMO_GEOCODIFICAR = 4 * 1024;
+
+/** Pedidos de moradas por utilizador (Utilizador.chave): no máximo 30 por minuto, as duas rotas juntas. */
+export const LIMITE_GEOCODIFICAR = { pedidos: 30, janelaMs: 60_000 } as const;
+
+/** 502: o serviço não respondeu a tempo ou respondeu com um erro. */
+export const MORADAS_SEM_RESPOSTA =
+  'O serviço de moradas não respondeu. Tenta outra vez ou escolhe o sítio no mapa.';
+/** 503: não há serviço de moradas ligado. */
+export const MORADAS_DESLIGADAS = 'O serviço de moradas não está ligado. Escolhe o sítio no mapa.';
+
+/**
+ * Limite de pedidos por chave numa janela deslizante (em memória: chega para um servidor só).
+ * `tentar` conta o pedido e devolve 0 se pode seguir, ou os segundos a esperar (para o Retry-After).
+ */
+export function criarLimitador(maximo: number, janelaMs: number, agora: () => Date = () => new Date()) {
+  const pedidos = new Map<string, number[]>();
+  return {
+    tentar(chave: string): number {
+      const t = agora().getTime();
+      // Os mapas de quem já não pede há mais de uma janela não ficam a crescer.
+      for (const [k, lista] of pedidos) if ((lista.at(-1) ?? 0) <= t - janelaMs) pedidos.delete(k);
+      const recentes = (pedidos.get(chave) ?? []).filter((x) => x > t - janelaMs);
+      if (recentes.length >= maximo) {
+        pedidos.set(chave, recentes);
+        return Math.max(1, Math.ceil(((recentes[0] ?? t) + janelaMs - t) / 1000));
+      }
+      recentes.push(t);
+      pedidos.set(chave, recentes);
+      return 0;
+    },
+  };
+}
 
 /** Métodos que não mudam nada: não precisam da verificação da origem. */
 const METODOS_SEGUROS = new Set(['GET', 'HEAD', 'OPTIONS']);
@@ -107,6 +162,7 @@ export function criarApp({
   commit,
   agora = () => new Date(),
   fetchOidc,
+  geocodificador,
 }: OpcoesApp): Hono<AmbienteApp> {
   const app = new Hono<AmbienteApp>();
   const enderecoPublico = auth.modo === 'entra' ? new URL(auth.enderecoPublico) : null;
@@ -175,14 +231,17 @@ export function criarApp({
     return autenticacao.acompanharLigacao(c, await eventos.responder(c, lerVersao(bd)));
   });
 
+  /** Os POST da API só aceitam JSON (mais uma barreira contra pedidos de formulários de outros sites). */
+  const exigirJson: MiddlewareHandler<AmbienteApp> = async (c, next) => {
+    if (!eJson(c.req.header('Content-Type'))) {
+      return c.json({ erro: 'O pedido tem de ser JSON (Content-Type: application/json).' }, 415);
+    }
+    await next();
+  };
+
   app.post(
     '/api/lotes',
-    async (c, next) => {
-      if (!eJson(c.req.header('Content-Type'))) {
-        return c.json({ erro: 'O pedido tem de ser JSON (Content-Type: application/json).' }, 415);
-      }
-      await next();
-    },
+    exigirJson,
     bodyLimit({
       maxSize: TAMANHO_MAXIMO_LOTE,
       onError: (c) => c.json({ erro: 'Pedido demasiado grande: grava menos alterações de cada vez.' }, 413),
@@ -198,11 +257,12 @@ export function criarApp({
       if (!pedido.ok) return c.json({ erro: 'Pedido inválido.', erros: pedido.erros }, 400);
 
       const utilizador = c.get('utilizador');
-      const { operacoes, comentario, versaoBase } = pedido.valor;
+      const { operacoes, comentario, versaoBase, reverte } = pedido.valor;
       const r = gravarLote(bd, {
         operacoes,
         comentario,
         versaoBase,
+        reverte,
         autor: utilizador.chave,
         agora: agora(),
       });
@@ -241,6 +301,78 @@ export function criarApp({
       }
     },
   );
+
+  // --- M2: moradas (geocodificação no servidor; o browser nunca fala com os serviços) -----------------
+  const limiteMoradas = criarLimitador(LIMITE_GEOCODIFICAR.pedidos, LIMITE_GEOCODIFICAR.janelaMs, agora);
+
+  /** 30 pedidos por minuto por utilizador (as duas rotas juntas); 429 com Retry-After acima disso. */
+  const limitarMoradas: MiddlewareHandler<AmbienteApp> = async (c, next) => {
+    const espera = limiteMoradas.tentar(c.get('utilizador').chave);
+    if (espera > 0) {
+      c.header('Retry-After', String(espera));
+      return c.json(
+        { erro: 'Demasiados pedidos de moradas seguidos. Espera um minuto e tenta outra vez.' },
+        429,
+      );
+    }
+    await next();
+  };
+
+  const corpoDasMoradas = bodyLimit({
+    maxSize: TAMANHO_MAXIMO_GEOCODIFICAR,
+    onError: (c) => c.json({ erro: 'Pedido demasiado grande.' }, 413),
+  });
+
+  /** Lê o corpo JSON; null (e já com a resposta 400) se não for JSON válido. */
+  async function lerCorpo(c: Context<AmbienteApp>): Promise<{ corpo: unknown } | null> {
+    try {
+      return { corpo: await c.req.json() };
+    } catch {
+      return null;
+    }
+  }
+
+  /** A resposta quando o serviço de moradas falha. Os registos nunca levam a morada pedida. */
+  function falhaDasMoradas(c: Context<AmbienteApp>, erro: unknown) {
+    if (erro instanceof ErroGeocodificacao && erro.tipo === 'desligado') {
+      return c.json({ erro: MORADAS_DESLIGADAS }, 503);
+    }
+    // Só o tipo do erro: a mensagem de um erro inesperado pode trazer o endereço pedido (com a morada).
+    const tipo =
+      erro instanceof ErroGeocodificacao ? erro.tipo : erro instanceof Error ? erro.name : 'desconhecido';
+    console.error(`Moradas: o serviço falhou (${tipo}).`);
+    return c.json({ erro: MORADAS_SEM_RESPOSTA }, 502);
+  }
+
+  app.post('/api/geocodificar', exigirJson, corpoDasMoradas, limitarMoradas, async (c) => {
+    const lido = await lerCorpo(c);
+    if (!lido) return c.json({ erro: 'O corpo do pedido não é JSON válido.' }, 400);
+    const pedido = lerPedidoGeocodificar(lido.corpo);
+    if (!pedido.ok) return c.json({ erro: 'Pedido inválido.', erros: pedido.erros }, 400);
+    if (!geocodificador) return c.json({ erro: MORADAS_DESLIGADAS }, 503);
+    try {
+      const resultados = await geocodificador.procurar(pedido.valor.morada, pedido.valor.pais);
+      const resposta: RespostaGeocodificar = { resultados };
+      return c.json(resposta);
+    } catch (erro) {
+      return falhaDasMoradas(c, erro);
+    }
+  });
+
+  app.post('/api/geocodificar/inverso', exigirJson, corpoDasMoradas, limitarMoradas, async (c) => {
+    const lido = await lerCorpo(c);
+    if (!lido) return c.json({ erro: 'O corpo do pedido não é JSON válido.' }, 400);
+    const pedido = lerPedidoGeocodificarInverso(lido.corpo);
+    if (!pedido.ok) return c.json({ erro: 'Pedido inválido.', erros: pedido.erros }, 400);
+    if (!geocodificador) return c.json({ erro: MORADAS_DESLIGADAS }, 503);
+    try {
+      const resultado = await geocodificador.inverso(pedido.valor.lat, pedido.valor.lng);
+      const resposta: RespostaGeocodificarInverso = { resultado };
+      return c.json(resposta);
+    } catch (erro) {
+      return falhaDasMoradas(c, erro);
+    }
+  });
 
   app.get('/api/historico', (c) => {
     const limite = lerLimiteHistorico(c.req.query('limite'));

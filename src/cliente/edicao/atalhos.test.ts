@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { acaoDoAtalho, type ContextoAtalho } from './atalhos';
+import { acaoDoAtalho, type ContextoAtalho, teclaNoBotaoMenu, teclaNoMenu } from './atalhos';
 
 const base: ContextoAtalho = {
   key: 'z',
@@ -46,5 +46,29 @@ describe('acaoDoAtalho', () => {
 
   it('Z sem Ctrl/⌘ não faz nada', () => {
     expect(tecla({})).toBeNull();
+  });
+});
+
+describe('teclaNoMenu (M2: menu "Novo…")', () => {
+  it('setas dão a volta; Home e End', () => {
+    expect(teclaNoMenu('ArrowDown', 0, 2)).toEqual({ tipo: 'focar', indice: 1 });
+    expect(teclaNoMenu('ArrowDown', 1, 2)).toEqual({ tipo: 'focar', indice: 0 });
+    expect(teclaNoMenu('ArrowUp', 0, 2)).toEqual({ tipo: 'focar', indice: 1 });
+    expect(teclaNoMenu('Home', 1, 3)).toEqual({ tipo: 'focar', indice: 0 });
+    expect(teclaNoMenu('End', 0, 3)).toEqual({ tipo: 'focar', indice: 2 });
+  });
+
+  it('Esc fecha e devolve o foco; Tab fecha e deixa o foco seguir; o resto não é do menu', () => {
+    expect(teclaNoMenu('Escape', 0, 2)).toEqual({ tipo: 'fechar', devolverFoco: true });
+    expect(teclaNoMenu('Tab', 1, 2)).toEqual({ tipo: 'fechar', devolverFoco: false });
+    expect(teclaNoMenu('Enter', 0, 2)).toBeNull();
+    expect(teclaNoMenu('a', 0, 2)).toBeNull();
+    expect(teclaNoMenu('ArrowDown', 0, 0)).toBeNull();
+  });
+
+  it('no botão fechado, ↓ abre no 1.º item e ↑ no último', () => {
+    expect(teclaNoBotaoMenu('ArrowDown', 2)).toBe(0);
+    expect(teclaNoBotaoMenu('ArrowUp', 2)).toBe(1);
+    expect(teclaNoBotaoMenu('Enter', 2)).toBeNull();
   });
 });

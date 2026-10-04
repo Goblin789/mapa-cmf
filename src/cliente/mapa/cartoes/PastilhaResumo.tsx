@@ -1,8 +1,12 @@
 // Resumo (zoom afastado ou ecrã pequeno): uma pastilha por local (ou locais juntos), com o nome e, numa
 // linha, ícone + "ocupados/lugares" das casas, das carrinhas e das obras. Carregar abre o local com os
 // nomes. A lotação agregada fica a vermelho se alguma casa/carrinha tiver gente a mais.
+// M2: as carrinhas não contam quem está indisponível hoje (ocupacaoDaCarrinha); os problemas abertos das
+// casas e carrinhas do local entram no tooltip (a pastilha é pequena demais para mais um ícone).
 
-import { type NivelLotacao, nivelLotacao, ocupacaoCarrinha, ocupacaoCasa } from '../../../dominio/ocupacao';
+import { type NivelLotacao, nivelLotacao, ocupacaoCasa, ocupacaoDaCarrinha } from '../../../dominio/ocupacao';
+import { chaveAlvoProblema } from '../../../dominio/problemas';
+import { textoProblemasAbertos } from '../../comum/IconeProblemas';
 import { useLoja } from '../../estado/loja';
 import type { GrupoDisposto } from '../layout/disposicao';
 import type { GeometriaResumo } from '../layout/medidas';
@@ -52,10 +56,14 @@ export function PastilhaResumo({ disposto, esquerda, topo, destaque }: Props) {
   const carrinhas = somar(
     carrinhasIds.flatMap((id) => {
       const c = indices.carrinhas.get(id);
-      return c ? [ocupacaoCarrinha(c, indices.passageiros.get(id)?.length ?? 0)] : [];
+      return c ? [ocupacaoDaCarrinha(indices, c)] : [];
     }),
   );
   const pessoasObras = obrasIds.reduce((t, id) => t + (indices.trabalhadores.get(id)?.length ?? 0), 0);
+  const nProblemas = [
+    ...casasIds.map((id) => chaveAlvoProblema({ tipo: 'casa', id })),
+    ...carrinhasIds.map((id) => chaveAlvoProblema({ tipo: 'carrinha', id })),
+  ].reduce((t, chave) => t + (indices.problemasAbertos.get(chave)?.length ?? 0), 0);
 
   const descricao = [
     nome,
@@ -69,6 +77,7 @@ export function PastilhaResumo({ disposto, esquerda, topo, destaque }: Props) {
     obrasIds.length > 0
       ? `${contar(obrasIds.length, 'obra', 'obras')}: ${contar(pessoasObras, 'pessoa', 'pessoas')}`
       : null,
+    nProblemas > 0 ? textoProblemasAbertos(nProblemas) : null,
   ]
     .filter(Boolean)
     .join(' · ');

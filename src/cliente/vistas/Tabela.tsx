@@ -23,6 +23,13 @@
 // alteradas a âmbar com "antes: …". Várias de uma vez: selecionar e "Mover para…" da barra âmbar. Ao lado
 // das listas Casa e Carrinha, um botão abre a ficha da casa/carrinha; na barra, "Confirmar todas as
 // sugestões (N)" (onde dormem as carrinhas), como no Quadro por carrinhas e na lista lateral.
+//
+// M2 (docs/m2.md, "Indisponível"): coluna "Indisponível" ("até 12/10", "sem regresso"; ordenável; só as
+// datas, nunca o motivo) e o filtro "Indisponível" (Indisponíveis hoje, Disponíveis hoje, Com períodos
+// futuros); no modo de edição a célula tem um botão pequeno "Marcar…" (abre o diálogo) ou "Já voltou" (o
+// período acaba ontem). A caixa "Mostrar quem saiu" junta as pessoas com ativa = false, esbatidas e com a
+// etiqueta "saiu" (o ⓘ abre a ficha, onde está "Voltou à empresa"); essas linhas não se selecionam nem se
+// mudam nas células (mover quem saiu é recusado). Sem a caixa a Tabela é a de sempre.
 
 import {
   type CSSProperties,
@@ -39,6 +46,8 @@ import {
   useState,
 } from 'react';
 import { create } from 'zustand';
+import { formatarDiaMes } from '../../dominio/datas';
+import { operacoesTerminarPeriodo } from '../../dominio/indisponibilidade';
 import type { Cliente, Id } from '../../dominio/tipos';
 import { modoDoClique } from '../arrastar/selecao';
 import { FiltroMultiplo, type OpcaoFiltroMultiplo } from '../comum/FiltroMultiplo';
@@ -52,9 +61,10 @@ import {
   refazerComAviso,
 } from '../edicao/acoes';
 import { BOTAO_MINI } from '../edicao/classes';
+import { aplicarComAviso } from '../edicao/DialogoIndisponivel';
 import { ContornoEdicao } from '../edicao/Edicao';
 import { operacoesConfirmarSugestoes } from '../edicao/ondeDorme';
-import { haDialogoAberto, useUiEdicao } from '../edicao/ui';
+import { abrirIndisponivel, haDialogoAberto, useUiEdicao } from '../edicao/ui';
 import { useLoja } from '../estado/loja';
 import { IconeCarrinhaLado, IconeCarroLado, IconeCasa, IconeDormir, IconeLupa } from '../lista/icones';
 import { FOCO_VISIVEL } from '../paineis/classes';
@@ -63,6 +73,7 @@ import { MarcaAConfirmar, MarcaCliente } from '../paineis/pecas';
 import { ROTULO_FORA_DAS_CASAS } from '../paineis/textos';
 import {
   type AntesDaLinha,
+  acaoIndisponivel,
   acaoTeclaLista,
   alvoDaEscolha,
   antesDasLinhas,
@@ -74,6 +85,7 @@ import {
   opcoesObra,
   rotuloBotaoCondutor,
   rotuloDaCelula,
+  rotulosAcaoIndisponivel,
   teclaMudaLista,
   valorDaCelula,
 } from './celulasTabela';
@@ -83,6 +95,7 @@ import {
   ariaSort,
   COLUNAS_TABELA,
   type ColunaTabela,
+  descricaoIndisponivel,
   deslocamentoParaVer,
   FILTROS_INICIAIS,
   type FiltrosTabela,
@@ -102,6 +115,7 @@ import {
   realceDaLinha,
   reservaDaFicha,
   selecaoComVisiveis,
+  textoAteCurto,
   textoContagem,
   zonaLivreDaTabela,
 } from './linhasTabela';
@@ -125,16 +139,21 @@ const useEstadoTabela = create<{
   filtros: FiltrosTabela;
   /** A linha em que se clicou (fora do modo de edição): realçada, sem abrir a ficha. */
   marcada: Id | null;
+  /** M2: "Mostrar quem saiu" (as pessoas com ativa = false). Não é um filtro: "Limpar filtros" não a tira. */
+  comQuemSaiu: boolean;
   definirOrdem: (ordem: OrdemTabela) => void;
   definirFiltros: (filtros: FiltrosTabela) => void;
   definirMarcada: (marcada: Id | null) => void;
+  definirComQuemSaiu: (comQuemSaiu: boolean) => void;
 }>()((set) => ({
   ordem: ORDEM_INICIAL,
   filtros: FILTROS_INICIAIS,
   marcada: null,
+  comQuemSaiu: false,
   definirOrdem: (ordem) => set({ ordem }),
   definirFiltros: (filtros) => set({ filtros }),
   definirMarcada: (marcada) => set({ marcada }),
+  definirComQuemSaiu: (comQuemSaiu) => set({ comQuemSaiu }),
 }));
 
 const CAMPO =
@@ -409,6 +428,49 @@ function BotaoFicha({
 /** O lugar do BotaoFicha quando não há casa/carrinha: as marcas "●" ficam alinhadas. */
 const SEM_BOTAO_FICHA = <span aria-hidden="true" className="w-7 shrink-0" />;
 
+/**
+ * Célula "Indisponível": "até 12/10" / "sem regresso" (ou, sem período hoje, o 1.º dia do próximo, a cinzento)
+ * e, no modo de edição, o botão pequeno "Marcar…" ou "Já voltou" (um passo do rascunho).
+ */
+function CelulaIndisponivel({ linha, modoEdicao }: { linha: LinhaTabela; modoEdicao: boolean }) {
+  const periodo = linha.indisponivel;
+  const hoje = useLoja((s) => s.hoje);
+  const acao = modoEdicao ? acaoIndisponivel(linha, hoje) : null;
+  const rotulos = acao ? rotulosAcaoIndisponivel(linha.nomeMostrado, acao) : null;
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      {periodo ? (
+        <span title={descricaoIndisponivel(periodo)} className="font-medium text-slate-800">
+          {textoAteCurto(periodo)}
+        </span>
+      ) : linha.proximoInicio !== null ? (
+        <span className="text-xs text-slate-500 italic" title="Próximo período de indisponibilidade">
+          a partir de {formatarDiaMes(linha.proximoInicio)}
+        </span>
+      ) : null}
+      {acao && rotulos && (
+        <button
+          type="button"
+          aria-label={rotulos.nome}
+          title={rotulos.nome}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (acao.tipo === 'marcar') {
+              abrirIndisponivel([linha.pessoa.id]);
+              return;
+            }
+            const { estado, hoje } = useLoja.getState();
+            if (estado) aplicarComAviso(operacoesTerminarPeriodo(estado, acao.periodoId, hoje));
+          }}
+          className={BOTAO_MINI}
+        >
+          {rotulos.texto}
+        </button>
+      )}
+    </span>
+  );
+}
+
 /** "i" num círculo: o botão a seguir ao nome que abre a ficha da pessoa. */
 function IconeFicha({ className = 'size-4' }: { className?: string }) {
   return (
@@ -448,7 +510,10 @@ function linhasIguais(a: LinhaTabela, b: LinhaTabela): boolean {
     a.obra === b.obra &&
     a.casa === b.casa &&
     a.carrinha === b.carrinha &&
-    a.condutor === b.condutor
+    a.condutor === b.condutor &&
+    a.indisponivel === b.indisponivel &&
+    a.proximoInicio === b.proximoInicio &&
+    a.saiu === b.saiu
   );
 }
 
@@ -472,6 +537,8 @@ const LinhaPessoa = memo(function LinhaPessoa({
   const casa = l.casa;
   const carrinha = l.carrinha;
   const conduz = l.condutor;
+  // Quem saiu da empresa (com "Mostrar quem saiu") só se lê: não se seleciona nem se muda nas células.
+  const edita = modoEdicao && !l.saiu;
   const tituloCarrinha = carrinha
     ? `Abrir a ficha ${carrinha.tipo === 'carro' ? 'do carro' : 'da carrinha'} ${formatarMatricula(carrinha.matricula)}`
     : '';
@@ -480,7 +547,7 @@ const LinhaPessoa = memo(function LinhaPessoa({
   // mostra tudo (com a ficha de outra pessoa aberta, ela fica como está). O teclado usa o botão da ficha a
   // seguir ao nome e, no modo de edição, a caixa de seleção. Os controlos das células param o clique.
   const aoClicar = (e: MouseEvent<HTMLTableRowElement>) => {
-    if (modoEdicao) useLoja.getState().selecionar(id, modoDoClique(e), obterOrdem());
+    if (edita) useLoja.getState().selecionar(id, modoDoClique(e), obterOrdem());
     const { marcada, definirMarcada } = useEstadoTabela.getState();
     const { foco } = useLoja.getState();
     definirMarcada(marcadaDepoisDoClique(id, marcada, modoEdicao, foco?.tipo === 'pessoa' ? foco.id : null));
@@ -551,10 +618,13 @@ const LinhaPessoa = memo(function LinhaPessoa({
           style={naPrimeira}
           onClick={(e) => e.stopPropagation()}
         >
-          <label className="flex min-h-8 w-full cursor-pointer items-center justify-center">
+          <label
+            className={`flex min-h-8 w-full items-center justify-center ${edita ? 'cursor-pointer' : 'invisible'}`}
+          >
             <span className="sr-only">Selecionar {l.nomeMostrado}</span>
             <input
               type="checkbox"
+              disabled={!edita}
               checked={selecionada}
               onChange={(e) => {
                 // Numa caixa, o onChange do React vem do clique: o Shift escolhe o intervalo.
@@ -579,6 +649,7 @@ const LinhaPessoa = memo(function LinhaPessoa({
             condutor={l.condutor}
             nome={l.nomeMostrado}
             semSigla
+            saiu={l.saiu}
             className={`${modoEdicao ? 'w-[9rem]' : 'w-[12rem]'} shrink-0 text-[13px] sm:w-[16rem] 2xl:w-[18.5rem]`}
           />
           <button
@@ -607,7 +678,7 @@ const LinhaPessoa = memo(function LinhaPessoa({
         </span>
       </td>
       <td className={`${CELULA} whitespace-nowrap ${fundoDe(antes?.obra)}`} style={meio} title={antes?.obra}>
-        {modoEdicao && (haObras || l.obra) ? (
+        {edita && (haObras || l.obra) ? (
           <span className="flex items-center gap-1">
             <ListaCelula campo="obra" linha={l} />
             <MarcaAntes antes={antes?.obra} />
@@ -619,7 +690,7 @@ const LinhaPessoa = memo(function LinhaPessoa({
         )}
       </td>
       <td className={`${CELULA} whitespace-nowrap ${fundoDe(antes?.casa)}`} style={meio} title={antes?.casa}>
-        {modoEdicao ? (
+        {edita ? (
           <span className="flex items-center gap-1">
             <ListaCelula campo="casa" linha={l} />
             {casa ? (
@@ -652,7 +723,7 @@ const LinhaPessoa = memo(function LinhaPessoa({
         style={meio}
         title={antes?.carrinha}
       >
-        {modoEdicao ? (
+        {edita ? (
           <span className="flex items-center gap-1">
             <ListaCelula campo="carrinha" linha={l} />
             {carrinha ? (
@@ -689,7 +760,7 @@ const LinhaPessoa = memo(function LinhaPessoa({
         style={meio}
         title={antes?.condutor}
       >
-        {modoEdicao && carrinha ? (
+        {edita && carrinha ? (
           <span className="flex items-center gap-1">
             <button
               type="button"
@@ -722,6 +793,9 @@ const LinhaPessoa = memo(function LinhaPessoa({
             <MarcaAntes antes={antes?.condutor} />
           </span>
         )}
+      </td>
+      <td className={`${CELULA} whitespace-nowrap ${fundo}`} style={meio}>
+        <CelulaIndisponivel linha={l} modoEdicao={modoEdicao} />
       </td>
       <td className={`${CELULA} whitespace-nowrap ${fundo}`} style={naUltima}>
         <span className="inline-flex gap-1">
@@ -802,7 +876,8 @@ function CaixaTodas({ ids }: { ids: readonly Id[] }) {
 
 /**
  * Excel da Tabela: como o das outras vistas (pecas/BotaoExcel), mas com filtros a folha Pessoas só tem as
- * linhas que se veem, pela ordem da Tabela (o ficheiro diz "filtrado"). `filtradas` = null sem filtros.
+ * linhas que se veem, pela ordem da Tabela (o ficheiro diz "filtrado"). `filtradas` = null sem filtros nem
+ * "Mostrar quem saiu" (com ela vêm as linhas, também as de quem saiu, mas o nome só diz "filtrado" com filtros).
  */
 function BotaoExcelTabela({ filtradas }: { filtradas: () => readonly LinhaTabela[] | null }) {
   const [aExportar, setAExportar] = useState(false);
@@ -812,7 +887,14 @@ function BotaoExcelTabela({ filtradas }: { filtradas: () => readonly LinhaTabela
     if (!estado || !indices || !dormidas || aExportar) return;
     setAExportar(true);
     try {
-      await exportarExcel(estado, indices, dormidas, modoEdicao && pendentes.length > 0, filtradas());
+      await exportarExcel(
+        estado,
+        indices,
+        dormidas,
+        modoEdicao && pendentes.length > 0,
+        filtradas(),
+        filtrosTabelaAtivos(useEstadoTabela.getState().filtros),
+      );
     } catch (e) {
       const motivo = e instanceof Error ? e.message : String(e);
       useUiEdicao.getState().avisar(`Não foi possível exportar para Excel (${motivo}).`);
@@ -862,6 +944,7 @@ export function Tabela() {
   const filtros = useEstadoTabela((s) => s.filtros);
   const definirFiltros = useEstadoTabela((s) => s.definirFiltros);
   const marcada = useEstadoTabela((s) => s.marcada);
+  const comQuemSaiu = useEstadoTabela((s) => s.comQuemSaiu);
   const raiz = useRef<HTMLElement>(null);
   const idFiltro = useId();
   // A caixa onde a ficha está posta e se ela foi arrastada para fora do sítio de origem.
@@ -872,18 +955,24 @@ export function Tabela() {
   // cabeçalho fixo).
   const reservaBaixo = foco?.tipo === 'pessoa' ? 'h-40' : 'h-[60vh]';
 
-  const linhas = useMemo(() => (estado && indices ? linhasDaTabela(estado, indices) : []), [estado, indices]);
+  const linhas = useMemo(
+    () => (estado && indices ? linhasDaTabela(estado, indices, { comQuemSaiu }) : []),
+    [estado, indices, comQuemSaiu],
+  );
   const visiveis = useMemo(
     () => ordenarLinhas(filtrarLinhas(linhas, filtros), ordem),
     [linhas, filtros, ordem],
   );
   const idsVisiveis = useMemo(() => visiveis.map((l) => l.pessoa.id), [visiveis]);
-  const ordemVisivel = useRef(idsVisiveis);
-  ordemVisivel.current = idsVisiveis;
+  // Só se selecionam as linhas de quem está na empresa (quem saiu só aparece com "Mostrar quem saiu").
+  const idsSelecionaveis = useMemo(() => visiveis.filter((l) => !l.saiu).map((l) => l.pessoa.id), [visiveis]);
+  const ordemVisivel = useRef(idsSelecionaveis);
+  ordemVisivel.current = idsSelecionaveis;
   const obterOrdem = useCallback(() => ordemVisivel.current, []);
-  // O Excel exporta o que se vê: com filtros, só as linhas filtradas (pela ordem da Tabela).
+  // O Excel exporta o que se vê: com filtros, só as linhas filtradas (pela ordem da Tabela); com "Mostrar
+  // quem saiu", também essas linhas (com "(saiu)" no nome), mesmo sem filtros.
   const filtradas = useRef<readonly LinhaTabela[] | null>(null);
-  filtradas.current = filtrosTabelaAtivos(filtros) ? visiveis : null;
+  filtradas.current = filtrosTabelaAtivos(filtros) || comQuemSaiu ? visiveis : null;
   const obterFiltradas = useCallback(() => filtradas.current, []);
 
   // As opções dos filtros (com o nº de pessoas de cada uma) e as marcas dos clientes.
@@ -955,6 +1044,7 @@ export function Tabela() {
     if (elemento.tipo === 'pessoa')
       return linhas.find((l) => l.pessoa.id === elemento.id)?.nomeMostrado ?? '';
     if (elemento.tipo === 'casa') return indices?.casas.get(elemento.id)?.nome ?? '';
+    if (elemento.tipo === 'obra') return estado?.obras.find((o) => o.id === elemento.id)?.nome ?? '';
     const carrinha = indices?.carrinhas.get(elemento.id);
     return carrinha ? formatarMatricula(carrinha.matricula) : '';
   }
@@ -1023,6 +1113,15 @@ export function Tabela() {
             larguraPainel={320}
             {...FILTRO}
           />
+          <FiltroMultiplo
+            rotulo="Indisponível"
+            genero="m"
+            opcoes={opcoesFiltros.indisponivel}
+            escolhidos={filtros.indisponivel}
+            aoMudar={(indisponivel) => mudar({ indisponivel })}
+            legenda="Filtrar por indisponível"
+            {...FILTRO}
+          />
         </div>
         <label className="order-4 flex shrink-0 cursor-pointer items-center gap-1.5 text-sm text-slate-700 sm:order-3">
           <input
@@ -1032,6 +1131,15 @@ export function Tabela() {
             className="size-4 accent-slate-800"
           />
           Só a confirmar
+        </label>
+        <label className="order-4 flex shrink-0 cursor-pointer items-center gap-1.5 text-sm text-slate-700 sm:order-3">
+          <input
+            type="checkbox"
+            checked={comQuemSaiu}
+            onChange={(e) => useEstadoTabela.getState().definirComQuemSaiu(e.target.checked)}
+            className="size-4 accent-slate-800"
+          />
+          Mostrar quem saiu
         </label>
         {comFiltros && (
           <button
@@ -1085,7 +1193,7 @@ export function Tabela() {
           className={`relative min-h-0 flex-1 overflow-auto overscroll-contain ${reserva.baixo ? (foco?.tipo === 'pessoa' ? 'max-sm:scroll-pb-40' : 'max-sm:scroll-pb-[60vh]') : ''} ${reserva.direita ? 'sm:scroll-pr-[23.5rem] sm:pr-[23.5rem]' : ''}`}
         >
           <table
-            className={`w-full border-separate border-spacing-0 text-sm ${modoEdicao ? 'min-w-[76rem]' : 'min-w-[60rem]'}`}
+            className={`w-full border-separate border-spacing-0 text-sm ${modoEdicao ? 'min-w-[84rem]' : 'min-w-[66rem]'}`}
           >
             <caption className="sr-only">
               Pessoas ({contagem}). O botão a seguir a cada nome abre a ficha da pessoa
@@ -1093,7 +1201,7 @@ export function Tabela() {
             </caption>
             <thead>
               <tr>
-                {modoEdicao && <CaixaTodas ids={idsVisiveis} />}
+                {modoEdicao && <CaixaTodas ids={idsSelecionaveis} />}
                 {COLUNAS_TABELA.map((c) => (
                   <Cabecalho
                     key={c.id}

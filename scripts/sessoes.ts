@@ -12,6 +12,7 @@
 import { existsSync } from 'node:fs';
 import { resumoSessoes, terminarSessoes } from '../src/servidor/auth/sessoes';
 import { config } from '../src/servidor/config';
+import { recusaPorMigracoesPendentes } from '../src/servidor/copias/migracoes';
 import { abrirBd } from '../src/servidor/db/ligacao';
 
 const USO = 'Uso: npm run sessoes -- listar | terminar <email>|todas [--bd caminho]';
@@ -49,9 +50,14 @@ if ('erro' in lidos) {
   process.exitCode = 1;
 } else {
   const caminho = lidos.bd ?? config.bd;
+  const faltamMigracoes = recusaPorMigracoesPendentes(caminho);
   // Nunca se cria uma BD vazia por engano (abrirBd cria o ficheiro se não existir).
   if (!existsSync(caminho)) {
     console.error(`A base de dados não existe: ${caminho}. Nada foi feito.`);
+    process.exitCode = 1;
+  } else if (faltamMigracoes) {
+    // O abrirBd migrava sem a cópia de antes de migrar (só o arranque do servidor a faz).
+    console.error(faltamMigracoes);
     process.exitCode = 1;
   } else {
     const bd = abrirBd(caminho);

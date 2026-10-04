@@ -2,6 +2,74 @@
 
 Registo das decisões do Rafael e das escolhas por omissão. Mais recentes primeiro.
 
+## 05/10/2026 — M2 construído (por juntar e publicar)
+
+Construído na worktree `C:/dev/mapa-cmf-m2` (branch m2), com o mapa do Rafael aberto na pasta principal.
+Desenho em `docs/m2.md`; vistas em `docs/vistas-edicao.md`. Ensaio integrado numa cópia da BD real (137 pessoas):
+a 0004 aplicou-se com a cópia simples antes e sem perder nada (pessoas, lotes, alterações, condutores e onde
+dormem iguais); o `sincronizar` não desfez a lotação mudada no programa; Mapa, Tabela, Quadro e reunião a 1920,
+1366 e 375 px. **Juntar só com o mapa fechado** e com uma cópia nova à mão de `dados/mapa.db` (ao reabrir, o
+servidor aplica a 0004 e faz a cópia automática em `dados/copias/`).
+
+**Escolhas feitas (decididas com bom senso; o Rafael pode mudar)**
+- *Fichas*: cada campo muda-se no sítio (lápis → Enter = um passo; Esc cancela). Os textos opcionais vazios
+  ficam vazios (null). As matrículas editadas guardam-se como nos dados iniciais ("cf 5001" → "CF5001"; no
+  ecrã "CF 5001"); as outras matrículas não podem ser de outro veículo nem repetir a principal (recusado também
+  no servidor). Carta "Não tem"/"Não sei" limpa a validade. "Mudar para outra morada…" só junta a casa a uma
+  morada de casas que já existe, com o aviso "Passa a partilhar a morada com X"; mudar a morada de uma casa
+  partilhada avisa "Também muda para: …" e, no Histórico, a frase diz-se pelo local ("Himeling, Rue de la
+  Forêt (4 casas) — morada: …").
+- *Pessoa nova*: nome **e** apelidos obrigatórios; o nome no mapa é proposto ("Nome A.") e não se repete.
+- *Saiu da empresa*: tira da casa, da carrinha (e de conduzir) e da obra num só passo; a pessoa fica na Tabela
+  com "Mostrar quem saiu" (só de leitura) e volta com "Voltou à empresa…". Tirar alguém que já saiu de uma
+  casa, carrinha ou obra é válido; pô-lo numa é recusado.
+- *Indisponível*: só as datas. Os nomes mostram "até 12/10" em todo o lado menos nos cartões do Mapa (só o
+  símbolo). O lugar na carrinha fica livre ("8/9"; "1 livre até 10/10" na ficha da carrinha, no Mover para… e
+  ao arrastar), mas o nome continua na sua caixa (as caixas da lista e do Quadro são as do cartão do Mapa); a
+  pesquisa também diz 8/9. Um período que já acabou pede confirmação; no modo de edição os períodos passados
+  ainda por guardar aparecem na ficha para se corrigirem. Ao guardar avisa quando a carrinha fica com gente a
+  mais quando a pessoa voltar ("CF 5001 fica com 10/9 quando X voltar, a 13/10").
+- *Problemas*: "Resolver" e "Reabrir" também funcionam fora do modo de edição (entram nele). Abrir e resolver
+  um problema no mesmo rascunho grava-se. O texto avisa (sem bloquear) quando parece ter um nome, um telefone
+  ou saúde.
+- *Obras*: criar pelo "Novo…" da barra, pela lista Obras ou com clique direito / toque longo no mapa ("Nova
+  obra aqui", que pede logo a morada e o país do ponto). O nome da obra não se repete; o local criado tem o
+  nome da obra e acompanha-o. Tirar o estacionamento apaga a morada dele se foi criada no programa e mais nada
+  a usa. Editar obra só manda o que se mudou (não desfaz o que outra pessoa gravou entretanto). Na ficha da
+  obra: "quem vem para esta obra e de onde" e "Trazer as N selecionadas para aqui". Quadro por obras: cada nome
+  com a casa de onde vem, também no "Sem obra".
+- *Moradas*: no Luxemburgo o geoportail.lu, em França o IGN, na Bélgica e na Alemanha o Nominatim (1 pedido/s;
+  aí quase sempre se pede para confirmar o pino, salvo com nº de porta). Para ensaios, `MORADAS=desligadas`.
+- *Histórico e Reverter*: "Reverter…" em cada gravação feita no programa; o que já não se pode reverter
+  aparece com o porquê (ex.: "uma pessoa nova não se apaga: usa Saiu da empresa"; "entretanto mudou"); vai
+  para o rascunho como um passo. As gravações aparecem como "Reverte a gravação de 05/10 01:01 (autor)" e
+  "Revertida". As marcas "a confirmar" dizem "casa confirmada" / "carrinha a confirmar".
+- *Guardar*: grupos novos (Fichas, Pessoas novas e saídas, Indisponível, Problemas, Obras); o pino (lat e
+  lng) conta como uma alteração; com períodos ou problemas, o comentário tem a frase fixa "Não escrevas o
+  motivo da indisponibilidade nem dados de saúde." e avisa enquanto se escreve.
+- *Barra de edição*: menu "Novo…" (Nova pessoa, Nova obra) e "Indisponível…" com seleção; abaixo de 1900 px
+  Desfazer/Refazer só com o ícone e "Limpar" em vez de "Limpar seleção" (uma linha de 1280 a 2560 px).
+- *Reunião*: botão "Histórico" (sem "Reverter…"); "Ecrã inteiro" e "Histórico" só com o ícone, para os
+  filtros caberem numa linha a 1920 px.
+- *Telemóvel*: com um campo aberto a ficha ocupa o ecrã todo; o aviso curto vai para cima quando há ficha.
+- *Sincronizar*: um campo mudado no programa nunca é desfeito (secção "Ficou o valor do programa";
+  `--usar-json` para aplicar o do JSON de propósito); um registo apagado no programa não volta; recusa se uma
+  casa ou veículo que sai tiver problemas por resolver. `sincronizar`, `importar` e `sessoes` nunca migram a
+  BD: só o arranque do servidor, com a cópia antes.
+
+*Por confirmar com o Rafael*:
+- se os **apelidos** devem ser opcionais na pessoa nova (hoje são obrigatórios);
+- se uma casa pode ter uma **morada só sua criada no programa** (ex.: uma casa da Himeling que mude de rua;
+  hoje o lápis da morada muda as 4 casas do mesmo local);
+- se lhe serve **confirmar o pino** quase sempre na Bélgica e na Alemanha;
+- se o **aviso do regresso** ao Guardar é útil ou é ruído;
+- se os botões só com ícone (barra de edição abaixo de 1900 px; "Ecrã inteiro" e "Histórico" na reunião) se
+  percebem;
+- um ensaio pontual com os **serviços de moradas verdadeiros** (só foram ensaiados com respostas fictícias,
+  menos 2 pedidos feitos no ensaio das obras);
+- continua por decidir a partir de quando o Excel do Michael deixa de ser mantido (agora já se criam pessoas
+  no programa).
+
 ## 04/10/2026 — pedidos do Rafael (cabeçalho, Tabela, filtros, Quadro, ficha arrastável)
 
 Pedidos ditados pelo Rafael (saiu e não pôde responder; decidido com bom senso). Desenho em

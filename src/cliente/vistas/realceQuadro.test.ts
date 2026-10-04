@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { dormidasDasCarrinhas } from '../../dominio/dormidas';
 import { indexar } from '../../dominio/indices';
 import type { Operacao } from '../../dominio/operacoes';
+import { criarObra, criarProblema } from '../../dominio/teste-fabrica';
 import type { Estado } from '../../dominio/tipos';
 import { estadoVistas } from './estadoTeste';
 import {
@@ -9,6 +10,7 @@ import {
   blocoTemAlteracoes,
   chavesNoQuadro,
   filtroEscondeTudo,
+  obraTemAlteracoes,
   pessoasDoFocoSemBloco,
   selecaoSemEscondidos,
 } from './realceQuadro';
@@ -151,29 +153,152 @@ describe('blocoTemAlteracoes', () => {
 
   it('casa e carrinha: alguém entra ou sai', () => {
     const ops = [mover('p-2', 'casaId', 'casa-l1', 'casa-o1')];
-    expect(blocoTemAlteracoes(ops, { tipo: 'casa', id: 'casa-l1' })).toBe(true);
-    expect(blocoTemAlteracoes(ops, { tipo: 'casa', id: 'casa-o1' })).toBe(true);
-    expect(blocoTemAlteracoes(ops, { tipo: 'casa', id: 'casa-a' })).toBe(false);
+    expect(blocoTemAlteracoes(ops, { tipo: 'casa', id: 'casa-l1' }, null)).toBe(true);
+    expect(blocoTemAlteracoes(ops, { tipo: 'casa', id: 'casa-o1' }, null)).toBe(true);
+    expect(blocoTemAlteracoes(ops, { tipo: 'casa', id: 'casa-a' }, null)).toBe(false);
     // Mudar de casa não mexe nas carrinhas.
-    expect(blocoTemAlteracoes(ops, { tipo: 'carrinha', id: 'XX1001' })).toBe(false);
+    expect(blocoTemAlteracoes(ops, { tipo: 'carrinha', id: 'XX1001' }, null)).toBe(false);
   });
 
   it('carrinha: também o condutor e onde dorme', () => {
     const condutor: Operacao = { tipo: 'condutor', carrinhaId: 'XX1001', de: 'p-1', para: 'p-2' };
     const dormida: Operacao = { tipo: 'dormida', carrinhaId: 'XX1002', de: null, para: 'casa:casa-a' };
-    expect(blocoTemAlteracoes([condutor], { tipo: 'carrinha', id: 'XX1001' })).toBe(true);
-    expect(blocoTemAlteracoes([dormida], { tipo: 'carrinha', id: 'XX1002' })).toBe(true);
-    expect(blocoTemAlteracoes([condutor, dormida], { tipo: 'carrinha', id: 'XX1003' })).toBe(false);
+    expect(blocoTemAlteracoes([condutor], { tipo: 'carrinha', id: 'XX1001' }, null)).toBe(true);
+    expect(blocoTemAlteracoes([dormida], { tipo: 'carrinha', id: 'XX1002' }, null)).toBe(true);
+    expect(blocoTemAlteracoes([condutor, dormida], { tipo: 'carrinha', id: 'XX1003' }, null)).toBe(false);
   });
 
   it('"Fora das casas CMF" e "Sem transporte": alguém entra ou sai do grupo', () => {
     const sai = [mover('p-2', 'casaId', 'casa-l1', null)];
-    expect(blocoTemAlteracoes(sai, { tipo: 'fora', id: null })).toBe(true);
-    expect(blocoTemAlteracoes(sai, { tipo: 'sem-transporte', id: null })).toBe(false);
+    expect(blocoTemAlteracoes(sai, { tipo: 'fora', id: null }, null)).toBe(true);
+    expect(blocoTemAlteracoes(sai, { tipo: 'sem-transporte', id: null }, null)).toBe(false);
     const entra = [mover('p-7', 'carrinhaId', null, 'XX1004')];
-    expect(blocoTemAlteracoes(entra, { tipo: 'sem-transporte', id: null })).toBe(true);
-    expect(blocoTemAlteracoes(entra, { tipo: 'fora', id: null })).toBe(false);
-    expect(blocoTemAlteracoes([], { tipo: 'fora', id: null })).toBe(false);
+    expect(blocoTemAlteracoes(entra, { tipo: 'sem-transporte', id: null }, null)).toBe(true);
+    expect(blocoTemAlteracoes(entra, { tipo: 'fora', id: null }, null)).toBe(false);
+    expect(blocoTemAlteracoes([], { tipo: 'fora', id: null }, null)).toBe(false);
+  });
+});
+
+describe('obras no Quadro (M2)', () => {
+  // Obra fictícia com o Zé A. (Casa L1, XX1001) e o Rui C. (Casa O1, XX1005); outra sem ninguém.
+  const comObras: Estado = {
+    ...estadoVistas(),
+    obras: [
+      criarObra({ id: 'obra-a', nome: 'Obra Fictícia A', clienteId: 'alfa', localId: 'aldeia' }),
+      criarObra({ id: 'obra-v', nome: 'Obra Vazia', clienteId: 'beta', localId: 'monte' }),
+    ],
+    pessoas: estadoVistas().pessoas.map((p) =>
+      p.id === 'p-1' || p.id === 'p-3' ? { ...p, obraId: 'obra-a' } : p,
+    ),
+  };
+  const indO = indexar(comObras);
+  const dormO = dormidasDasCarrinhas(comObras, indO);
+
+  it('a obra é o seu bloco no Quadro por obras (mesmo vazia) e as pessoas dela nos outros', () => {
+    expect(chavesNoQuadro({ tipo: 'obra', id: 'obra-a' }, 'obras', indO, dormO)).toEqual(['obra:obra-a']);
+    expect(chavesNoQuadro({ tipo: 'obra', id: 'obra-v' }, 'obras', indO, dormO)).toEqual(['obra:obra-v']);
+    expect(chavesNoQuadro({ tipo: 'obra', id: 'obra-a' }, 'casas', indO, dormO).sort()).toEqual([
+      'pessoa:p-1',
+      'pessoa:p-3',
+    ]);
+    expect(chavesNoQuadro({ tipo: 'obra', id: 'obra-v' }, 'carrinhas', indO, dormO)).toEqual([]);
+    expect(chavesNoQuadro({ tipo: 'obra', id: 'nao-existe' }, 'obras', indO, dormO)).toEqual([]);
+  });
+
+  it('no Quadro por obras, uma casa ou carrinha acende os moradores ou os passageiros (sem ligações)', () => {
+    expect(chavesNoQuadro({ tipo: 'casa', id: 'casa-l1' }, 'obras', indO, dormO).sort()).toEqual([
+      'pessoa:p-1',
+      'pessoa:p-2',
+    ]);
+    expect(chavesNoQuadro({ tipo: 'carrinha', id: 'XX1002' }, 'obras', indO, dormO).sort()).toEqual([
+      'pessoa:p-4',
+      'pessoa:p-5',
+    ]);
+    // Sem ninguém: nada (as carrinhas e as casas não têm bloco aqui).
+    expect(chavesNoQuadro({ tipo: 'casa', id: 'casa-l2' }, 'obras', indO, dormO)).toEqual([]);
+    expect(chavesNoQuadro({ tipo: 'carrinha', id: 'XX1004' }, 'obras', indO, dormO)).toEqual([]);
+  });
+
+  it('avisoSemNadaNoQuadro: obra sem ninguém fora do Quadro por obras; casa e carrinha vazias nas obras', () => {
+    expect(avisoSemNadaNoQuadro({ tipo: 'obra', id: 'obra-v' }, 'casas', indO, dormO)).toBe(
+      'Obra Vazia: ninguém trabalha nesta obra.',
+    );
+    expect(avisoSemNadaNoQuadro({ tipo: 'obra', id: 'obra-v' }, 'obras', indO, dormO)).toBeNull();
+    expect(avisoSemNadaNoQuadro({ tipo: 'obra', id: 'obra-a' }, 'carrinhas', indO, dormO)).toBeNull();
+    expect(avisoSemNadaNoQuadro({ tipo: 'casa', id: 'casa-l2' }, 'obras', indO, dormO)).toBe(
+      'Casa L2: ninguém mora lá.',
+    );
+    expect(avisoSemNadaNoQuadro({ tipo: 'carrinha', id: 'XX1004' }, 'obras', indO, dormO)).toBe(
+      'Carrinha XX 1004: ninguém vai nela.',
+    );
+  });
+
+  it('pessoasDoFocoSemBloco: a obra em foco realça as pessoas dela fora do Quadro por obras', () => {
+    expect([...pessoasDoFocoSemBloco({ tipo: 'obra', id: 'obra-a' }, 'casas', indO)].sort()).toEqual([
+      'p-1',
+      'p-3',
+    ]);
+    expect(pessoasDoFocoSemBloco({ tipo: 'obra', id: 'obra-a' }, 'obras', indO).size).toBe(0);
+    // No Quadro por obras, a casa e a carrinha não têm bloco: realçam-se os moradores e os passageiros.
+    expect([...pessoasDoFocoSemBloco({ tipo: 'casa', id: 'casa-l1' }, 'obras', indO)].sort()).toEqual([
+      'p-1',
+      'p-2',
+    ]);
+    expect([...pessoasDoFocoSemBloco({ tipo: 'carrinha', id: 'XX1005' }, 'obras', indO)]).toEqual(['p-3']);
+  });
+
+  it('blocoTemAlteracoes: a obra (entra ou sai alguém, a ficha, a morada) e "Sem obra"', () => {
+    const entra: Operacao[] = [{ tipo: 'mover', pessoaId: 'p-2', campo: 'obraId', de: null, para: 'obra-a' }];
+    expect(blocoTemAlteracoes(entra, { tipo: 'obra', id: 'obra-a' }, comObras)).toBe(true);
+    expect(blocoTemAlteracoes(entra, { tipo: 'obra', id: 'obra-v' }, comObras)).toBe(false);
+    expect(blocoTemAlteracoes(entra, { tipo: 'sem-obra', id: null }, comObras)).toBe(true);
+    expect(blocoTemAlteracoes(entra, { tipo: 'fora', id: null }, comObras)).toBe(false);
+    const nome: Operacao[] = [
+      { tipo: 'campo', entidade: 'obra', id: 'obra-v', campo: 'nome', de: 'Obra Vazia', para: 'Obra Nova' },
+    ];
+    expect(blocoTemAlteracoes(nome, { tipo: 'obra', id: 'obra-v' }, comObras)).toBe(true);
+    // O pino da obra muda no local dela: precisa do estado visível para saber de quem é o local.
+    const pino: Operacao[] = [
+      { tipo: 'campo', entidade: 'local', id: 'monte', campo: 'lat', de: 49.8, para: 49.81 },
+    ];
+    expect(blocoTemAlteracoes(pino, { tipo: 'obra', id: 'obra-v' }, comObras)).toBe(true);
+    expect(blocoTemAlteracoes(pino, { tipo: 'obra', id: 'obra-v' }, null)).toBe(false);
+  });
+
+  it('obraTemAlteracoes: a morada ou o pino do estacionamento (outro local) também marca a obra', () => {
+    const comEst: Estado = {
+      ...comObras,
+      obras: comObras.obras.map((o) => (o.id === 'obra-v' ? { ...o, estacionamentoLocalId: 'parque' } : o)),
+    };
+    const pinoEst: Operacao[] = [
+      { tipo: 'campo', entidade: 'local', id: 'parque', campo: 'lng', de: 6.1, para: 6.11 },
+    ];
+    expect(obraTemAlteracoes(pinoEst, 'obra-v', comEst)).toBe(true);
+    expect(blocoTemAlteracoes(pinoEst, { tipo: 'obra', id: 'obra-v' }, comEst)).toBe(true);
+    expect(obraTemAlteracoes(pinoEst, 'obra-a', comEst)).toBe(false);
+    expect(obraTemAlteracoes(pinoEst, 'obra-v', comObras)).toBe(false);
+    expect(obraTemAlteracoes(pinoEst, 'obra-v', null)).toBe(false);
+  });
+
+  it('blocoTemAlteracoes: um problema mudado na casa conta com o estado visível', () => {
+    const comProblema: Estado = {
+      ...estadoVistas(),
+      problemas: [
+        criarProblema({ id: 'problema-ficticio-1', casaId: 'casa-l1', texto: 'torneira a pingar' }),
+      ],
+    };
+    const resolver: Operacao[] = [
+      {
+        tipo: 'campo',
+        entidade: 'problema',
+        id: 'problema-ficticio-1',
+        campo: 'resolvidoEm',
+        de: null,
+        para: '2026-10-04',
+      },
+    ];
+    expect(blocoTemAlteracoes(resolver, { tipo: 'casa', id: 'casa-l1' }, comProblema)).toBe(true);
+    expect(blocoTemAlteracoes(resolver, { tipo: 'casa', id: 'casa-o1' }, comProblema)).toBe(false);
   });
 });
 

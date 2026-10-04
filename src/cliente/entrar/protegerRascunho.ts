@@ -11,7 +11,7 @@
 // Se depois entrar OUTRA conta e se escolher continuar com ela, o rascunho sai desta página mas o registo
 // fica no browser, largado (sem separador), para quando o dono voltar a entrar.
 
-import { type Loja, SEPARADOR, useLoja } from '../estado/loja';
+import { type Loja, reversoesDoRascunho, SEPARADOR, useLoja } from '../estado/loja';
 import {
   type Armazenamento,
   armazenamentoLocal,
@@ -20,6 +20,7 @@ import {
   largar,
   marcarVivo,
   type RascunhoPendente,
+  type ReversaoPendente,
 } from '../tempoReal/rascunhoPendente';
 
 /**
@@ -36,16 +37,26 @@ export interface DependenciasRascunho {
   armazenamento?: Armazenamento | null;
   agora?: number;
   separador?: string;
+  /** As reversões do rascunho (por omissão, as da loja: `reversoesDoRascunho()`). */
+  reversoes?: readonly ReversaoPendente[];
 }
 
-/** O registo a guardar para o rascunho da loja; null se não há alterações por guardar. */
+/**
+ * O registo a guardar para o rascunho da loja; null se não há alterações por guardar. Leva as reversões
+ * dos passos que ainda estão no rascunho (M2), para o rascunho recuperado voltar com o `reverte` e o lote
+ * aparecer depois como "Revertida". O mesmo registo que a loja escreve depois de um Guardar com 401.
+ */
 export function registoDoRascunho(
   loja: Omit<LojaRascunho, 'cancelarEdicao'>,
   autor: string | null,
   agora: number,
   separador: string,
+  reversoes: readonly ReversaoPendente[] = [],
 ): RascunhoPendente | null {
   if (!loja.modoEdicao || loja.pendentes.length === 0 || !loja.estadoServidor) return null;
+  const doRascunho = reversoes
+    .filter((r) => r.passo < loja.passos.length)
+    .map((r) => ({ ...r, chaves: [...r.chaves] }));
   return {
     passos: loja.passos,
     versaoBase: loja.estadoServidor.versao,
@@ -53,6 +64,7 @@ export function registoDoRascunho(
     autor,
     separador,
     vivoEm: agora,
+    ...(doRascunho.length > 0 ? { reversoes: doRascunho } : {}),
   };
 }
 
@@ -83,8 +95,9 @@ export function protegerRascunho(autor: string | null, deps: DependenciasRascunh
     armazenamento = armazenamentoLocal(),
     agora = Date.now(),
     separador = SEPARADOR,
+    reversoes = reversoesDoRascunho(),
   } = deps;
-  const registo = registoDoRascunho(loja, autor, agora, separador);
+  const registo = registoDoRascunho(loja, autor, agora, separador, reversoes);
   if (!registo) return 'sem-rascunho';
   if (!guardarRascunhoPendente(armazenamento, registo)) return 'so-em-memoria';
   manterVivo(armazenamento, separador);

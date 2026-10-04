@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { indexar } from '../../dominio/indices';
-import { criarObra, estadoExemplo } from '../../dominio/teste-fabrica';
+import { criarIndisponibilidade, criarObra, estadoExemplo } from '../../dominio/teste-fabrica';
 import {
   ativoValido,
   destinosEscolhiveis,
@@ -59,6 +59,7 @@ describe('montarDestinos', () => {
       nivel: 'cheio',
       depois: 4,
       nivelDepois: 'excesso',
+      temporarios: null,
     });
     expect(casaUm?.jaLa).toBe(1);
     expect(casaUm?.todosJaLa).toBe(false);
@@ -86,6 +87,47 @@ describe('montarDestinos', () => {
       detalhe: 'Interno',
       clienteId: 'cliente-i',
     });
+  });
+});
+
+describe('montarDestinos com indisponíveis (M2)', () => {
+  // Hoje 04/10: o Bruno (ZZ 1001) está fora até 12/10 e o Gil (ZZ 1001) sem data de regresso; a Célia
+  // (ZZ 1002) só a partir de 20/10 (ainda conta). Dados fictícios.
+  const estado = {
+    ...estadoExemplo(),
+    indisponibilidades: [
+      criarIndisponibilidade({ pessoaId: 'p-bruno', inicio: '2026-10-01', fim: '2026-10-12' }),
+      criarIndisponibilidade({ pessoaId: 'p-gil', inicio: '2026-10-03', fim: null }),
+      criarIndisponibilidade({ pessoaId: 'p-celia', inicio: '2026-10-20', fim: '2026-10-25' }),
+    ],
+  };
+  const ind = indexar(estado, '2026-10-04');
+  const carrinha = (ids: string[], rotulo: string) =>
+    montarDestinos(estado, ind, ids)[1]?.destinos.find((d) => d.rotulo === rotulo);
+
+  it('na carrinha, quem está indisponível hoje não ocupa lugar; diz até quando o lugar está livre', () => {
+    // ZZ 1001: Ana, Bruno, Filipe e Gil (4/5) → 2/5, com 2 lugares livres só até 12/10 (o Bruno volta primeiro).
+    expect(carrinha(['p-helena'], 'ZZ 1001')?.lotacao).toEqual({
+      ocupados: 2,
+      lugares: 5,
+      nivel: 'livre',
+      depois: 3,
+      nivelDepois: 'livre',
+      temporarios: '2 livres até 12/10',
+    });
+    // A lista continua a ter toda a gente.
+    expect(carrinha(['p-helena'], 'ZZ 1001')?.pessoas).toBe(4);
+  });
+
+  it('quem vai e está indisponível hoje também não conta no "fica"', () => {
+    // O Bruno (indisponível) e a Helena vão para a ZZ 1002 (2/2): fica 3/2, não 4/2.
+    const zz1002 = carrinha(['p-bruno', 'p-helena'], 'ZZ 1002');
+    expect(zz1002?.lotacao).toMatchObject({ ocupados: 2, depois: 3, temporarios: null });
+  });
+
+  it('nas casas a cama não se liberta', () => {
+    const casaUm = montarDestinos(estado, ind, ['p-helena'])[0]?.destinos.find((d) => d.rotulo === 'Casa Um');
+    expect(casaUm?.lotacao).toMatchObject({ ocupados: 3, depois: 4, temporarios: null });
   });
 });
 

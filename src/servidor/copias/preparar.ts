@@ -4,11 +4,13 @@
 //     recusa arrancar (um disco perdido ou vazio criaria uma BD vazia, cujas cópias passariam a ser as "últimas");
 //     RESTAURAR_AO_ARRANCAR=nenhuma começa mesmo com uma BD nova;
 //   - a BD existe → nunca a substitui; se houver migrações por aplicar, faz primeiro uma cópia 'migracao'
-//     (se essa cópia falhar, lança: não se migra sem cópia).
+//     (se essa cópia falhar, lança: não se migra sem cópia). No PC (fora de produção) sem cópias configuradas,
+//     faz uma cópia simples (backup do SQLite, não cifrada) para <pasta da BD>/copias/ (M2).
 // Qualquer erro aqui impede o servidor de arrancar, que é o que se quer.
 
-import { existsSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { existsSync, mkdirSync } from 'node:fs';
+import { basename, dirname, extname, join, resolve } from 'node:path';
+import Database from 'better-sqlite3';
 import { mensagemSegura } from './agendador';
 import { criarDestino, type FetchS3 } from './destinos';
 import { enviarCopia, tirarInstantaneoDoFicheiro } from './instantaneo';
@@ -58,11 +60,58 @@ function avisarIgnorada(caminho: string): void {
   );
 }
 
+/** "2026-10-04-213005": a data e a hora no Luxemburgo, para o nome da cópia simples. */
+function carimbo(agora: Date): string {
+  const partes = Object.fromEntries(
+    new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Europe/Luxembourg',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hourCycle: 'h23',
+    })
+      .formatToParts(agora)
+      .map((p) => [p.type, p.value]),
+  );
+  return `${partes.year}-${partes.month}-${partes.day}-${partes.hour}${partes.minute}${partes.second}`;
+}
+
+/**
+ * Cópia simples da BD antes de migrar, no PC: abre-a só para leitura e faz um backup do SQLite para
+ * <pasta da BD>/copias/<nome>-antes-<1.ª migração pendente>-<AAAA-MM-DD-HHMMSS>.db (cria a pasta).
+ * Devolve o caminho da cópia. Lança se falhar.
+ */
+export async function copiaSimplesAntesDeMigrar(
+  caminho: string,
+  migracao: string,
+  agora: Date,
+): Promise<string> {
+  const pasta = join(dirname(caminho), 'copias');
+  const nome = basename(caminho, extname(caminho));
+  const destino = join(pasta, `${nome}-antes-${migracao}-${carimbo(agora)}.db`);
+  mkdirSync(pasta, { recursive: true });
+  const bd = new Database(caminho, { readonly: true, fileMustExist: true });
+  try {
+    await bd.backup(destino);
+  } finally {
+    bd.close();
+  }
+  return destino;
+}
+
 export async function prepararBd(
   caminhoBd: string,
   config: ConfigCopias | null,
   env: NodeJS.ProcessEnv,
-  opcoes: { agora?: () => Date; fetch?: FetchS3 } = {},
+  opcoes: {
+    agora?: () => Date;
+    fetch?: FetchS3;
+    /** Em produção as cópias são obrigatórias (index.ts); a cópia simples é só para o PC. */
+    producao?: boolean;
+  } = {},
 ): Promise<void> {
   if (caminhoBd === ':memory:') return;
   const caminho = resolve(caminhoBd);
@@ -113,10 +162,24 @@ export async function prepararBd(
   const pendentes = migracoesPendentes(caminho);
   if (pendentes.length === 0) return;
   if (!config) {
-    console.warn(
-      `Há ${pendentes.length} migração(ões) por aplicar (${pendentes.join(', ')}) e as cópias não estão configuradas: ` +
-        'migra-se sem cópia de segurança.',
-    );
+    if (opcoes.producao) {
+      console.warn(
+        `Há ${pendentes.length} migração(ões) por aplicar (${pendentes.join(', ')}) e as cópias não estão configuradas: ` +
+          'migra-se sem cópia de segurança.',
+      );
+      return;
+    }
+    // No PC não há destino de cópias: uma cópia simples ao lado da BD. Sem ela não se migra.
+    let destino: string;
+    try {
+      destino = await copiaSimplesAntesDeMigrar(caminho, pendentes[0] as string, agora());
+    } catch (erro) {
+      throw new Error(
+        `Há migrações por aplicar (${pendentes.join(', ')}) e a cópia antes de migrar falhou: ` +
+          `${erro instanceof Error ? erro.message : String(erro)}. O servidor não arranca sem essa cópia.`,
+      );
+    }
+    console.log(`Cópia antes de migrar (${pendentes.join(', ')}): ${destino}`);
     return;
   }
   try {

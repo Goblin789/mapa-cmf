@@ -1,5 +1,7 @@
 // Histórico das gravações (lotes), mais recentes primeiro: quando (hora do Luxemburgo), quem, o
 // comentário e o que mudou. "Carregar mais" pede mais lotes. Disponível sempre, também fora da edição.
+// M2: frases seguidas iguais juntas (só a ver: o Reverter recebe a entrada completa), "Reverter…" em cada
+// lote que se pode reverter (nunca na reunião, que é só de leitura) e as etiquetas "Reverte…"/"Revertida".
 
 import { useEffect, useState } from 'react';
 import { useSessao } from '../entrar/sessao';
@@ -7,13 +9,19 @@ import { type EntradaHistorico, obterHistorico } from '../estado/api';
 import { useLoja } from '../estado/loja';
 import { FOCO_VISIVEL } from '../paineis/classes';
 import { comPlural } from '../paineis/textos';
-import { BOTAO_SECUNDARIO } from './classes';
+import { useVista } from '../vistas/vista';
+import { BOTAO_PEQUENO, BOTAO_SECUNDARIO } from './classes';
 import { Dialogo } from './Dialogo';
 import { textoDoErro } from './erros';
 import {
   DESCRICOES_VISIVEIS,
   dicaDoAutor,
+  etiquetaReverte,
+  etiquetaRevertida,
   formatarDataHora,
+  juntarFrasesIguais,
+  lembrarGravacoes,
+  mostraReverter,
   nomeDoAutor,
   notaEstadoLote,
   PASSO_HISTORICO,
@@ -22,14 +30,29 @@ import {
   proximoLimite,
   rotuloTipoLote,
 } from './historico';
-import { IconeAviso, IconeRodar } from './icones';
+import { IconeAviso, IconeReverter, IconeRodar } from './icones';
+import { abrirReverter } from './ui';
 
-function Lote({ entrada }: { entrada: EntradaHistorico }) {
+function Lote({
+  entrada,
+  carregadas,
+  reuniao,
+}: {
+  entrada: EntradaHistorico;
+  /** A lista carregada: dá a data e o autor dos lotes de "Reverte…" e "Revertida". */
+  carregadas: readonly EntradaHistorico[];
+  reuniao: boolean;
+}) {
   const [tudo, setTudo] = useState(false);
   const nota = notaEstadoLote(entrada.estado);
-  const n = entrada.alteracoes.length;
-  const visiveis = tudo ? entrada.alteracoes : entrada.alteracoes.slice(0, DESCRICOES_VISIVEIS);
+  // Só a ver: as linhas seguidas com a mesma frase (a latitude e a longitude de um pino) dão uma.
+  const frases = juntarFrasesIguais(entrada.alteracoes);
+  const n = frases.length;
+  const visiveis = tudo ? frases : frases.slice(0, DESCRICOES_VISIVEIS);
   const agendado = entrada.efetivoEm !== entrada.criadoEm && entrada.estado === 'agendado';
+  const reverte = etiquetaReverte(entrada, carregadas);
+  const revertida = etiquetaRevertida(entrada, carregadas);
+  const reverter = mostraReverter(entrada, reuniao);
 
   return (
     <li className="overflow-hidden rounded-lg border border-slate-200">
@@ -42,6 +65,15 @@ function Lote({ entrada }: { entrada: EntradaHistorico }) {
           {nomeDoAutor(entrada)}
         </span>
         <span className="ml-auto flex items-center gap-1.5">
+          {revertida && (
+            <span
+              title={revertida.dica}
+              className="rounded border border-violet-300 bg-violet-50 px-1.5 text-[11px] leading-4 font-medium text-violet-900"
+            >
+              {revertida.texto}
+              <span className="sr-only"> ({revertida.dica})</span>
+            </span>
+          )}
           {nota && (
             <span className="rounded border border-amber-400 bg-amber-50 px-1.5 text-[11px] leading-4 font-medium text-amber-900">
               {nota}
@@ -58,6 +90,12 @@ function Lote({ entrada }: { entrada: EntradaHistorico }) {
             Vale a partir de {formatarDataHora(entrada.efetivoEm)}
           </p>
         )}
+        {reverte && (
+          <p className="mb-1 flex items-start gap-1.5 text-xs font-medium text-violet-900">
+            <IconeReverter className="mt-px h-3.5 w-3.5" />
+            {reverte}
+          </p>
+        )}
         {entrada.comentario && <p className="mb-1.5 text-slate-700 italic">“{entrada.comentario}”</p>}
         {n === 0 ? (
           <p className="text-xs text-slate-500">Sem alterações registadas.</p>
@@ -66,7 +104,7 @@ function Lote({ entrada }: { entrada: EntradaHistorico }) {
             {visiveis.map((a, i) => {
               const { quem, oque } = partirDescricao(a.descricao);
               return (
-                // A ordem das alterações de um lote nunca muda: o índice serve de chave.
+                // A ordem das frases de um lote nunca muda: o índice serve de chave.
                 // biome-ignore lint/suspicious/noArrayIndexKey: lista fixa
                 <li key={i} className="leading-snug">
                   {quem && <span className="font-medium text-slate-900">{quem}</span>}
@@ -87,6 +125,19 @@ function Lote({ entrada }: { entrada: EntradaHistorico }) {
             {tudo ? 'Mostrar menos' : `Mostrar todas (${n})`}
           </button>
         )}
+        {reverter && n > 0 && (
+          <div className="mt-2 flex justify-end">
+            <button
+              type="button"
+              onClick={() => abrirReverter(entrada)}
+              title="Ver o que volta atrás antes de pôr no rascunho (nada é gravado até Guardar)"
+              className={BOTAO_PEQUENO}
+            >
+              <IconeReverter className="h-3.5 w-3.5" />
+              Reverter…
+            </button>
+          </div>
+        )}
       </div>
     </li>
   );
@@ -97,6 +148,8 @@ export function DialogoHistorico({ aoFechar }: { aoFechar: () => void }) {
   const versao = useLoja((s) => s.estadoServidor?.versao ?? 0);
   // Sem sessão não vale a pena pedir; quando ela volta (entrou outra vez), pede de novo.
   const dentro = useSessao((s) => s.estado === 'dentro');
+  // A reunião é só de leitura: o histórico abre, mas sem "Reverter…".
+  const reuniao = useVista((s) => s.reuniao);
   const [limite, setLimite] = useState(PASSO_HISTORICO);
   const [tentativa, setTentativa] = useState(0);
   const [entradas, setEntradas] = useState<EntradaHistorico[] | null>(null);
@@ -112,6 +165,8 @@ export function DialogoHistorico({ aoFechar }: { aoFechar: () => void }) {
     setErro(null);
     obterHistorico(limite)
       .then((lista) => {
+        // O Reverter e o Guardar falam destas gravações pela data e pelo autor (historico.ts).
+        lembrarGravacoes(lista);
         if (atual) setEntradas(lista);
       })
       .catch((e: unknown) => {
@@ -167,7 +222,7 @@ export function DialogoHistorico({ aoFechar }: { aoFechar: () => void }) {
       {entradas !== null && entradas.length > 0 && (
         <ol aria-label={comPlural(entradas.length, 'gravação', 'gravações')} className="space-y-3">
           {entradas.map((e) => (
-            <Lote key={e.loteId} entrada={e} />
+            <Lote key={e.loteId} entrada={e} carregadas={entradas} reuniao={reuniao} />
           ))}
         </ol>
       )}

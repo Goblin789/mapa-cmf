@@ -4,12 +4,15 @@
 import {
   type Alvo,
   type ChaveDormida,
+  descreverOperacao,
+  type Operacao,
   operacaoCondutor,
   operacaoDormida,
+  operacaoSemEfeito,
   operacoesParaAlvo,
 } from '../../dominio/operacoes';
-import type { Id } from '../../dominio/tipos';
-import { useLoja } from '../estado/loja';
+import type { Estado, Id } from '../../dominio/tipos';
+import { reversoesDoRascunho, useLoja } from '../estado/loja';
 import { comPlural } from '../paineis/textos';
 import { operacaoConfirmarSugestao, operacoesConfirmarSugestoes } from './ondeDorme';
 import { resumirPasso } from './resumo';
@@ -23,8 +26,10 @@ export function desfazerComAviso(): void {
   const { passos, estado, desfazer } = useLoja.getState();
   const ultimo = passos.at(-1);
   if (!ultimo || !estado) return;
+  // Um passo de "Reverter" diz "Reversão: N alterações" (antes de desfazer: depois já não está no rascunho).
+  const reversao = reversoesDoRascunho().some((r) => r.passo === passos.length - 1);
   desfazer();
-  avisar(`Desfeito: ${resumirPasso(estado, ultimo)}`);
+  avisar(`Desfeito: ${resumirPasso(estado, ultimo, { reversao })}`);
 }
 
 export function refazerComAviso(): void {
@@ -32,7 +37,8 @@ export function refazerComAviso(): void {
   const proximo = passosDesfeitos.at(-1);
   if (!proximo || !estado) return;
   refazer();
-  avisar(`Refeito: ${resumirPasso(estado, proximo)}`);
+  const reversao = reversoesDoRascunho().some((r) => r.passo === useLoja.getState().passos.length - 1);
+  avisar(`Refeito: ${resumirPasso(estado, proximo, { reversao })}`);
 }
 
 /** Leva as pessoas até ao alvo (um passo do rascunho). Devolve quantas mudaram. */
@@ -123,6 +129,48 @@ export function deitarForaAlteracoes(): void {
   cancelarEdicao();
   useUiEdicao.getState().fecharDialogo();
   avisar(`${comPlural(n, 'alteração deitada', 'alterações deitadas')} fora. Está tudo como estava.`);
+}
+
+/**
+ * Frase curta de um passo com fichas (M2): "Casa Um — lotação: 8 → 9"; vários campos do mesmo registo
+ * "Ana T. — carta: sim → não, carta válida até: 01/02/2027 → —"; de registos diferentes "3 alterações". Um
+ * passo só com mudanças de pessoas, condutor ou onde dorme fica como sempre (resumirPasso). `estado` = o de
+ * antes do passo (os nomes de antes).
+ */
+export function resumoDoPasso(estado: Estado, passo: readonly Operacao[]): string {
+  const fichas = passo.filter((op) => op.tipo === 'campo' || op.tipo === 'registo');
+  if (fichas.length === 0) return resumirPasso(estado, passo);
+  const frases = fichas.map((op) => {
+    const frase = descreverOperacao(estado, op);
+    const i = frase.indexOf(' — ');
+    return i < 0 ? { quem: '', o: frase } : { quem: frase.slice(0, i), o: frase.slice(i + 3) };
+  });
+  const [primeira] = frases;
+  if (!primeira) return 'nada';
+  if (frases.length === passo.length && frases.every((f) => f.quem === primeira.quem)) {
+    // Sem repetir frases iguais (a lat e a lng do pino dão as duas "pino mudado de sítio").
+    const partes = [...new Set(frases.map((f) => f.o))];
+    return primeira.quem ? `${primeira.quem} — ${partes.join(', ')}` : primeira.o;
+  }
+  return comPlural(passo.length, 'alteração', 'alterações');
+}
+
+/**
+ * M2: junta as operações ao rascunho como UM passo (Ctrl+Z desfaz tudo de uma vez) e avisa com `texto`
+ * (por omissão, resumoDoPasso) e "Ctrl+Z desfaz.". Tira as que não mudam nada; sem nenhuma, avisa "Nada
+ * mudou." Só no modo de edição. Devolve se mudou alguma coisa.
+ */
+export function aplicarComAviso(ops: readonly Operacao[], texto?: string): boolean {
+  const { estado, modoEdicao, aplicar } = useLoja.getState();
+  if (!estado || !modoEdicao) return false;
+  const passo = ops.filter((op) => !operacaoSemEfeito(op));
+  if (passo.length === 0) {
+    avisar('Nada mudou.');
+    return false;
+  }
+  aplicar(passo);
+  avisar(`${texto ?? resumoDoPasso(estado, passo)}. Ctrl+Z desfaz.`);
+  return true;
 }
 
 export function entrarEdicaoComAviso(): void {

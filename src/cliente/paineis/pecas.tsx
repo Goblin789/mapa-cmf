@@ -61,7 +61,10 @@ export function PastilhaLotacao({
   );
 }
 
-/** Nomes em grelha de duas colunas (caixas laterais e fichas). Quem conduz leva o volante. */
+/**
+ * Nomes em grelha de duas colunas (caixas laterais e fichas). Quem conduz leva o volante. M2: quem está
+ * indisponível hoje mostra "até 12/10" à vista (textoIndisponivel; o NomeChip liga-o, módulo Indisponível).
+ */
 export function GrelhaNomes({ pessoas, vazio = 'Ninguém.' }: { pessoas: Pessoa[]; vazio?: ReactNode }) {
   const indices = useLoja((s) => s.indices);
   if (pessoas.length === 0) return <p className="text-xs text-slate-600 italic">{vazio}</p>;
@@ -69,7 +72,7 @@ export function GrelhaNomes({ pessoas, vazio = 'Ninguém.' }: { pessoas: Pessoa[
     <ul className="grid grid-cols-2 gap-1">
       {pessoas.map((p) => (
         <li key={p.id} className="min-w-0">
-          <NomeChip pessoa={p} condutor={indices ? ehCondutor(p, indices) : false} />
+          <NomeChip pessoa={p} condutor={indices ? ehCondutor(p, indices) : false} textoIndisponivel />
         </li>
       ))}
     </ul>

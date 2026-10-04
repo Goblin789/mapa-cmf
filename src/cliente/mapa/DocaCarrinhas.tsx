@@ -1,7 +1,9 @@
 // Doca no canto superior direito do mapa (fora do Leaflet), por baixo das camadas: carrinhas sem sítio
 // conhecido onde dormir (ex.: as novas, ainda sem passageiros) e, se houver, casas e obras sem
 // coordenadas. Recolhível (lembra a escolha). Os cartões são os mesmos do mapa (também são alvos no
-// modo de edição); o foco realça-os, mas as linhas de foco não chegam aqui.
+// modo de edição); o foco realça-os (também o de uma obra: as carrinhas de quem lá trabalha), mas as
+// linhas de foco não chegam aqui. Uma obra sem coordenadas (não devia acontecer nas criadas no programa,
+// que têm sempre pino) fica aqui e abre a ficha como no mapa.
 
 import { type ReactNode, useMemo, useState } from 'react';
 import { useLoja } from '../estado/loja';

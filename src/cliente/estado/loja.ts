@@ -13,6 +13,11 @@
 // tempoReal/rascunhoPendente.ts): se a página fechar ou recarregar, volta no 1.º carregamento depois de
 // entrar outra vez. Se este separador continuar aberto, quando a sessão volta é o rascunho em memória que
 // conta e o registo apaga-se.
+//
+// M2: "hoje" (o dia no Luxemburgo) muda sozinho (vê-se de minuto a minuto depois do 1.º carregamento) e
+// recalcula quem está indisponível. "Reverter" um lote do Histórico junta um passo ao rascunho; o lote fica
+// ligado a esse passo (Desfazer tira-o de `reverte`, Refazer volta a pô-lo) e só vai no Guardar se alguma
+// operação dele (pela chaveOperacao) ainda estiver nos pendentes.
 
 import { create } from 'zustand';
 import { type Contadores, calcularContadores } from '../../dominio/contadores';
@@ -22,6 +27,7 @@ import { type Indices, indexar } from '../../dominio/indices';
 import {
   type Alvo,
   aplicarOperacoes,
+  chaveOperacao,
   compactarOperacoes,
   type Operacao,
   operacaoSemEfeito,
@@ -40,6 +46,7 @@ import {
   lerRascunhoPendente,
   marcarRecuperado,
   marcarVivo,
+  type ReversaoPendente,
   registoDoSeparador,
   retomar,
   textoRascunhoNoutroSeparador,
@@ -127,6 +134,65 @@ function esquecerRascunhoDesteSeparador(): void {
   apagarSeForDeste(armazenamentoLocal(), SEPARADOR);
 }
 
+// --- "Hoje" ----------------------------------------------------------------------------------------------
+
+/** De quanto em quanto tempo se vê se o dia mudou (a meia-noite no Luxemburgo). */
+export const INTERVALO_HOJE_MS = 60_000;
+
+let temporizadorHoje: ReturnType<typeof setInterval> | null = null;
+
+/** Liga o relógio do dia (uma vez; o 1.º carregamento liga-o, o Sair desliga-o). */
+function vigiarHoje(): void {
+  if (temporizadorHoje !== null) return;
+  temporizadorHoje = setInterval(() => {
+    useLoja.getState().definirHoje(dataNoLuxemburgo(new Date()));
+  }, INTERVALO_HOJE_MS);
+  // No Node (testes) não segura o processo.
+  (temporizadorHoje as { unref?: () => void }).unref?.();
+}
+
+function pararHoje(): void {
+  if (temporizadorHoje === null) return;
+  clearInterval(temporizadorHoje);
+  temporizadorHoje = null;
+}
+
+// --- Reversões no rascunho ------------------------------------------------------------------------------
+
+/**
+ * Os lotes cuja reversão está no rascunho: o passo onde entrou (índice em `passos`) e as chaves das suas
+ * operações. Por dentro da loja; o que se vê é `reverte`.
+ */
+let reversoes: ReversaoPendente[] = [];
+
+/**
+ * CONTRATO DO M2: as reversões dos passos que ainda estão no rascunho (não desfeitos), para o registo do
+ * rascunho no localStorage (RascunhoPendente.reversoes). Quem guarda o rascunho quando a sessão termina
+ * (entrar/protegerRascunho.ts) tem de as pôr no registo, senão o rascunho volta sem `reverte` e o lote
+ * nunca aparece como "Revertida". Cópias: mudar o que devolve não mexe na loja.
+ */
+export function reversoesDoRascunho(): ReversaoPendente[] {
+  const n = useLoja.getState().passos.length;
+  return reversoes.filter((r) => r.passo < n).map((r) => ({ ...r, chaves: [...r.chaves] }));
+}
+
+/** Os lotes cujo passo ainda está no rascunho (não desfeito). */
+function lotesRevertidos(passos: readonly Operacao[][]): number[] {
+  return [...new Set(reversoes.filter((r) => r.passo < passos.length).map((r) => r.loteId))];
+}
+
+/** Os que vão no Guardar: com o passo no rascunho e alguma operação ainda nos pendentes (compactados). */
+function lotesAEnviar(passos: readonly Operacao[][], pendentes: readonly Operacao[]): number[] {
+  const chaves = new Set(pendentes.map(chaveOperacao));
+  return [
+    ...new Set(
+      reversoes
+        .filter((r) => r.passo < passos.length && r.chaves.some((c) => chaves.has(c)))
+        .map((r) => r.loteId),
+    ),
+  ];
+}
+
 function utilizadorAtual(): string | null {
   return useSessao.getState().utilizador?.chave ?? null;
 }
@@ -187,7 +253,7 @@ export interface Loja {
 
   /**
    * M2: o dia de hoje no Luxemburgo (AAAA-MM-DD). Decide quem está indisponível (os índices e a lotação
-   * das carrinhas usam-no). CONTRATO DO M2 (módulo base): muda sozinho à meia-noite e recalcula.
+   * das carrinhas usam-no). Muda sozinho à meia-noite (vê-se de minuto a minuto) e recalcula.
    */
   hoje: string;
   /** M2: muda o dia (a meia-noite, os testes) e recalcula o que se vê. */
@@ -231,15 +297,16 @@ export interface Loja {
    */
   guardar: (comentario?: string) => Promise<boolean>;
   /**
-   * M2: lotes cuja reversão está no rascunho ("Reverter" no Histórico). Vão no pedido de Guardar
-   * (PedidoGuardar.reverte); Cancelar limpa.
+   * M2: lotes cuja reversão está no rascunho ("Reverter" no Histórico), cujo passo não foi desfeito. Vão no
+   * pedido de Guardar (PedidoGuardar.reverte) os que ainda têm alguma operação nos pendentes; Cancelar e
+   * Guardar limpam; o rascunho pendente (localStorage) guarda-os também.
    */
   reverte: readonly number[];
   /**
    * M2: "Reverter" um lote do Histórico: entra no modo de edição (se ainda não estiver) e junta as operações
    * inversas (dominio/reverter.ts, planearReversao) ao rascunho como UM passo. Nada é gravado. Devolve se
-   * mudou alguma coisa. CONTRATO DO M2 (módulo base): Desfazer esse passo tira o lote de `reverte`; Guardar
-   * envia `reverte`; o rascunho pendente (localStorage) guarda-o também.
+   * mudou alguma coisa. Desfazer esse passo tira o lote de `reverte` (Refazer volta a pô-lo); Guardar envia
+   * os lotes com alguma operação ainda nos pendentes; o rascunho pendente (localStorage) guarda-os também.
    */
   iniciarReversao: (loteId: number, operacoes: readonly Operacao[]) => boolean;
 
@@ -258,11 +325,17 @@ export const useLoja = create<Loja>()((set, get) => {
   function recalcular(passos: Operacao[][], estadoServidor = get().estadoServidor) {
     if (!estadoServidor) return {};
     const pendentes = compactarOperacoes(passos.flat());
-    return { passos, pendentes, ...derivar(aplicarOperacoes(estadoServidor, passos.flat()), get().hoje) };
+    return {
+      passos,
+      pendentes,
+      reverte: lotesRevertidos(passos),
+      ...derivar(aplicarOperacoes(estadoServidor, passos.flat()), get().hoje),
+    };
   }
 
   /** Fora do modo de edição, sem rascunho (o que o Cancelar deixa). */
   function semEdicao() {
+    reversoes = [];
     return {
       modoEdicao: false,
       passosDesfeitos: [],
@@ -323,6 +396,7 @@ export const useLoja = create<Loja>()((set, get) => {
       // As mudanças que se anulam umas às outras não contam (como na barra "N alterações por guardar").
       const n = compactarOperacoes(rascunho.passos.flat()).length;
       if (n === 0) return;
+      reversoes = (rascunho.reversoes ?? []).filter((r) => r.passo < rascunho.passos.length);
       set({
         modoEdicao: true,
         passosDesfeitos: [],
@@ -347,6 +421,9 @@ export const useLoja = create<Loja>()((set, get) => {
     aCarregar: false,
     carregar: async () => {
       const pedido = ++ultimoPedido;
+      // O dia pode ter mudado com a página aberta (ou suspensa); daí em diante vê-se de minuto a minuto.
+      get().definirHoje(dataNoLuxemburgo(new Date()));
+      vigiarHoje();
       set({ aCarregar: true, erro: null });
       try {
         const estadoServidor = await obterEstado();
@@ -378,6 +455,8 @@ export const useLoja = create<Loja>()((set, get) => {
     limparDepoisDeSair: () => {
       ultimoPedido++;
       ultimoAplicado = ultimoPedido;
+      pararHoje();
+      reversoes = [];
       set(useLoja.getInitialState(), true);
     },
 
@@ -430,6 +509,8 @@ export const useLoja = create<Loja>()((set, get) => {
       // operacaoSemEfeito compara pelo conteúdo (listas e registos do M2), não pela referência.
       const passo = ops.filter((op) => !operacaoSemEfeito(op));
       if (passo.length === 0) return;
+      // Um passo novo apaga o Refazer: as reversões dos passos desfeitos já não voltam.
+      reversoes = reversoes.filter((r) => r.passo < get().passos.length);
       set({
         passosDesfeitos: [],
         conflitos: null,
@@ -482,7 +563,7 @@ export const useLoja = create<Loja>()((set, get) => {
       const autor = utilizadorAtual() ?? useSessao.getState().contaAnterior?.chave ?? null;
       set({ aGuardar: true, erroGuardar: null, conflitos: null });
       try {
-        const { reverte } = get();
+        const reverte = lotesAEnviar(get().passos, pendentes);
         const resposta = await guardarLote({
           versaoBase: estadoServidor.versao,
           operacoes: pendentes,
@@ -499,6 +580,7 @@ export const useLoja = create<Loja>()((set, get) => {
         // Um pedido do estado que ainda vá a meio saiu antes desta gravação: a resposta dele já não conta.
         ultimoAplicado = ultimoPedido;
         esquecerRascunhoDesteSeparador();
+        reversoes = [];
         set({
           modoEdicao: false,
           passosDesfeitos: [],
@@ -518,6 +600,7 @@ export const useLoja = create<Loja>()((set, get) => {
         if (e instanceof ErroSessao) {
           // Nada foi gravado. O rascunho continua em memória (o Portao mantém a app aberta e a entrada
           // abre noutro separador); o localStorage serve para o caso de esta página fechar entretanto.
+          const reversoesAtuais = reversoesDoRascunho();
           const guardado = guardarRascunhoPendente(armazenamentoLocal(), {
             passos: get().passos,
             versaoBase: estadoServidor.versao,
@@ -525,6 +608,7 @@ export const useLoja = create<Loja>()((set, get) => {
             autor,
             separador: SEPARADOR,
             vivoEm: Date.now(),
+            ...(reversoesAtuais.length > 0 ? { reversoes: reversoesAtuais } : {}),
           });
           if (guardado) manterVivo();
           set({
@@ -552,9 +636,13 @@ export const useLoja = create<Loja>()((set, get) => {
       const passo = operacoes.filter((op) => !operacaoSemEfeito(op));
       if (passo.length === 0) return false;
       if (!get().modoEdicao) get().entrarEdicao();
+      const antes = get().passos.length;
       get().aplicar(passo);
-      // CONTRATO DO M2 (módulo base): ligar o lote ao passo, para Desfazer o tirar de `reverte`.
-      set({ reverte: [...new Set([...get().reverte, loteId])] });
+      const { passos } = get();
+      if (passos.length === antes) return false;
+      // O lote fica ligado a este passo: Desfazer tira-o de `reverte`, Refazer volta a pô-lo.
+      reversoes = [...reversoes, { loteId, passo: passos.length - 1, chaves: passo.map(chaveOperacao) }];
+      set({ reverte: lotesRevertidos(passos) });
       return true;
     },
 

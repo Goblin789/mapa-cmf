@@ -2,7 +2,7 @@
 
 import { clienteEfetivoId } from './cores';
 import { type Indices, indexar } from './indices';
-import { ocupacaoCarrinha, ocupacaoCasa } from './ocupacao';
+import { ocupacaoCasa, ocupacaoDaCarrinha } from './ocupacao';
 import type { Estado, Id, Pessoa } from './tipos';
 
 export interface ContagemPorCliente {
@@ -21,7 +21,9 @@ export interface Contadores {
   casasAcimaContrato: number;
   foraDasCasas: ContagemPorCliente;
   semTransporte: ContagemPorCliente;
+  /** Lugares livres nas carrinhas, sem contar quem está indisponível no `hoje` dos índices. */
   lugaresLivresCarrinhas: number;
+  /** Carrinhas sem ninguém (ou só com quem está indisponível no `hoje` dos índices). */
   carrinhasSemPassageiros: number;
   /** Carrinhas paradas ou na oficina. Os estados das carrinhas chegam no M3; por agora é sempre 0. */
   carrinhasParadas: number;
@@ -56,10 +58,11 @@ export function calcularContadores(estado: Estado, ind: Indices = indexar(estado
 
   let lugaresLivresCarrinhas = 0;
   let carrinhasSemPassageiros = 0;
+  // M2: quem está indisponível hoje não ocupa lugar na carrinha (ocupacaoDaCarrinha, como no ecrã).
   for (const carrinha of estado.carrinhas) {
-    const n = ind.passageiros.get(carrinha.id)?.length ?? 0;
-    lugaresLivresCarrinhas += ocupacaoCarrinha(carrinha, n).livres;
-    if (n === 0) carrinhasSemPassageiros++;
+    const oc = ocupacaoDaCarrinha(ind, carrinha);
+    lugaresLivresCarrinhas += oc.livres;
+    if (oc.ocupados === 0) carrinhasSemPassageiros++;
   }
 
   return {

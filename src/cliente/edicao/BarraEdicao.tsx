@@ -3,28 +3,191 @@
 // No telemóvel: 1.ª linha com o estado, Cancelar e Guardar; 2.ª linha com o resto (ícones + textos curtos).
 // A 375 px a 1.ª linha só tem uns 166 px para o estado: sem o lápis e com "Sem alterações", "Edição" e a
 // pastilha cabem lado a lado (antes a pastilha espremia o título até ficar por cima dele).
+// M2: menu "Novo…" (Nova pessoa, Nova obra; setas, Home/End, Esc) e "Indisponível…" quando há seleção. Para a
+// barra continuar numa linha com estes dois, abaixo de 1900 px Desfazer e Refazer ficam só com o ícone (o nome
+// fica para os leitores de ecrã e na dica), "Limpar seleção" passa a "Limpar" e a frase longa ("— as mudanças
+// só ficam gravadas…") passa à curta. Medido (rascunho grande, com e sem seleção): uma linha de 1280 a 2560 px;
+// com o corte no 2xl (1536) a barra ia para duas linhas de 1536 a 1760. No telemóvel, com seleção, "Limpar"
+// e "Novo" ficam só com o ícone (a 2.ª linha continua a caber a 375 px).
+// Os cortes são em rem (1900 px = 118.75rem, 1300 px = 81.25rem): com px, o Tailwind punha as regras antes das
+// do md/sm (em rem) e a 1920 px apareciam as duas frases e "Limpar" junto de "Limpar seleção".
 
+import { type KeyboardEvent, type ReactNode, useEffect, useId, useRef, useState } from 'react';
 import { useLoja } from '../estado/loja';
+import { FOCO_VISIVEL } from '../paineis/classes';
 import { comPlural } from '../paineis/textos';
 import { desfazerComAviso, limparSelecaoComAviso, pedirCancelar, refazerComAviso } from './acoes';
+import { teclaNoBotaoMenu, teclaNoMenu } from './atalhos';
 import { BOTAO_BARRA, BOTAO_BARRA_PRIMARIO } from './classes';
 import {
+  IconeAbrirMenu,
   IconeDesfazer,
   IconeGuardar,
+  IconeIndisponivel,
   IconeLapis,
   IconeLimparSelecao,
+  IconeMais,
   IconeMover,
+  IconeObra,
+  IconePessoaNova,
   IconeRefazer,
 } from './icones';
-import { abrirMoverPara, useUiEdicao } from './ui';
+import { contarAlteracoes } from './resumo';
+import { abrirIndisponivel, abrirMoverPara, abrirNovaPessoa, abrirObra, useUiEdicao } from './ui';
 
 function Separador() {
   return <span aria-hidden="true" className="mx-0.5 hidden h-5 w-px bg-amber-300 xl:block" />;
 }
 
+interface ItemMenu {
+  rotulo: string;
+  icone: ReactNode;
+  dica: string;
+  acao: () => void;
+}
+
+const ITENS_NOVO: readonly ItemMenu[] = [
+  {
+    rotulo: 'Nova pessoa',
+    icone: <IconePessoaNova />,
+    dica: 'Juntar uma pessoa nova (casa e carrinha no mesmo passo)',
+    acao: abrirNovaPessoa,
+  },
+  {
+    rotulo: 'Nova obra',
+    icone: <IconeObra />,
+    dica: 'Criar uma obra com a morada ou o sítio no mapa',
+    acao: () => abrirObra(null),
+  },
+];
+
+/**
+ * "Novo…": botão que abre um menu (role="menu"). Setas para cima e para baixo, Home e End mudam de item;
+ * Enter/Espaço escolhem; Esc fecha e devolve o foco ao botão; Tab ou um clique fora fecham.
+ */
+/** Largura mínima do menu (min-w-44 = 11rem): para saber se cabe à direita do botão. */
+const LARGURA_MENU = 176;
+
+/**
+ * `compacto`: no telemóvel, só o ícone (com a seleção, a 2.ª linha da barra ganha "Indisponível…" e o nº de
+ * selecionadas; assim continua numa linha a 375 px).
+ */
+function MenuNovo({ compacto }: { compacto: boolean }) {
+  const [aberto, setAberto] = useState<number | null>(null);
+  // O botão fica no fim da barra (no PC, junto à margem direita): aí o menu abre para a esquerda.
+  const [paraEsquerda, setParaEsquerda] = useState(false);
+  const botao = useRef<HTMLButtonElement>(null);
+  const caixa = useRef<HTMLDivElement>(null);
+  const itens = useRef<(HTMLButtonElement | null)[]>([]);
+  const idMenu = useId();
+  const idBotao = useId();
+
+  // Ao abrir, o foco vai para o item pedido (o 1.º, ou o último com a seta para cima).
+  useEffect(() => {
+    if (aberto !== null) itens.current[aberto]?.focus();
+  }, [aberto]);
+
+  useEffect(() => {
+    if (aberto === null) return;
+    const fora = (e: PointerEvent) => {
+      if (!caixa.current?.contains(e.target as Node)) setAberto(null);
+    };
+    document.addEventListener('pointerdown', fora);
+    return () => document.removeEventListener('pointerdown', fora);
+  }, [aberto]);
+
+  const abrirEm = (indice: number) => {
+    const r = botao.current?.getBoundingClientRect();
+    setParaEsquerda(r !== undefined && r.left + LARGURA_MENU > window.innerWidth - 8);
+    setAberto(indice);
+  };
+
+  const fechar = (devolverFoco: boolean) => {
+    setAberto(null);
+    if (devolverFoco) botao.current?.focus();
+  };
+
+  const aoTeclarNoBotao = (e: KeyboardEvent<HTMLButtonElement>) => {
+    const indice = teclaNoBotaoMenu(e.key, ITENS_NOVO.length);
+    if (indice === null) return;
+    e.preventDefault();
+    abrirEm(indice);
+  };
+
+  const aoTeclarNoMenu = (e: KeyboardEvent<HTMLDivElement>) => {
+    const atual = itens.current.indexOf(document.activeElement as HTMLButtonElement);
+    const acao = teclaNoMenu(e.key, Math.max(0, atual), ITENS_NOVO.length);
+    if (!acao) return;
+    if (acao.tipo === 'focar') {
+      e.preventDefault();
+      itens.current[acao.indice]?.focus();
+      return;
+    }
+    // Esc é do menu: não limpa a seleção nem fecha a ficha (os atalhos veem o defaultPrevented).
+    if (acao.devolverFoco) e.preventDefault();
+    fechar(acao.devolverFoco);
+  };
+
+  const escolher = (item: ItemMenu) => {
+    // O foco volta ao botão antes de o diálogo abrir: é a ele que o diálogo o devolve ao fechar.
+    fechar(true);
+    item.acao();
+  };
+
+  return (
+    <div ref={caixa} className="relative">
+      <button
+        ref={botao}
+        id={idBotao}
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={aberto !== null}
+        aria-controls={aberto !== null ? idMenu : undefined}
+        onClick={() => (aberto === null ? abrirEm(0) : setAberto(null))}
+        onKeyDown={aoTeclarNoBotao}
+        title="Nova pessoa ou nova obra"
+        className={BOTAO_BARRA}
+      >
+        <IconeMais />
+        <span className={compacto ? 'sr-only sm:hidden' : 'sm:hidden'}>Novo</span>
+        <span className="hidden sm:inline">Novo…</span>
+        <IconeAbrirMenu />
+      </button>
+      {aberto !== null && (
+        <div
+          id={idMenu}
+          role="menu"
+          aria-labelledby={idBotao}
+          onKeyDown={aoTeclarNoMenu}
+          className={`absolute top-full ${paraEsquerda ? 'right-0' : 'left-0'} z-[1100] mt-1 min-w-44 rounded-md border border-slate-300 bg-white py-1 text-slate-900 shadow-lg`}
+        >
+          {ITENS_NOVO.map((item, i) => (
+            <button
+              key={item.rotulo}
+              ref={(el) => {
+                itens.current[i] = el;
+              }}
+              type="button"
+              role="menuitem"
+              tabIndex={-1}
+              title={item.dica}
+              onClick={() => escolher(item)}
+              className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm whitespace-nowrap hover:bg-amber-50 focus:bg-amber-50 ${FOCO_VISIVEL}`}
+            >
+              {item.icone}
+              {item.rotulo}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function BarraEdicao() {
   const modoEdicao = useLoja((s) => s.modoEdicao);
-  const nPendentes = useLoja((s) => s.pendentes.length);
+  // O pino (lat e lng) conta uma vez, como no Guardar e no Reverter.
+  const nPendentes = useLoja((s) => contarAlteracoes(s.pendentes));
   const podeDesfazer = useLoja((s) => s.passos.length > 0);
   const podeRefazer = useLoja((s) => s.passosDesfeitos.length > 0);
   const selecao = useLoja((s) => s.selecao);
@@ -58,11 +221,22 @@ export function BarraEdicao() {
               <span className="sm:hidden">Edição</span>
               <span className="hidden sm:inline">Modo de edição</span>
             </strong>
-            <span className="hidden 2xl:inline">
+            <span className="hidden min-[118.75rem]:inline">
               {' '}
               — as mudanças só ficam gravadas quando carregares em Guardar
             </span>
-            <span className="hidden md:inline 2xl:hidden"> — só fica gravado ao Guardar</span>
+            {/* Com seleção entram o nº de selecionadas e "Indisponível…": abaixo de 1300 px esta frase sai, para a
+                barra continuar numa linha (a 1280 px). */}
+            <span
+              className={
+                nSelecao > 0
+                  ? 'hidden min-[81.25rem]:inline min-[118.75rem]:hidden'
+                  : 'hidden md:inline min-[118.75rem]:hidden'
+              }
+            >
+              {' '}
+              — só fica gravado ao Guardar
+            </span>
           </p>
           <p
             className={`min-w-0 truncate rounded-full border px-2 text-xs leading-5 font-semibold tabular-nums sm:shrink-0 ${
@@ -96,7 +270,7 @@ export function BarraEdicao() {
             className={BOTAO_BARRA}
           >
             <IconeDesfazer />
-            <span className="sr-only lg:not-sr-only">Desfazer</span>
+            <span className="sr-only min-[118.75rem]:not-sr-only">Desfazer</span>
           </button>
           <button
             type="button"
@@ -107,7 +281,7 @@ export function BarraEdicao() {
             className={BOTAO_BARRA}
           >
             <IconeRefazer />
-            <span className="sr-only lg:not-sr-only">Refazer</span>
+            <span className="sr-only min-[118.75rem]:not-sr-only">Refazer</span>
           </button>
           <Separador />
           <button
@@ -143,9 +317,29 @@ export function BarraEdicao() {
             className={BOTAO_BARRA}
           >
             <IconeLimparSelecao />
-            <span className="sm:hidden">Limpar</span>
-            <span className="hidden sm:inline">Limpar seleção</span>
+            {/* Com a seleção, no telemóvel, só o ícone (ver MenuNovo). */}
+            <span
+              className={
+                nSelecao > 0 ? 'sr-only sm:not-sr-only min-[118.75rem]:hidden' : 'min-[118.75rem]:hidden'
+              }
+            >
+              Limpar
+            </span>
+            <span className="hidden min-[118.75rem]:inline">Limpar seleção</span>
           </button>
+          {nSelecao > 0 && (
+            <button
+              type="button"
+              onClick={() => abrirIndisponivel([...selecao])}
+              title={`Marcar indisponível ${comPlural(nSelecao, 'a pessoa selecionada', 'as pessoas selecionadas')} (só as datas)`}
+              className={BOTAO_BARRA}
+            >
+              <IconeIndisponivel />
+              <span className="sr-only sm:not-sr-only">Indisponível…</span>
+            </button>
+          )}
+          <Separador />
+          <MenuNovo compacto={nSelecao > 0} />
         </div>
 
         <div className="order-2 flex items-center gap-1.5 sm:order-3 sm:ml-auto">

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { indexar } from '../../dominio/indices';
 import { aplicarOperacoes } from '../../dominio/operacoes';
-import { estadoExemplo } from '../../dominio/teste-fabrica';
+import { criarIndisponibilidade, estadoExemplo } from '../../dominio/teste-fabrica';
 import {
   descricaoArrastados,
   partesArrastados,
@@ -120,6 +120,49 @@ describe('condutor que sai da carrinha que conduz', () => {
     expect(textoCondutoresQueSaem(comCondutores, ['p-ana'], { tipo: 'casa', id: 'casa-3' })).toBeNull();
     expect(textoCondutoresQueSaem(comCondutores, ['p-ana'], { tipo: 'carrinha', id: 'zz1001' })).toBeNull();
     expect(textoCondutoresQueSaem(comCondutores, ['p-bruno'], { tipo: 'sem-transporte' })).toBeNull();
+  });
+});
+
+describe('previsão com indisponíveis (M2)', () => {
+  // Hoje 04/10: o Bruno (ZZ 1001) está fora até 12/10; a Helena (sem carrinha) até 08/10; a Elsa (sem
+  // carrinha) a partir de 20/10 (ainda conta). Dados fictícios.
+  const comPeriodos = {
+    ...estado,
+    indisponibilidades: [
+      criarIndisponibilidade({ pessoaId: 'p-bruno', inicio: '2026-10-01', fim: '2026-10-12' }),
+      criarIndisponibilidade({ pessoaId: 'p-helena', inicio: '2026-10-02', fim: '2026-10-08' }),
+      criarIndisponibilidade({ pessoaId: 'p-elsa', inicio: '2026-10-20', fim: null }),
+    ],
+  };
+  const indP = indexar(comPeriodos, '2026-10-04');
+
+  it('na carrinha não contam os indisponíveis de lá nem os que entram; diz até quando há lugar', () => {
+    // ZZ 1001: 4 passageiros, o Bruno fora → 3; entram a Helena (fora, não conta) e a Elsa (conta).
+    const p = preverLargada(comPeriodos, indP, ['p-helena', 'p-elsa'], { tipo: 'carrinha', id: 'zz1001' });
+    expect(p).toMatchObject({ antes: 3, mudam: 2, entram: 1, depois: 4, lugares: 5, nivel: 'livre' });
+    // Os lugares livres só até alguém voltar: o da Helena (volta 09/10) primeiro, depois o do Bruno.
+    expect(p?.temporarios).toBe('2 livres até 08/10');
+    expect(p && textoPrevisao(p)).toBe('ZZ 1001 (2 livres até 08/10): 3 + 1 = 4/5 ○');
+    expect(p && partesPrevisao(p)).toEqual({
+      texto: 'ZZ 1001 (2 livres até 08/10): 3 + 1 = ',
+      resultado: '4/5',
+      simbolo: '○',
+    });
+  });
+
+  it('só uma pessoa indisponível a entrar: muda, mas não ocupa lugar', () => {
+    const p = preverLargada(comPeriodos, indP, ['p-helena'], { tipo: 'carrinha', id: 'zz1002' });
+    expect(p && textoPrevisao(p)).toBe('ZZ 1002 (1 livre até 08/10): 2 + 0 = 2/2 ●');
+  });
+
+  it('carrinha sem ninguém fora: igual a antes', () => {
+    const p = preverLargada(comPeriodos, indP, ['p-elsa'], { tipo: 'carrinha', id: 'zz1002' });
+    expect(p && textoPrevisao(p)).toBe('ZZ 1002: 2 + 1 = 3/2 ▲');
+  });
+
+  it('na casa a cama não se liberta: contam todos', () => {
+    const p = preverLargada(comPeriodos, indP, ['p-helena'], { tipo: 'casa', id: 'casa-1' });
+    expect(p && textoPrevisao(p)).toBe('Casa Um: 3 + 1 = 4/3 ▲');
   });
 });
 

@@ -1,17 +1,21 @@
 import { describe, expect, it } from 'vitest';
 import { indexar } from '../../dominio/indices';
-import { criarObra } from '../../dominio/teste-fabrica';
+import { criarIndisponibilidade, criarObra } from '../../dominio/teste-fabrica';
 import type { Pessoa } from '../../dominio/tipos';
 import { GRUPO_ESPECIAIS } from '../comum/escolhaMultipla';
 import { ROTULO_FORA_DAS_CASAS, ROTULO_SEM_TRANSPORTE } from '../paineis/textos';
 import { estadoVistas } from './estadoTeste';
 import {
   ariaSort,
+  COM_FUTUROS,
+  DISPONIVEL_HOJE,
+  descricaoIndisponivel,
   deslocamentoParaVer,
   FILTROS_INICIAIS,
   type FiltrosTabela,
   filtrarLinhas,
   filtrosTabelaAtivos,
+  INDISPONIVEL_HOJE,
   linhasDaTabela,
   marcadaDepoisDoClique,
   modoDaCaixa,
@@ -25,7 +29,9 @@ import {
   SEM,
   selecaoComVisiveis,
   textoAConfirmar,
+  textoAteCurto,
   textoContagem,
+  textoIndisponivelExcel,
   zonaLivreDaTabela,
 } from './linhasTabela';
 
@@ -517,5 +523,81 @@ describe('zonaLivreDaTabela e deslocamentoParaVer', () => {
   it('uma linha por baixo do cabeçalho desce; se não couber, fica com o topo no topo da zona', () => {
     expect(deslocamentoParaVer({ top: 490, bottom: 530 }, { top: 508, bottom: 602 })).toBe(-26);
     expect(deslocamentoParaVer({ top: 700, bottom: 820 }, { top: 508, bottom: 602 })).toBe(192);
+  });
+});
+
+describe('indisponível na Tabela (M2)', () => {
+  // Hoje 04/10: a Ana fora até 12/10, o Rui sem data de regresso, a Eva só a partir de 20/10 e o Zé já
+  // voltou (acabou a 02/10). Dados fictícios.
+  const comPeriodos = {
+    ...estado,
+    indisponibilidades: [
+      criarIndisponibilidade({ pessoaId: 'p-2', inicio: '2026-10-01', fim: '2026-10-12' }),
+      criarIndisponibilidade({ pessoaId: 'p-3', inicio: '2026-10-03', fim: null }),
+      criarIndisponibilidade({ pessoaId: 'p-4', inicio: '2026-10-20', fim: '2026-10-22' }),
+      criarIndisponibilidade({ pessoaId: 'p-1', inicio: '2026-09-28', fim: '2026-10-02' }),
+    ],
+  };
+  const indP = indexar(comPeriodos, '2026-10-04');
+  const linhasP = linhasDaTabela(comPeriodos, indP);
+  const linha = (id: string) => linhasP.find((l) => l.pessoa.id === id);
+  const filtrarP = (valores: string[]) =>
+    filtrarLinhas(linhasP, { ...FILTROS_INICIAIS, indisponivel: new Set(valores) }).map((l) => l.pessoa.id);
+
+  it('cada linha sabe o período de hoje e o início do próximo', () => {
+    expect(linha('p-2')?.indisponivel?.fim).toBe('2026-10-12');
+    expect(linha('p-3')?.indisponivel?.fim).toBeNull();
+    expect(linha('p-4')).toMatchObject({ indisponivel: null, proximoInicio: '2026-10-20' });
+    expect(linha('p-1')).toMatchObject({ indisponivel: null, proximoInicio: null });
+  });
+
+  it('textos: "até 12/10", "sem regresso"; no title e no Excel, mais completos', () => {
+    expect(textoAteCurto({ fim: '2026-10-12' })).toBe('até 12/10');
+    expect(textoAteCurto({ fim: null })).toBe('sem regresso');
+    expect(descricaoIndisponivel({ inicio: '2026-10-01', fim: '2026-10-12' })).toBe('Indisponível até 12/10');
+    expect(descricaoIndisponivel({ inicio: '2026-10-03', fim: null })).toBe(
+      'Indisponível desde 03/10, sem data de regresso',
+    );
+    expect(textoIndisponivelExcel({ fim: '2026-10-12' })).toBe('12/10/2026');
+    expect(textoIndisponivelExcel({ fim: null })).toBe('sem data');
+    expect(textoIndisponivelExcel(null)).toBe('');
+  });
+
+  it('ordena pela data de regresso: quem volta primeiro, sem data depois, os disponíveis no fim', () => {
+    const asc = ordenarLinhas(linhasP, { coluna: 'indisponivel', direcao: 'asc' }).map((l) => l.pessoa.id);
+    expect(asc.slice(0, 2)).toEqual(['p-2', 'p-3']);
+    const desc = ordenarLinhas(linhasP, { coluna: 'indisponivel', direcao: 'desc' }).map((l) => l.pessoa.id);
+    expect(desc.slice(0, 2)).toEqual(['p-3', 'p-2']);
+  });
+
+  it('filtro: indisponíveis hoje, disponíveis hoje, com períodos futuros (OU entre eles)', () => {
+    expect(filtrarP([INDISPONIVEL_HOJE]).sort()).toEqual(['p-2', 'p-3']);
+    expect(filtrarP([DISPONIVEL_HOJE])).toHaveLength(6);
+    expect(filtrarP([COM_FUTUROS])).toEqual(['p-4']);
+    expect(filtrarP([INDISPONIVEL_HOJE, COM_FUTUROS]).sort()).toEqual(['p-2', 'p-3', 'p-4']);
+    expect(filtrosTabelaAtivos({ ...FILTROS_INICIAIS, indisponivel: new Set([COM_FUTUROS]) })).toBe(true);
+  });
+
+  it('as opções do filtro, com o nº de pessoas', () => {
+    const o = opcoesFiltrosTabela(comPeriodos, indP, linhasP).indisponivel;
+    expect(o.map((x) => [x.valor, x.rotulo, x.contagem])).toEqual([
+      [INDISPONIVEL_HOJE, 'Indisponíveis hoje', 2],
+      [DISPONIVEL_HOJE, 'Disponíveis hoje', 6],
+      [COM_FUTUROS, 'Com períodos futuros', 1],
+    ]);
+  });
+
+  it('sem o hoje (índices do servidor) ninguém está indisponível', () => {
+    const semHoje = linhasDaTabela(comPeriodos, indexar(comPeriodos, null));
+    expect(semHoje.every((l) => l.indisponivel === null && l.proximoInicio === null)).toBe(true);
+  });
+});
+
+describe('"Mostrar quem saiu" (M2)', () => {
+  it('sem a caixa só as ativas; com ela também quem saiu, marcado', () => {
+    expect(linhas.some((l) => l.saiu)).toBe(false);
+    const todas = linhasDaTabela(estado, ind, { comQuemSaiu: true });
+    expect(todas).toHaveLength(9);
+    expect(todas.filter((l) => l.saiu).map((l) => l.nome)).toEqual(['Velho I.']);
   });
 });

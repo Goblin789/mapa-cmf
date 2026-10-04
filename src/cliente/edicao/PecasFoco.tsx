@@ -3,15 +3,23 @@
 // (o caminho garantido no telemóvel, sem arrastar), o condutor da carrinha ("Tornar condutor",
 // "Tirar condutor") e onde ela dorme ("Mudar onde dorme…", "Confirmar sugestão"). Mudar o condutor ou
 // onde dorme só se faz aqui dentro, como um passo do rascunho.
+// M2 (docs/m2.md, "Fichas"): "Saiu da empresa…" nas ações da pessoa (no modo de edição) e, a quem já saiu,
+// "Voltou à empresa…" (fora do modo de edição entra nele primeiro); "Confirmar casa" / "Confirmar
+// carrinha" tiram a marca "a confirmar" sem mudar a pessoa de sítio (um passo cada).
 
-import { type CampoMovivel, nomeDaDormida } from '../../dominio/operacoes';
+import { type CampoMovivel, nomeDaDormida, operacaoCampo } from '../../dominio/operacoes';
 import type { Carrinha, Id, Pessoa } from '../../dominio/tipos';
 import { IconeVolante } from '../comum/IconeVolante';
 import { formatarMatricula } from '../comum/Matricula';
 import { NomeChip } from '../comum/NomeChip';
 import { useLoja } from '../estado/loja';
 import { artigoDoVeiculo, comPlural, deArtigoDoVeiculo } from '../paineis/textos';
-import { confirmarSugestaoComAviso, definirCondutorComAviso, entrarEdicaoComAviso } from './acoes';
+import {
+  aplicarComAviso,
+  confirmarSugestaoComAviso,
+  definirCondutorComAviso,
+  entrarEdicaoComAviso,
+} from './acoes';
 import { BOTAO_MINI, BOTAO_PEQUENO, MARCA_ALTERADO } from './classes';
 import type { TipoDestino } from './destinos';
 import { IconeCarrinha, IconeCasa, IconeDormir, IconeGuardar, IconeLapis, IconeObra } from './icones';
@@ -26,7 +34,7 @@ import {
   rotuloDoValor,
   sitioTemAlteracoes,
 } from './resumo';
-import { abrirDormida, abrirMoverPara } from './ui';
+import { abrirDormida, abrirMoverPara, abrirSaida } from './ui';
 
 export function MarcaAlterado() {
   return (
@@ -171,12 +179,12 @@ export function AcoesPessoa({ pessoa }: { pessoa: Pessoa }) {
   const carrinha = useLoja((s) =>
     pessoa.carrinhaId ? s.indices?.carrinhas.get(pessoa.carrinhaId) : undefined,
   );
-  if (!pessoa.ativa) return null;
+  if (!pessoa.ativa) return <AcoesQuemSaiu pessoa={pessoa} />;
 
   if (!modoEdicao) {
     return (
       <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-slate-200 pt-2 text-xs text-slate-600">
-        <span className="min-w-0 flex-1">Para mudar a casa, a carrinha, a obra ou o condutor:</span>
+        <span className="min-w-0 flex-1">Para mudar a ficha, a casa, a carrinha, a obra ou o condutor:</span>
         <button type="button" onClick={entrarEdicaoComAviso} className={BOTAO_PEQUENO}>
           <IconeLapis className="h-3.5 w-3.5" />
           Editar
@@ -216,8 +224,68 @@ export function AcoesPessoa({ pessoa }: { pessoa: Pessoa }) {
               : `Tornar condutor ${deArtigoDoVeiculo(carrinha.tipo)} ${formatarMatricula(carrinha.matricula)}`}
           </button>
         )}
+        <button type="button" onClick={() => abrirSaida(pessoa.id)} className={BOTAO_PEQUENO}>
+          Saiu da empresa…
+        </button>
       </div>
     </div>
+  );
+}
+
+/**
+ * A quem já saiu da empresa (aberto da Tabela com "Mostrar quem saiu"): "Voltou à empresa…". Fora do modo de
+ * edição entra nele primeiro (o diálogo só existe lá).
+ */
+function AcoesQuemSaiu({ pessoa }: { pessoa: Pessoa }) {
+  const modoEdicao = useLoja((s) => s.modoEdicao);
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-slate-200 pt-2 text-xs text-slate-600">
+      <span className="min-w-0 flex-1">Saiu da empresa: não aparece no mapa nem nas listas.</span>
+      <button
+        type="button"
+        onClick={() => {
+          if (!modoEdicao) entrarEdicaoComAviso();
+          abrirSaida(pessoa.id);
+        }}
+        className={BOTAO_PEQUENO}
+      >
+        Voltou à empresa…
+      </button>
+    </div>
+  );
+}
+
+/** Marca "Saiu da empresa" (cinzenta, com um traço além da cor), no cabeçalho da ficha de quem saiu. */
+export function MarcaSaiu() {
+  return (
+    <span className="inline-flex shrink-0 items-center gap-1 rounded border border-slate-500 bg-slate-100 px-1.5 text-[11px] leading-4 font-semibold text-slate-800">
+      <span aria-hidden="true">–</span>
+      Saiu da empresa
+    </span>
+  );
+}
+
+/**
+ * No modo de edição, ao lado da marca "a confirmar": "Confirmar casa" / "Confirmar carrinha" (a marca sai e
+ * a pessoa fica onde está; um passo do rascunho).
+ */
+export function ConfirmarMarca({ pessoa, qual }: { pessoa: Pessoa; qual: 'casa' | 'carrinha' }) {
+  const modoEdicao = useLoja((s) => s.modoEdicao);
+  const campo = qual === 'casa' ? 'casaAConfirmar' : 'carrinhaAConfirmar';
+  if (!modoEdicao || !pessoa[campo]) return null;
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        const { estado } = useLoja.getState();
+        const op = estado ? operacaoCampo(estado, 'pessoa', pessoa.id, campo, false) : null;
+        if (op) aplicarComAviso([op]);
+      }}
+      title={qual === 'casa' ? 'A casa fica confirmada' : 'A carrinha fica confirmada'}
+      className={BOTAO_MINI}
+    >
+      {qual === 'casa' ? 'Confirmar casa' : 'Confirmar carrinha'}
+    </button>
   );
 }
 
@@ -242,7 +310,7 @@ export function PassageirosEmEdicao({
         return (
           <li key={p.id} className="flex min-w-0 items-center gap-1.5">
             <span className="min-w-0 flex-1">
-              <NomeChip pessoa={p} condutor={conduz} />
+              <NomeChip pessoa={p} condutor={conduz} textoIndisponivel />
             </span>
             {conduz && (
               <span className="inline-flex shrink-0 items-center gap-1 text-[11px] font-semibold text-slate-700">

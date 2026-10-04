@@ -15,6 +15,7 @@ const CAMADAS: readonly { camada: Camada; rotulo: string; icone: ReactNode }[] =
 export function ControloCamadas() {
   const camadas = useLoja((s) => s.camadas);
   const alternarCamada = useLoja((s) => s.alternarCamada);
+  // O estado VISÍVEL (com o rascunho): as obras criadas (ou apagadas) no modo de edição já contam.
   const estado = useLoja((s) => s.estado);
   const quantos: Record<Camada, number> = {
     casas: estado?.casas.length ?? 0,

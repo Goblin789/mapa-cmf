@@ -16,9 +16,17 @@
 // - Clientes que desaparecem só saem sem pessoas nem obras (senão é erro bloqueante).
 // - Locais nunca se apagam (podem ter obras e carrinhas a dormir lá): os que só existem na base de dados
 //   ficam e o relatório diz quais são.
+// - M2: um campo mudado no programa NUNCA é desfeito (`editados`: a linha mais recente desse campo em
+//   `alteracoes` é de um lote que não é da importação nem dos dados iniciais): fica o valor do programa e o
+//   plano lista-o em `mantidos` ("Ficou o valor do programa"). Daí em diante muda-se no programa, ou com
+//   --usar-json entidade:id:campo (`usarJson`), que aplica de propósito o valor do JSON. Um registo apagado no
+//   programa (CAMPO_REGISTO com depois null) não volta a entrar.
+// - M2: casas e veículos que saem com problemas por resolver: recusado ("A carrinha CF 5003 tem 1 problema
+//   por resolver: resolve-o antes"); os problemas resolvidos apagam-se antes deles (ficam no histórico).
 
 import { formatarMatricula } from '../dominio/matricula';
-import type { Carrinha, Casa, Cliente, Estado, Id, Local } from '../dominio/tipos';
+import { CAMPO_REGISTO } from '../dominio/operacoes';
+import type { Carrinha, Casa, Cliente, Estado, Id, Local, Problema } from '../dominio/tipos';
 import { montarReferencias, type Referencias } from './montar';
 import type { DadosReferencia, ErroImportacao } from './tipos';
 
@@ -83,6 +91,32 @@ export interface Alterado {
   mudancas: MudancaCampo[];
 }
 
+/**
+ * Um campo dos JSON que foi mudado no programa: fica o valor do programa (a sincronização nunca desfaz uma
+ * edição). Para aplicar o do JSON: --usar-json entidade:id:campo.
+ */
+export interface Mantido {
+  entidade: EntidadeSincronizada;
+  id: Id;
+  /** Ex.: "Casa Um", "Carrinha CF 5001". */
+  rotulo: string;
+  campo: string;
+  valorPrograma: Valor;
+  valorJson: Valor;
+}
+
+/** Um registo dos JSON que foi apagado no programa: não volta a entrar. */
+export interface ApagadoNoPrograma {
+  entidade: EntidadeSincronizada;
+  id: Id;
+  rotulo: string;
+}
+
+/** Chave de um campo (ou de um registo, com CAMPO_REGISTO) nos conjuntos `editados` e `usarJson`. */
+export function chaveCampo(entidade: string, id: Id, campo: string): string {
+  return `${entidade}:${id}:${campo}`;
+}
+
 /** Pessoa que ia num veículo que sai da frota. */
 export interface SemTransporte {
   pessoaId: Id;
@@ -118,7 +152,19 @@ export interface PlanoSincronizacao {
    * por isso ficam, com as pessoas e o condutor.
    */
   temporariasSoNaBd: Carrinha[];
-  /** Erros dos JSON e saídas impossíveis (cliente com pessoas, casa com moradores): impedem o --aplicar. */
+  /**
+   * M2: campos que mudaram nos JSON mas tinham sido mudados no programa: fica o valor do programa (não se
+   * gravam). Os de `usarJson` não ficam aqui: aplicam-se.
+   */
+  mantidos: Mantido[];
+  /** M2: registos dos JSON apagados no programa (não voltam). */
+  apagadosNoPrograma: ApagadoNoPrograma[];
+  /** M2: problemas resolvidos das casas e veículos que saem: apagam-se antes deles (ficam no histórico). */
+  problemasApagados: Problema[];
+  /**
+   * Erros dos JSON e saídas impossíveis (cliente com pessoas, casa com moradores, problemas por resolver):
+   * impedem o --aplicar.
+   */
   erros: ErroImportacao[];
 }
 
@@ -163,8 +209,18 @@ function mudancas(campos: readonly string[], atual: object, novo: object): Mudan
 /**
  * Compara os dados iniciais com o estado da base de dados e devolve o que muda. Não altera nada.
  * Se `erros` não estiver vazio, o plano não se pode aplicar.
+ * @param estado o estado COMPLETO (com os problemas resolvidos antigos: os das casas e veículos que saem).
+ * @param editados "entidade:id:campo" mudados no programa (a linha mais recente em `alteracoes` não é da
+ *   importação nem dos dados iniciais): ficam com o valor do programa. "entidade:id:@registo" = apagado no
+ *   programa: não volta a entrar.
+ * @param usarJson "entidade:id:campo" em que se aplica o valor do JSON mesmo que tenha sido editado.
  */
-export function planearSincronizacao(dados: DadosReferencia, estado: Estado): PlanoSincronizacao {
+export function planearSincronizacao(
+  dados: DadosReferencia,
+  estado: Estado,
+  editados: ReadonlySet<string> = new Set(),
+  usarJson: ReadonlySet<string> = new Set(),
+): PlanoSincronizacao {
   const { referencias: ref, erros } = montarReferencias(dados);
   const plano: PlanoSincronizacao = {
     novos: { clientes: [], locais: [], casas: [], carrinhas: [] },
@@ -175,6 +231,9 @@ export function planearSincronizacao(dados: DadosReferencia, estado: Estado): Pl
     dormidasRetiradas: [],
     locaisSoNaBd: [],
     temporariasSoNaBd: [],
+    mantidos: [],
+    apagadosNoPrograma: [],
+    problemasApagados: [],
     erros: [...erros],
   };
 
@@ -205,13 +264,33 @@ export function planearSincronizacao(dados: DadosReferencia, estado: Estado): Pl
     for (const novo of doJson) {
       const atual = atuais.get(novo.id);
       if (!atual) {
-        novos.push(novo);
+        if (editados.has(chaveCampo(entidade, novo.id, CAMPO_REGISTO))) {
+          plano.apagadosNoPrograma.push({ entidade, id: novo.id, rotulo: rotulo(entidade, novo) });
+        } else {
+          novos.push(novo);
+        }
         continue;
       }
-      const m = mudancas(CAMPOS_SINCRONIZADOS[entidade], atual, novo);
+      const m: MudancaCampo[] = [];
+      for (const mudanca of mudancas(CAMPOS_SINCRONIZADOS[entidade], atual, novo)) {
+        const chave = chaveCampo(entidade, novo.id, mudanca.campo);
+        if (editados.has(chave) && !usarJson.has(chave)) {
+          plano.mantidos.push({
+            entidade,
+            id: novo.id,
+            rotulo: rotulo(entidade, atual),
+            campo: mudanca.campo,
+            valorPrograma: mudanca.antes,
+            valorJson: mudanca.depois,
+          });
+        } else {
+          m.push(mudanca);
+        }
+      }
       if (m.length > 0)
         plano.alterados.push({ entidade, id: novo.id, rotulo: rotulo(entidade, novo), mudancas: m });
     }
+    // Os apagados no programa contam como "no JSON": não são registos que saem.
     return new Set(doJson.map((r) => r.id));
   }
 
@@ -242,12 +321,35 @@ export function planearSincronizacao(dados: DadosReferencia, estado: Estado): Pl
     });
   }
 
+  /**
+   * Problemas de uma casa/veículo que sai: com algum por resolver, erro bloqueante (devolve true); os
+   * resolvidos apagam-se antes do registo (FK) e ficam no histórico.
+   */
+  function problemasQueSaem(quem: string, doAlvo: (p: Problema) => boolean, onde: string): boolean {
+    const dele = (estado.problemas ?? []).filter(doAlvo);
+    const abertos = dele.filter((p) => p.resolvidoEm === null).length;
+    if (abertos > 0) {
+      plano.erros.push({
+        bloqueante: true,
+        mensagem: `${quem} tem ${plural(abertos, 'problema', 'problemas')} por resolver: ${
+          abertos === 1 ? 'resolve-o' : 'resolve-os'
+        } antes.`,
+        onde,
+      });
+      return true;
+    }
+    plano.problemasApagados.push(...dele);
+    return false;
+  }
+
   const idsCasas = comparar('casa', ref.casas, estado.casas, plano.novos.casas);
   const casasQueSaem = new Set<Id>();
   for (const c of estado.casas) {
     if (idsCasas.has(c.id)) continue;
     const moradores = estado.pessoas.filter((p) => p.casaId === c.id).length;
     if (moradores === 0) {
+      if (problemasQueSaem(`A casa "${c.nome}"`, (p) => p.casaId === c.id, 'dados-iniciais/casas.json'))
+        continue;
       plano.removidos.casas.push(c);
       casasQueSaem.add(c.id);
       continue;
@@ -273,6 +375,8 @@ export function planearSincronizacao(dados: DadosReferencia, estado: Estado): Pl
       }
       continue;
     }
+    const veiculo = `${c.tipo === 'carro' ? 'O carro' : 'A carrinha'} ${formatarMatricula(c.matricula)}`;
+    problemasQueSaem(veiculo, (p) => p.carrinhaId === c.id, 'dados-iniciais/carrinhas.json');
     plano.removidos.carrinhas.push(c);
     for (const p of estado.pessoas) {
       if (p.carrinhaId !== c.id) continue;
@@ -426,6 +530,16 @@ export function alteracoesDoPlano(plano: PlanoSincronizacao): LinhaAlteracaoSinc
       campo: CAMPO_DORMIDA,
       antes: JSON.stringify(`casa:${d.casaId}`),
       depois: JSON.stringify(null),
+    });
+  }
+  // M2: os problemas resolvidos das casas e veículos que saem (o registo inteiro, como os do programa).
+  for (const p of plano.problemasApagados) {
+    linhas.push({
+      entidade: 'problema',
+      entidadeId: p.id,
+      campo: CAMPO_REGISTO,
+      antes: JSON.stringify(p),
+      depois: null,
     });
   }
   for (const c of plano.removidos.carrinhas) {
@@ -605,6 +719,20 @@ export function frasesDoPlano(plano: PlanoSincronizacao, estado: Pick<Estado, 'l
   for (const l of plano.locaisSoNaBd) {
     frases.push(`${rotulo('local', l)} só existe na base de dados: fica (os locais nunca se apagam)`);
   }
+  if (plano.problemasApagados.length > 0) {
+    frases.push(
+      `${plural(plano.problemasApagados.length, 'problema resolvido apagado', 'problemas resolvidos apagados')} ` +
+        '(das casas e veículos que saem; ficam no histórico)',
+    );
+  }
+  for (const m of plano.mantidos) {
+    frases.push(
+      `${m.rotulo}: ${nomeCampo(m.campo)} fica ${formatarValor(m.valorPrograma, nomeLocal, m.campo)} ` +
+        `(mudado no programa; no JSON: ${formatarValor(m.valorJson, nomeLocal, m.campo)})`,
+    );
+  }
+  for (const a of plano.apagadosNoPrograma)
+    frases.push(`${a.rotulo} foi apagado no programa: não volta a entrar`);
   return frases;
 }
 
@@ -622,6 +750,10 @@ export interface ContagensSincronizacao {
   semTransporte: number;
   condutoresRetirados: number;
   dormidasRetiradas: number;
+  /** M2: campos que ficaram com o valor do programa. */
+  mantidos: number;
+  /** M2: problemas resolvidos apagados (das casas e veículos que saem). */
+  problemasApagados: number;
   erros: number;
 }
 
@@ -647,6 +779,8 @@ export function contarPlano(plano: PlanoSincronizacao): ContagensSincronizacao {
     semTransporte: plano.semTransporte.length,
     condutoresRetirados: plano.condutoresRetirados.length,
     dormidasRetiradas: plano.dormidasRetiradas.length,
+    mantidos: plano.mantidos.length,
+    problemasApagados: plano.problemasApagados.length,
     erros: plano.erros.length,
   };
 }
@@ -702,6 +836,14 @@ export function resumoDoPlano(plano: PlanoSincronizacao): string {
     frases.push(
       `${plural(n.dormidasRetiradas, 'carrinha fica', 'carrinhas ficam')} com onde dorme por definir.`,
     );
+  }
+  if (n.problemasApagados > 0) {
+    frases.push(
+      `${plural(n.problemasApagados, 'problema resolvido apagado', 'problemas resolvidos apagados')}.`,
+    );
+  }
+  if (n.mantidos > 0) {
+    frases.push(`${plural(n.mantidos, 'campo ficou', 'campos ficaram')} com o valor do programa.`);
   }
   return frases.join(' ');
 }

@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
+import { dormidasDasCarrinhas } from '../../../dominio/dormidas';
+import { indexar } from '../../../dominio/indices';
 import { disporMapa } from './disposicao';
 import { contextoFicticio } from './estadoFicticioTeste';
 import { linhasFoco, relacoesFoco } from './foco';
 import { centro, contem } from './geometria';
 import { montarModelo } from './grupos';
+import { projetarArredondado } from './projecao';
 
 const { estado, indices, dormidas } = contextoFicticio();
 const modelo = montarModelo(estado, indices, dormidas);
@@ -101,5 +104,74 @@ describe('linhasFoco', () => {
     // C2 e V2 estão ambas no local L1.
     const linhas = linhasFoco(relacoesFoco({ tipo: 'pessoa', id: 'p6' }, indices), d, indices);
     expect(linhas).toEqual([]);
+  });
+});
+
+describe('foco numa obra (M2)', () => {
+  // Na OB1 trabalham a p1 (C1, V2), a p4 (C1, V1) e a p7 (C3, V1).
+  const base = contextoFicticio();
+  const estadoO = {
+    ...base.estado,
+    pessoas: base.estado.pessoas.map((p) => (p.id === 'p4' || p.id === 'p7' ? { ...p, obraId: 'OB1' } : p)),
+  };
+  const indO = indexar(estadoO, null);
+  const dormO = dormidasDasCarrinhas(estadoO, indO);
+
+  it('realça o cartão da obra e liga-o às casas e às carrinhas de quem lá trabalha (sem repetir)', () => {
+    const r = relacoesFoco({ tipo: 'obra', id: 'OB1' }, indO);
+    expect([...r.destaques]).toEqual(['obra:OB1', 'casa:C1', 'casa:C3', 'carrinha:V2', 'carrinha:V1']);
+    expect(r.ligacoes.map((l) => (l.para.tipo === 'cartao' ? l.para.chave : ''))).toEqual([
+      'casa:C1',
+      'casa:C3',
+      'carrinha:V2',
+      'carrinha:V1',
+    ]);
+    expect(r.ligacoes.every((l) => l.de.tipo === 'cartao' && l.de.chave === 'obra:OB1')).toBe(true);
+  });
+
+  it('obra sem ninguém: só o cartão; obra que não existe: nada', () => {
+    const vazia = { ...estadoO, pessoas: estadoO.pessoas.map((p) => ({ ...p, obraId: null })) };
+    const r = relacoesFoco({ tipo: 'obra', id: 'OB1' }, indexar(vazia, null));
+    expect([...r.destaques]).toEqual(['obra:OB1']);
+    expect(r.ligacoes).toEqual([]);
+    expect(relacoesFoco({ tipo: 'obra', id: 'nao-existe' }, indO).destaques.size).toBe(0);
+  });
+
+  it('as linhas saem do cartão da obra (borda a borda) e chegam às casas e carrinhas', () => {
+    const d = disporMapa(montarModelo(estadoO, indO, dormO).grupos, { zoom: 12 });
+    const linhas = linhasFoco(relacoesFoco({ tipo: 'obra', id: 'OB1' }, indO), d, indO);
+    expect(linhas.length).toBeGreaterThan(0);
+    const obra = d.cartoes.get('obra:OB1')?.retangulo;
+    expect(obra).toBeDefined();
+    for (const l of linhas) {
+      expect(contem(obra as never, l.de)).toBe(true);
+      expect(l.obraId).toBeNull();
+      expect(l.obraOrigemId).toBeNull();
+    }
+  });
+
+  it('com a camada das obras desligada, as linhas saem do sítio da obra', () => {
+    const semObras = montarModelo(estadoO, indO, dormO, { casas: true, carrinhas: true, obras: false });
+    const d = disporMapa(semObras.grupos, { zoom: 12 });
+    expect(d.cartoes.has('obra:OB1')).toBe(false);
+    const linhas = linhasFoco(relacoesFoco({ tipo: 'obra', id: 'OB1' }, indO), d, indO);
+    expect(linhas.length).toBeGreaterThan(0);
+    const p = projetarArredondado(49.65, 6.15, 12);
+    for (const l of linhas) {
+      expect(l.de).toEqual({ x: p.x, y: p.y });
+      expect(l.obraOrigemId).toBe('OB1');
+    }
+  });
+
+  it('uma obra sem coordenadas não rebenta: sem linhas', () => {
+    const semPino = {
+      ...estadoO,
+      locais: estadoO.locais.map((l) => (l.id === 'O' ? { ...l, lat: null, lng: null } : l)),
+    };
+    const indS = indexar(semPino, null);
+    const modeloS = montarModelo(semPino, indS, dormidasDasCarrinhas(semPino, indS));
+    expect(modeloS.obrasSemLocal.map((o) => o.id)).toEqual(['OB1']);
+    const d = disporMapa(modeloS.grupos, { zoom: 12 });
+    expect(linhasFoco(relacoesFoco({ tipo: 'obra', id: 'OB1' }, indS), d, indS)).toEqual([]);
   });
 });

@@ -3,6 +3,7 @@ import type { Cell, CellObject } from 'write-excel-file/browser';
 import { COR_TEXTO_NOMES, contraste } from '../../dominio/cores';
 import { dormidasDasCarrinhas } from '../../dominio/dormidas';
 import { indexar } from '../../dominio/indices';
+import { criarIndisponibilidade, criarProblema } from '../../dominio/teste-fabrica';
 import { COR_ALFA, COR_BETA, estadoVistas } from './estadoTeste';
 import {
   CORES_LOTACAO_EXCEL,
@@ -48,6 +49,7 @@ describe('folha Pessoas', () => {
       'Casa',
       'Carrinha',
       'Condutor',
+      'Indisponível até',
       'A confirmar',
     ]);
     expect(cabecalho?.every((c) => obj(c).fontWeight === 'bold')).toBe(true);
@@ -103,9 +105,10 @@ describe('folha Pessoas', () => {
       'XX 1001',
       'Sim',
       null,
+      null,
     ]);
     const oscar = folha.linhas.find((l) => valor(l[0] ?? null) === 'Óscar Gomes');
-    expect(valores(oscar).slice(4)).toEqual(['Fora das casas CMF', 'sem transporte', null, 'carrinha']);
+    expect(valores(oscar).slice(4)).toEqual(['Fora das casas CMF', 'sem transporte', null, null, 'carrinha']);
   });
 });
 
@@ -131,11 +134,12 @@ describe('folha Casas', () => {
       '○ 2/3',
       1,
       'XX 1001',
+      null,
       'Ana B.',
       'Zé A.',
     ]);
-    expect(obj(l1?.[5]).backgroundColor).toBe(COR_ALFA);
-    expect(obj(l1?.[6]).backgroundColor).toBe(COR_BETA);
+    expect(obj(l1?.[6]).backgroundColor).toBe(COR_ALFA);
+    expect(obj(l1?.[7]).backgroundColor).toBe(COR_BETA);
     // A sugestão de onde dorme vai com "≈".
     const aldeia = folha.linhas.find((l) => valor(l[0] ?? null) === 'Aldeia');
     expect(valor(aldeia?.[4] ?? null)).toBe('≈ XX 1002');
@@ -156,16 +160,17 @@ describe('folha Casas', () => {
 
   it('o cabeçalho "Moradores" ocupa as colunas dos nomes', () => {
     const cabecalho = folha.linhas[0];
-    expect(valores(cabecalho).slice(0, 6)).toEqual([
+    expect(valores(cabecalho).slice(0, 7)).toEqual([
       'Casa',
       'Morada',
       'Lotação',
       'Livres',
       'Carrinhas que lá dormem',
+      'Problemas abertos',
       'Moradores',
     ]);
-    expect(obj(cabecalho?.[5]).columnSpan).toBe(2);
-    expect(cabecalho?.[6]).toBeNull();
+    expect(obj(cabecalho?.[6]).columnSpan).toBe(2);
+    expect(cabecalho?.[7]).toBeNull();
   });
 });
 
@@ -182,6 +187,7 @@ describe('folha Carrinhas', () => {
       '○ 2/5',
       'Zé A.',
       'Casa L1',
+      null,
       'Ana B.',
     ]);
     expect(obj(linha('XX 1001')?.[5]).backgroundColor).toBe(COR_BETA);
@@ -198,7 +204,7 @@ describe('folha Carrinhas', () => {
   it('no fim, quem não tem transporte', () => {
     const ultima = folha.linhas.at(-1);
     expect(valor(ultima?.[0] ?? null)).toBe('Sem transporte da empresa');
-    expect(valores(ultima).slice(7)).toEqual(['Inês H.', 'Óscar G.']);
+    expect(valores(ultima).slice(8)).toEqual(['Inês H.', 'Óscar G.']);
   });
 });
 
@@ -250,5 +256,63 @@ describe('Excel com os filtros da Tabela', () => {
     expect(so[0]?.linhas).toHaveLength(filtradas.length + 1);
     expect(so[1]).toEqual(todas[1]);
     expect(so[2]).toEqual(todas[2]);
+  });
+});
+
+describe('Excel do M2: indisponível e problemas', () => {
+  // A Ana até 12/10 e o Zé sem data de regresso; um problema aberto na Casa L1 e dois na
+  // XX 1001 (mais um resolvido, que não conta). Dados fictícios.
+  const ana = estado.pessoas.find((p) => p.nomeCurto === 'Ana B.');
+  const ze = estado.pessoas.find((p) => p.nomeCurto === 'Zé A.');
+  const comM2 = {
+    ...estado,
+    indisponibilidades: [
+      criarIndisponibilidade({ pessoaId: ana?.id ?? '', inicio: '2026-10-01', fim: '2026-10-12' }),
+      criarIndisponibilidade({ pessoaId: ze?.id ?? '', inicio: '2026-10-03', fim: null }),
+    ],
+    problemas: [
+      criarProblema({ casaId: 'casa-l1', texto: 'Esquentador avariado' }),
+      criarProblema({ casaId: null, carrinhaId: 'XX1001', texto: 'Pneu furado' }),
+      criarProblema({ casaId: null, carrinhaId: 'XX1001', texto: 'Porta não fecha' }),
+      criarProblema({ casaId: null, carrinhaId: 'XX1001', texto: 'Luz', resolvidoEm: '2026-10-02' }),
+    ],
+  };
+  const indM2 = indexar(comM2, '2026-10-04');
+  const dormidasM2 = dormidasDasCarrinhas(comM2, indM2);
+
+  it('folha Pessoas: "Indisponível até" com dd/mm/aaaa ou "sem data"; vazio para quem está disponível', () => {
+    const folha = folhaPessoas(comM2, indM2);
+    const coluna = (nome: string) =>
+      valor(folha.linhas.find((l) => valor(l[0] ?? null) === nome)?.[7] ?? null);
+    expect(coluna('Ana Barros')).toBe('12/10/2026');
+    expect(coluna('José Amaral')).toBe('sem data');
+    expect(coluna('Rui Costa')).toBeNull();
+  });
+
+  it('folhas Casas e Carrinhas: "Problemas abertos" (só os abertos)', () => {
+    const casas = folhaCasas(comM2, indM2, dormidasM2);
+    expect(valor(casas.linhas.find((l) => valor(l[0] ?? null) === 'Casa L1')?.[5] ?? null)).toBe(1);
+    expect(valor(casas.linhas.find((l) => valor(l[0] ?? null) === 'Casa L2')?.[5] ?? null)).toBeNull();
+    const carrinhas = folhaCarrinhas(comM2, indM2, dormidasM2);
+    expect(valor(carrinhas.linhas.find((l) => valor(l[0] ?? null) === 'XX 1001')?.[7] ?? null)).toBe(2);
+  });
+
+  it('a ocupação da carrinha não conta quem está indisponível hoje (continua na lista)', () => {
+    const carrinhas = folhaCarrinhas(comM2, indM2, dormidasM2);
+    const xx1001 = carrinhas.linhas.find((l) => valor(l[0] ?? null) === 'XX 1001');
+    // Zé (condutor) e Ana vão na XX 1001 e estão os dois indisponíveis hoje.
+    expect(valor(xx1001?.[4] ?? null)).toBe('○ 0/5');
+    expect(valores(xx1001).slice(8)).toEqual(['Ana B.']);
+  });
+
+  it('quem saiu da empresa (com "Mostrar quem saiu" na Tabela) leva "(saiu)" no nome', () => {
+    const saiu = {
+      ...estado,
+      pessoas: estado.pessoas.map((p) => (p.id === ana?.id ? { ...p, ativa: false } : p)),
+    };
+    const ind2 = indexar(saiu, '2026-10-04');
+    const linhas = linhasDaTabela(saiu, ind2, { comQuemSaiu: true });
+    const nomes = folhaPessoas(saiu, ind2, linhas).linhas.map((l) => valor(l[0] ?? null));
+    expect(nomes).toContain('Ana Barros (saiu)');
   });
 });

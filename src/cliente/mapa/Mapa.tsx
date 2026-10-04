@@ -3,16 +3,22 @@
 // createPortal; as posições vêm das funções puras de layout/ (calculadas aqui, para o zoom e o tamanho
 // atuais, com as camadas ligadas e o rascunho do modo de edição já aplicado ao estado).
 // No canto superior direito: as camadas (Casas, Carrinhas, Obras) e a doca das carrinhas sem local.
+// M2: o mapa não deixa ir para fora de REGIAO_MAPA (a mesma região onde se podem pôr pinos) e, no modo de
+// edição, o clique direito (ou toque longo) no fundo abre "Nova obra aqui" (interacoesEdicao.ts).
 
 import * as L from 'leaflet';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { REGIAO_MAPA } from '../../dominio/campos';
+import { abrirObra } from '../edicao/ui';
 import { useLoja } from '../estado/loja';
+import { IconeObra } from '../lista/icones';
+import { FOCO_VISIVEL } from '../paineis/classes';
 import { CamadaCartoes } from './CamadaCartoes';
 import { CartoesNoMapa } from './CartoesNoMapa';
 import { ControloCamadas } from './ControloCamadas';
 import { DocaCarrinhas } from './DocaCarrinhas';
-import { useArrastoNoMapa, useCaixaSelecao } from './interacoesEdicao';
+import { type MenuNovaObra, useArrastoNoMapa, useCaixaSelecao, useMenuNovaObra } from './interacoesEdicao';
 import { type Disposicao, disporMapa } from './layout/disposicao';
 import { centroParaIrPara, enquadrarTudo, type Margens } from './layout/enquadramento';
 import { LARGURA_ESTREITA } from './layout/escala';
@@ -20,10 +26,13 @@ import { type GrupoNoMapa, montarModelo } from './layout/grupos';
 import { useVistaMapa } from './useVistaMapa';
 import { continuaAutomatica, type VistaAutomatica } from './vistaAutomatica';
 
-/** Só o Luxemburgo e arredores (França, Bélgica, Alemanha). */
-const LIMITES: L.LatLngBoundsLiteral = [
-  [49.15, 5.3],
-  [50.35, 6.95],
+/**
+ * Só o Luxemburgo e arredores (França, Bélgica, Alemanha): REGIAO_MAPA, a mesma região onde se podem pôr
+ * pinos (o mini-mapa da morada usa-a também). Nunca se cria um pino onde o mapa não deixa ir.
+ */
+export const LIMITES: L.LatLngBoundsLiteral = [
+  [REGIAO_MAPA.sul, REGIAO_MAPA.oeste],
+  [REGIAO_MAPA.norte, REGIAO_MAPA.leste],
 ];
 const ZOOM_MINIMO = 9;
 const ZOOM_MAXIMO = 17;
@@ -33,8 +42,8 @@ const PASSO_ZOOM = 0.25;
 const CENTRO_OMISSAO: L.LatLngTuple = [49.65, 6.13];
 const ZOOM_OMISSAO = 10;
 
-const URL_MOSAICOS = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
-const ATRIBUICAO = '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
+export const URL_MOSAICOS = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+export const ATRIBUICAO = '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
 
 /** Espaço livre à volta na vista inicial (em cima à direita ficam as camadas). */
 function margensIniciais(largura: number): Margens {
@@ -216,6 +225,7 @@ export function Mapa() {
 
   useArrastoNoMapa(instancia);
   useCaixaSelecao(instancia, refCaixa);
+  const [menuNovaObra, fecharMenuNovaObra] = useMenuNovaObra(instancia);
 
   return (
     <>
@@ -226,6 +236,14 @@ export function Mapa() {
         aria-hidden="true"
         className="pointer-events-none absolute z-10 hidden rounded-sm border-2 border-blue-600 bg-blue-500/10"
       />
+      {menuNovaObra && (
+        <MenuNovaObraAqui
+          menu={menuNovaObra}
+          largura={largura}
+          altura={altura}
+          aoFechar={fecharMenuNovaObra}
+        />
+      )}
       {instancia &&
         createPortal(
           <CartoesNoMapa camada={instancia.camada} disposicao={disposicao} />,
@@ -242,5 +260,64 @@ export function Mapa() {
         )}
       </div>
     </>
+  );
+}
+
+/** Largura e altura (px) do menu "Nova obra aqui", para não sair do mapa. */
+const LARGURA_MENU = 176;
+const ALTURA_MENU = 44;
+
+/**
+ * Menu pequeno do clique direito / toque longo no fundo do mapa (modo de edição): "Nova obra aqui" abre o
+ * diálogo da obra nova com o pino nesse ponto. Esc, sair dele (Tab, clicar fora) ou mexer no mapa fecham-no.
+ */
+function MenuNovaObraAqui({
+  menu,
+  largura,
+  altura,
+  aoFechar,
+}: {
+  menu: MenuNovaObra;
+  largura: number;
+  altura: number;
+  aoFechar: () => void;
+}) {
+  const botao = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    botao.current?.focus();
+  }, []);
+  const x = Math.max(4, Math.min(menu.x, (largura || menu.x + LARGURA_MENU) - LARGURA_MENU - 4));
+  const y = Math.max(4, Math.min(menu.y, (altura || menu.y + ALTURA_MENU) - ALTURA_MENU - 4));
+  const aoTeclar = (e: KeyboardEvent) => {
+    if (e.key !== 'Escape') return;
+    e.preventDefault();
+    e.stopPropagation();
+    aoFechar();
+  };
+  return (
+    <div
+      role="menu"
+      aria-label="Neste sítio do mapa"
+      onKeyDown={aoTeclar}
+      onBlur={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) aoFechar();
+      }}
+      className="absolute z-20 rounded-md border border-slate-300 bg-white p-1 shadow-lg"
+      style={{ left: x, top: y, width: LARGURA_MENU }}
+    >
+      <button
+        ref={botao}
+        type="button"
+        role="menuitem"
+        onClick={() => {
+          aoFechar();
+          abrirObra(null, { lat: menu.lat, lng: menu.lng });
+        }}
+        className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm font-medium text-slate-900 hover:bg-slate-100 ${FOCO_VISIVEL}`}
+      >
+        <IconeObra className="size-4 text-amber-700" />
+        Nova obra aqui
+      </button>
+    </div>
   );
 }

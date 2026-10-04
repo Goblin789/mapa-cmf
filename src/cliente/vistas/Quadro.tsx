@@ -1,7 +1,10 @@
-// Vista Quadro: as casas (ou as carrinhas) em blocos, como as folhas do Michael. Cada bloco tem o nome
-// (ou a matrícula) e a pastilha da lotação no cabeçalho, os nomes por baixo (condutor primeiro, com o
+// Vista Quadro: as casas (ou as carrinhas, ou as obras) em blocos, como as folhas do Michael. Cada bloco tem
+// o nome (ou a matrícula) e a pastilha da lotação no cabeçalho, os nomes por baixo (condutor primeiro, com o
 // volante) e, em baixo, a ligação: numa casa as carrinhas que lá dormem, numa carrinha onde dorme.
 // Agrupamento e ordem em agrupamentoQuadro.ts (país, zonas de vizinhos lado a lado, "fora/sem" no fim).
+// M2, por obras (3.º botão, também na reunião): um bloco por obra, por cliente, e "Sem obra" no fim; a
+// pastilha é o nº de pessoas e cada nome leva por baixo, em letra pequena, a casa de onde vem. O título de
+// uma obra abre a ficha dela; os blocos são alvos de largar como os outros.
 //
 // Casas e carrinhas mostram os lugares livres ("livre", tracejados) até à lotação.
 //
@@ -745,8 +748,8 @@ function Titulo({
       id={id}
       className={`flex min-w-0 items-center ${bloco.largo ? 'max-w-full flex-[1_0_auto]' : 'flex-1'}`}
     >
-      {/* Fora da reunião, o título abre (ou fecha) a ficha, como os cartões do mapa. */}
-      {interativo && idBloco && (tipo === 'casa' || tipo === 'carrinha') ? (
+      {/* Fora da reunião, o título abre (ou fecha) a ficha, como os cartões do mapa (M2: também a obra). */}
+      {interativo && idBloco && (tipo === 'casa' || tipo === 'carrinha' || tipo === 'obra') ? (
         <button
           type="button"
           aria-pressed={emFoco}
@@ -804,13 +807,15 @@ function BlocoVista({ bloco, letra }: { bloco: BlocoQuadro; letra: number }) {
   const emFoco = useLoja(
     (s) => interativo && bloco.id !== null && s.foco?.tipo === bloco.tipo && s.foco.id === bloco.id,
   );
-  const alterado = useLoja((s) => interativo && s.modoEdicao && blocoTemAlteracoes(s.pendentes, bloco));
+  const alterado = useLoja(
+    (s) => interativo && s.modoEdicao && blocoTemAlteracoes(s.pendentes, bloco, s.estado),
+  );
   const realceFoco = useContext(ContextoRealceFoco);
   // Ordem dos nomes do bloco: o Shift+clique escolhe o intervalo dentro dela.
   const ordem = useMemo(() => bloco.pessoas.map((p) => p.id), [bloco.pessoas]);
   const idTitulo = useId();
   if (!indices) return null;
-  const { lotacao, largo, pessoas, vazios, detalhe, tipo, id, recolhido, escondidas } = bloco;
+  const { lotacao, largo, pessoas, vazios, detalhe, tipo, id, recolhido, escondidas, deOnde } = bloco;
   const cabecalho = (
     <>
       <Titulo bloco={bloco} letra={letra} id={idTitulo} interativo={interativo} />
@@ -836,7 +841,9 @@ function BlocoVista({ bloco, letra }: { bloco: BlocoQuadro; letra: number }) {
   const atributos = {
     'aria-labelledby': idTitulo,
     'data-elemento':
-      id !== null && (tipo === 'casa' || tipo === 'carrinha') ? chaveElemento({ tipo, id }) : undefined,
+      id !== null && (tipo === 'casa' || tipo === 'carrinha' || tipo === 'obra')
+        ? chaveElemento({ tipo, id })
+        : undefined,
     'data-alvo': alvo ? bloco.chave : undefined,
   };
   const contorno = [
@@ -877,8 +884,9 @@ function BlocoVista({ bloco, letra }: { bloco: BlocoQuadro; letra: number }) {
       >
         {cabecalho}
       </header>
-      {/* Na reunião não há marca e modelo: não interessam para a reunião e roubavam uma linha por carrinha. */}
-      {detalhe && tipo === 'carrinha' && !reuniao && (
+      {/* Na reunião não há marca e modelo (nem a morada da obra): não interessam para a reunião e roubavam
+          uma linha por bloco. */}
+      {detalhe && (tipo === 'carrinha' || tipo === 'obra') && !reuniao && (
         <p
           className={`-mt-[0.1em] truncate px-[0.5em] ${TEXTO_SECUNDARIO} leading-snug text-slate-500`}
           title={detalhe}
@@ -915,6 +923,17 @@ function BlocoVista({ bloco, letra }: { bloco: BlocoQuadro; letra: number }) {
                   interativo={interativo}
                   arrastavel={interativo}
                 />
+                {/* M2, por obras: a casa de onde vem, em letra pequena. Sem largura própria (w-0 min-w-full):
+                    a coluna continua a ser a do nome; sem a classe truncate, que o useAjuste mede. */}
+                {deOnde?.has(p.id) && (
+                  <span
+                    title={`Vem de: ${deOnde.get(p.id)}`}
+                    className={`block w-0 min-w-full overflow-hidden px-[0.35em] ${TEXTO_SECUNDARIO} leading-tight text-ellipsis whitespace-nowrap text-slate-500`}
+                  >
+                    <span className="sr-only">vem de </span>
+                    {deOnde.get(p.id)}
+                  </span>
+                )}
               </li>
             ))}
             {escondidas > 0 && (
@@ -1032,6 +1051,20 @@ function FaixaVista({
   );
 }
 
+/** O que conta cada agrupamento ("3 casas", "5 carrinhas", "2 obras"). */
+const UNIDADE_AGRUPAMENTO: Record<Agrupamento, readonly [string, string]> = {
+  casas: ['casa', 'casas'],
+  carrinhas: ['carrinha', 'carrinhas'],
+  obras: ['obra', 'obras'],
+};
+
+/** Nome do Quadro para os leitores de ecrã. */
+const ROTULO_QUADRO: Record<Agrupamento, string> = {
+  casas: 'Quadro das casas',
+  carrinhas: 'Quadro das carrinhas',
+  obras: 'Quadro das obras',
+};
+
 function SeccaoVista({
   seccao,
   letra,
@@ -1045,7 +1078,7 @@ function SeccaoVista({
   // Com uma só faixa com título (ex.: França → Himeling), os dois títulos vão na mesma linha.
   const [primeira] = seccao.faixas;
   const juntar = seccao.faixas.length === 1 && primeira?.titulo != null;
-  const unidade = agrupamento === 'casas' ? ['casa', 'casas'] : ['carrinha', 'carrinhas'];
+  const [singular, plural] = UNIDADE_AGRUPAMENTO[agrupamento];
   return (
     <section aria-labelledby={seccao.titulo ? idTitulo : undefined} className="flex flex-col gap-[0.3em]">
       {seccao.titulo && (
@@ -1056,7 +1089,7 @@ function SeccaoVista({
           </span>
           {seccao.nBlocos > 0 && (
             <span className="text-slate-500">
-              {comPlural(seccao.nBlocos, unidade[0] as string, unidade[1] as string)} ·{' '}
+              {comPlural(seccao.nBlocos, singular, plural)} ·{' '}
               {comPlural(seccao.nPessoas, 'pessoa', 'pessoas')}
             </span>
           )}
@@ -1340,7 +1373,7 @@ export function Quadro({ reuniao = false }: { reuniao?: boolean }) {
   return (
     <section
       ref={raiz}
-      aria-label={agrupamento === 'casas' ? 'Quadro das casas' : 'Quadro das carrinhas'}
+      aria-label={ROTULO_QUADRO[agrupamento]}
       className="relative flex min-h-0 flex-1 flex-col bg-slate-50"
     >
       {reuniao && (
@@ -1365,10 +1398,7 @@ export function Quadro({ reuniao = false }: { reuniao?: boolean }) {
           {/* No telemóvel só as pessoas: assim a barra fica em duas linhas (a 2.ª com os filtros). */}
           <p className="text-sm text-slate-700 tabular-nums">
             <span className="max-sm:hidden">
-              {agrupamento === 'casas'
-                ? comPlural(nBlocos, 'casa', 'casas')
-                : comPlural(nBlocos, 'carrinha', 'carrinhas')}{' '}
-              ·{' '}
+              {comPlural(nBlocos, ...UNIDADE_AGRUPAMENTO[agrupamento])} ·{' '}
             </span>
             {filtrado ? (
               <ContagemFiltro n={nFiltradas} total={nPessoas} />
@@ -1388,7 +1418,8 @@ export function Quadro({ reuniao = false }: { reuniao?: boolean }) {
                 {/* No telemóvel numa linha só: os blocos e a ficha precisam da altura. */}
                 <span className="sm:hidden">Toque longo num nome para o arrastar.</span>
                 <span className="max-sm:hidden">
-                  Arrasta os nomes para outra casa ou carrinha (no telemóvel, toque longo).
+                  Arrasta os nomes para outra {agrupamento === 'obras' ? 'obra' : 'casa ou carrinha'} (no
+                  telemóvel, toque longo).
                 </span>
                 <span className="hidden md:inline"> Shift+arrastar no fundo seleciona vários.</span>
               </p>

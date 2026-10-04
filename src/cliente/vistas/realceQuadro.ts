@@ -1,16 +1,18 @@
-// Vista Quadro: o que se acende para mostrar uma pessoa, casa ou carrinha (pedidos de vistas/mostrar.ts e
-// o foco da ficha) e que blocos têm alterações por guardar. Funções puras.
+// Vista Quadro: o que se acende para mostrar uma pessoa, casa, carrinha ou obra (pedidos de vistas/mostrar.ts
+// e o foco da ficha) e que blocos têm alterações por guardar. Funções puras.
 //
 // Uma casa no Quadro por carrinhas não tem bloco (nem uma carrinha no Quadro por casas): acendem-se os
 // nomes de quem lá mora (ou de quem lá vai), que é o que interessa ver. Sem ninguém, acende-se a ligação
 // que o rodapé mostra: a casa onde a carrinha dorme, ou as carrinhas que dormem na casa. Se nem isso
 // houver, a vista não tem nada para acender e diz porquê num aviso curto (avisoSemNadaNoQuadro).
+// M2 (obras): a obra só tem bloco no Quadro por obras; nos outros acendem-se as pessoas dela. No Quadro por
+// obras, as casas e as carrinhas não têm bloco: acendem-se os moradores ou os passageiros.
 
 import type { Dormida } from '../../dominio/dormidas';
 import type { Indices } from '../../dominio/indices';
 import { formatarMatricula } from '../../dominio/matricula';
 import type { Operacao } from '../../dominio/operacoes';
-import type { Id } from '../../dominio/tipos';
+import type { Estado, Id } from '../../dominio/tipos';
 import { sitioTemAlteracoes } from '../edicao/resumo';
 import { ROTULO_TIPO_VEICULO } from '../paineis/textos';
 import type { BlocoQuadro } from './agrupamentoQuadro';
@@ -22,10 +24,10 @@ const chavesPessoas = (pessoas: readonly { id: Id }[]): string[] =>
 
 /**
  * Chaves (data-elemento) a acender no Quadro para mostrar o elemento: a pessoa (se ativa), o bloco da
- * casa ou da carrinha ou, quando não tem bloco neste agrupamento, os moradores ou os passageiros. Se não
- * há ninguém (ex.: uma carrinha vazia no Quadro por casas), o bloco da ligação: a casa onde a carrinha
- * dorme (definida ou sugerida) ou as carrinhas que dormem na casa. Vazio se o elemento não existir ou
- * não houver nada a que chegar.
+ * casa, da carrinha ou da obra ou, quando não tem bloco neste agrupamento, os moradores, os passageiros ou
+ * quem lá trabalha. No Quadro por carrinhas, uma casa sem moradores acende as carrinhas que lá dormem; no
+ * Quadro por casas, uma carrinha vazia acende a casa onde dorme (definida ou sugerida). Vazio se o
+ * elemento não existir ou não houver nada a que chegar.
  */
 export function chavesNoQuadro(
   elemento: ElementoVista,
@@ -41,6 +43,7 @@ export function chavesNoQuadro(
       if (agrupamento === 'casas') return [chaveElemento(elemento)];
       const moradores = ind.moradores.get(elemento.id) ?? [];
       if (moradores.length > 0) return chavesPessoas(moradores);
+      if (agrupamento !== 'carrinhas') return [];
       const chaves: string[] = [];
       for (const d of dormidas.values()) {
         if (d.casaId === elemento.id && ind.carrinhas.has(d.carrinhaId)) {
@@ -54,22 +57,26 @@ export function chavesNoQuadro(
       if (agrupamento === 'carrinhas') return [chaveElemento(elemento)];
       const passageiros = ind.passageiros.get(elemento.id) ?? [];
       if (passageiros.length > 0) return chavesPessoas(passageiros);
+      if (agrupamento !== 'casas') return [];
       const casaId = dormidas.get(elemento.id)?.casaId ?? null;
       return casaId !== null && ind.casas.has(casaId) ? [chaveElemento({ tipo: 'casa', id: casaId })] : [];
     }
     case 'obra': {
-      // M2: quem trabalha na obra. CONTRATO DO M2 (módulo Obras): o bloco da obra no Quadro por obras.
+      // M2: no Quadro por obras, o bloco da obra (está sempre lá); nos outros, quem trabalha nela.
       if (!ind.obras.has(elemento.id)) return [];
+      if (agrupamento === 'obras') return [chaveElemento(elemento)];
       return chavesPessoas(ind.trabalhadores.get(elemento.id) ?? []);
     }
   }
 }
 
 /**
- * Aviso curto quando se pede para mostrar uma casa (no Quadro por carrinhas) ou uma carrinha (no Quadro
- * por casas) e não há nada no Quadro a que chegar (chavesNoQuadro vazio): sem isto, a ficha abria e a
- * vista ficava parada, sem sinal nenhum. null quando há o que acender, num elemento que tem bloco neste
- * agrupamento (está sempre lá), numa pessoa ou num elemento que não existe. O agrupamento não muda.
+ * Aviso curto quando se pede para mostrar um elemento sem bloco neste agrupamento e não há nada no Quadro a
+ * que chegar (chavesNoQuadro vazio): uma casa sem ninguém (no Quadro por carrinhas, também sem carrinhas a
+ * dormir lá), uma carrinha sem ninguém (no Quadro por casas, também sem casa onde dorme) ou uma obra sem
+ * ninguém fora do Quadro por obras. Sem isto, a ficha abria e a vista ficava parada, sem sinal nenhum. null
+ * quando há o que acender, num elemento que tem bloco neste agrupamento (está sempre lá), numa pessoa ou
+ * num elemento que não existe. O agrupamento não muda.
  */
 export function avisoSemNadaNoQuadro(
   elemento: ElementoVista,
@@ -78,53 +85,85 @@ export function avisoSemNadaNoQuadro(
   dormidas: ReadonlyMap<Id, Dormida>,
 ): string | null {
   if (chavesNoQuadro(elemento, agrupamento, ind, dormidas).length > 0) return null;
-  if (elemento.tipo === 'casa' && agrupamento === 'carrinhas') {
+  if (elemento.tipo === 'casa' && agrupamento !== 'casas') {
     const casa = ind.casas.get(elemento.id);
-    return casa ? `${casa.nome}: ninguém mora lá e nenhuma carrinha dorme lá.` : null;
+    if (!casa) return null;
+    return agrupamento === 'carrinhas'
+      ? `${casa.nome}: ninguém mora lá e nenhuma carrinha dorme lá.`
+      : `${casa.nome}: ninguém mora lá.`;
   }
-  if (elemento.tipo === 'carrinha' && agrupamento === 'casas') {
+  if (elemento.tipo === 'carrinha' && agrupamento !== 'carrinhas') {
     const carrinha = ind.carrinhas.get(elemento.id);
     if (!carrinha) return null;
     const nela = carrinha.tipo === 'carro' ? 'nele' : 'nela';
-    return `${ROTULO_TIPO_VEICULO[carrinha.tipo]} ${formatarMatricula(carrinha.matricula)}: ninguém vai ${nela} e não dorme em nenhuma casa.`;
+    const nome = `${ROTULO_TIPO_VEICULO[carrinha.tipo]} ${formatarMatricula(carrinha.matricula)}`;
+    return agrupamento === 'casas'
+      ? `${nome}: ninguém vai ${nela} e não dorme em nenhuma casa.`
+      : `${nome}: ninguém vai ${nela}.`;
+  }
+  if (elemento.tipo === 'obra' && agrupamento !== 'obras') {
+    const obra = ind.obras.get(elemento.id);
+    return obra ? `${obra.nome}: ninguém trabalha nesta obra.` : null;
   }
   return null;
 }
 
 /**
- * Pessoas a realçar levemente enquanto a casa ou carrinha em foco não tem bloco neste agrupamento (casa no
- * Quadro por carrinhas, carrinha no Quadro por casas). Vazio nos outros casos: aí o bloco tem o anel.
+ * Pessoas a realçar levemente enquanto a casa, carrinha ou obra em foco não tem bloco neste agrupamento
+ * (casa no Quadro por carrinhas ou por obras, carrinha no Quadro por casas ou por obras, obra no Quadro por
+ * casas ou por carrinhas). Vazio nos outros casos: aí o bloco tem o anel.
  */
 export function pessoasDoFocoSemBloco(
   foco: ElementoVista | null,
   agrupamento: Agrupamento,
   ind: Indices,
 ): ReadonlySet<Id> {
-  if (foco?.tipo === 'casa' && agrupamento === 'carrinhas') {
-    return new Set((ind.moradores.get(foco.id) ?? []).map((p) => p.id));
-  }
-  if (foco?.tipo === 'carrinha' && agrupamento === 'casas') {
-    return new Set((ind.passageiros.get(foco.id) ?? []).map((p) => p.id));
-  }
+  const ids = (lista: readonly { id: Id }[] | undefined) => new Set((lista ?? []).map((p) => p.id));
+  if (foco?.tipo === 'casa' && agrupamento !== 'casas') return ids(ind.moradores.get(foco.id));
+  if (foco?.tipo === 'carrinha' && agrupamento !== 'carrinhas') return ids(ind.passageiros.get(foco.id));
+  if (foco?.tipo === 'obra' && agrupamento !== 'obras') return ids(ind.trabalhadores.get(foco.id));
   return new Set();
 }
 
 /**
- * O bloco tem alterações por guardar: numa casa ou carrinha, entra ou sai alguém (numa carrinha também o
- * condutor ou onde dorme); em "Fora das casas CMF" ou "Sem transporte", entra ou sai alguém do grupo.
+ * A obra tem alterações por guardar (bloco do Quadro, ficha): as do sitioTemAlteracoes (entra ou sai alguém,
+ * a ficha dela, a morada) e também a morada ou o pino do ESTACIONAMENTO dela (outro local).
+ */
+export function obraTemAlteracoes(
+  pendentes: readonly Operacao[],
+  obraId: Id,
+  estadoVisivel: Pick<Estado, 'problemas' | 'casas' | 'obras'> | null,
+): boolean {
+  if (sitioTemAlteracoes(pendentes, 'obraId', obraId, estadoVisivel)) return true;
+  const estacionamento = estadoVisivel?.obras.find((o) => o.id === obraId)?.estacionamentoLocalId ?? null;
+  return (
+    estacionamento !== null &&
+    pendentes.some((op) => op.tipo === 'campo' && op.entidade === 'local' && op.id === estacionamento)
+  );
+}
+
+/**
+ * O bloco tem alterações por guardar: numa casa, carrinha ou obra, entra ou sai alguém (numa carrinha
+ * também o condutor ou onde dorme) e, no M2, a ficha dela, a morada e os problemas (sitioTemAlteracoes, que
+ * precisa do estado VISÍVEL para as operações 'campo' de um problema ou de um local); em "Fora das casas
+ * CMF", "Sem transporte" ou "Sem obra", entra ou sai alguém do grupo.
  */
 export function blocoTemAlteracoes(
   pendentes: readonly Operacao[],
   bloco: Pick<BlocoQuadro, 'tipo' | 'id'>,
+  estadoVisivel: Pick<Estado, 'problemas' | 'casas' | 'obras'> | null,
 ): boolean {
   switch (bloco.tipo) {
     case 'casa':
-      return bloco.id !== null && sitioTemAlteracoes(pendentes, 'casaId', bloco.id);
+      return bloco.id !== null && sitioTemAlteracoes(pendentes, 'casaId', bloco.id, estadoVisivel);
     case 'carrinha':
-      return bloco.id !== null && sitioTemAlteracoes(pendentes, 'carrinhaId', bloco.id);
+      return bloco.id !== null && sitioTemAlteracoes(pendentes, 'carrinhaId', bloco.id, estadoVisivel);
+    case 'obra':
+      return bloco.id !== null && obraTemAlteracoes(pendentes, bloco.id, estadoVisivel);
     case 'fora':
-    case 'sem-transporte': {
-      const campo = bloco.tipo === 'fora' ? 'casaId' : 'carrinhaId';
+    case 'sem-transporte':
+    case 'sem-obra': {
+      const campo = bloco.tipo === 'fora' ? 'casaId' : bloco.tipo === 'sem-obra' ? 'obraId' : 'carrinhaId';
       return pendentes.some(
         (op) => op.tipo === 'mover' && op.campo === campo && (op.de === null || op.para === null),
       );
@@ -134,8 +173,9 @@ export function blocoTemAlteracoes(
 
 /**
  * O filtro do Quadro (clientes, obras) esconde tudo o que se ia acender: há chaves e são todas de pessoas
- * que não passam (os blocos das casas e carrinhas ficam sempre, mesmo recolhidos). Quem pediu para mostrar
- * limpa então o filtro, como a Tabela faz com os dela. Com alguma à vista, acende-se essa e o filtro fica.
+ * que não passam (os blocos das casas, carrinhas e obras ficam sempre, mesmo recolhidos). Quem pediu para
+ * mostrar limpa então o filtro, como a Tabela faz com os dela. Com alguma à vista, acende-se essa e o filtro
+ * fica.
  */
 export function filtroEscondeTudo(chaves: readonly string[], passa: (pessoaId: Id) => boolean): boolean {
   const prefixo = 'pessoa:';

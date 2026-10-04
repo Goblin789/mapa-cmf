@@ -1,10 +1,22 @@
 // Monta o Estado (contrato com o browser) a partir da base de dados.
 // A conversão e a ordenação são funções puras; só `carregarEstado` lê a base de dados.
 
-import { count, getTableColumns, max, sql } from 'drizzle-orm';
+import { count, getTableColumns, gte, isNull, max, or, sql } from 'drizzle-orm';
 import type { AnySQLiteColumn } from 'drizzle-orm/sqlite-core';
+import type { EntidadeCriavel, RegistosEditaveis } from '../dominio/campos';
+import { dataNoLuxemburgo, somarDias } from '../dominio/datas';
 import { compararPessoas } from '../dominio/indices';
-import type { Carrinha, Casa, Cliente, Estado, Local, Obra, Pessoa } from '../dominio/tipos';
+import type {
+  Carrinha,
+  Casa,
+  Cliente,
+  Estado,
+  Indisponibilidade,
+  Local,
+  Obra,
+  Pessoa,
+  Problema,
+} from '../dominio/tipos';
 import * as esquema from './db/esquema';
 import type { Bd } from './db/ligacao';
 
@@ -16,7 +28,15 @@ export interface LinhasBd {
   carrinhas: (typeof esquema.carrinhas.$inferSelect)[];
   obras: (typeof esquema.obras.$inferSelect)[];
   pessoas: (typeof esquema.pessoas.$inferSelect)[];
+  indisponibilidades: (typeof esquema.indisponibilidades.$inferSelect)[];
+  problemas: (typeof esquema.problemas.$inferSelect)[];
 }
+
+/**
+ * Dias que os períodos que já acabaram e os problemas resolvidos continuam no Estado do GET /api/estado
+ * (minimização: o browser só precisa dos recentes). O gravarLote lê tudo (completo).
+ */
+export const DIAS_RECENTES = 30;
 
 const comparadorTextos = new Intl.Collator('pt', { sensitivity: 'base', numeric: true });
 
@@ -138,6 +158,69 @@ function paraPessoa(l: LinhasBd['pessoas'][number]): Pessoa {
   };
 }
 
+function paraIndisponibilidade(l: LinhasBd['indisponibilidades'][number]): Indisponibilidade {
+  return { id: l.id, pessoaId: l.pessoaId, inicio: l.inicio, fim: l.fim ?? null };
+}
+
+function paraProblema(l: LinhasBd['problemas'][number]): Problema {
+  return {
+    id: l.id,
+    casaId: l.casaId ?? null,
+    carrinhaId: l.carrinhaId ?? null,
+    texto: l.texto,
+    abertoEm: l.abertoEm,
+    resolvidoEm: l.resolvidoEm ?? null,
+  };
+}
+
+/** Períodos por pessoa e início (e id, para a ordem nunca variar). */
+function compararPeriodos(a: Indisponibilidade, b: Indisponibilidade): number {
+  return compararIds(a.pessoaId, b.pessoaId) || compararIds(a.inicio, b.inicio) || compararIds(a.id, b.id);
+}
+
+/** Problemas abertos primeiro; depois os abertos mais recentemente primeiro (e o id). */
+function compararProblemas(a: Problema, b: Problema): number {
+  const abertoA = a.resolvidoEm === null ? 0 : 1;
+  const abertoB = b.resolvidoEm === null ? 0 : 1;
+  return abertoA - abertoB || compararIds(b.abertoEm, a.abertoEm) || compararIds(a.id, b.id);
+}
+
+/**
+ * Um registo criado ou apagado no programa na forma do Estado (as mesmas chaves, pela mesma ordem, que o
+ * lerEstado devolve), para o `@registo` gravado em `alteracoes` (o reverter e os conflitos comparam-no).
+ */
+export function registoNaFormaDoEstado<E extends EntidadeCriavel>(
+  entidade: E,
+  registo: RegistosEditaveis[E],
+): RegistosEditaveis[E] {
+  const r = registo as unknown as Record<string, unknown>;
+  const texto = (v: unknown) => (typeof v === 'string' ? v : '');
+  const opcional = <T>(v: T | undefined) => (v === undefined ? null : v);
+  switch (entidade) {
+    case 'pessoa': {
+      const linha = {
+        ...(r as unknown as Pessoa),
+        nomesAlternativos: Array.isArray(r.nomesAlternativos) ? r.nomesAlternativos : [],
+      } as LinhasBd['pessoas'][number];
+      return paraPessoa(linha) as RegistosEditaveis[E];
+    }
+    case 'obra':
+      return paraObra(r as unknown as LinhasBd['obras'][number]) as RegistosEditaveis[E];
+    case 'local':
+      return paraLocal(r as unknown as LinhasBd['locais'][number]) as RegistosEditaveis[E];
+    case 'indisponibilidade':
+      return paraIndisponibilidade({
+        id: texto(r.id),
+        pessoaId: texto(r.pessoaId),
+        inicio: texto(r.inicio),
+        fim: opcional(r.fim as string | null | undefined),
+      }) as RegistosEditaveis[E];
+    case 'problema':
+      return paraProblema(r as unknown as LinhasBd['problemas'][number]) as RegistosEditaveis[E];
+  }
+  return registo;
+}
+
 /** Converte as linhas para os tipos do domínio e ordena-as. Função pura. */
 export function montarEstado(linhas: LinhasBd, versao: number, geradoEm: string): Estado {
   return {
@@ -149,10 +232,8 @@ export function montarEstado(linhas: LinhasBd, versao: number, geradoEm: string)
     carrinhas: linhas.carrinhas.map(paraCarrinha).sort(porOrdem((c) => c.matricula)),
     obras: linhas.obras.map(paraObra).sort((a, b) => compararIds(a.id, b.id)),
     pessoas: linhas.pessoas.map(paraPessoa).sort((a, b) => compararPessoas(a, b) || compararIds(a.id, b.id)),
-    // CONTRATO DO M2 (módulo base): ler as tabelas novas `indisponibilidades` e `problemas` (migração 0004)
-    // e ordená-las (períodos por pessoa e início; problemas abertos primeiro, mais recentes primeiro).
-    indisponibilidades: [],
-    problemas: [],
+    indisponibilidades: linhas.indisponibilidades.map(paraIndisponibilidade).sort(compararPeriodos),
+    problemas: linhas.problemas.map(paraProblema).sort(compararProblemas),
   };
 }
 
@@ -180,11 +261,23 @@ function colunaLista(coluna: AnySQLiteColumn) {
   return sql`${coluna}`.mapWith(listaDeTextos);
 }
 
+export interface OpcoesLerEstado {
+  /**
+   * true = todos os períodos e problemas (o gravarLote: conflitos, sobreposições e validação contam com os
+   * antigos). Sem isto, só os períodos sem fim ou com fim nos últimos DIAS_RECENTES dias (ou no futuro) e os
+   * problemas abertos ou resolvidos nesses dias (o GET /api/estado e o estado depois de gravar).
+   */
+  completo?: boolean;
+}
+
 /**
  * Lê todas as tabelas sem abrir transação: para usar dentro de uma já aberta (a gravação de um lote
- * lê e escreve na mesma transação).
+ * lê e escreve na mesma transação). "Hoje" é o dia de `agora` no Luxemburgo.
  */
-export function lerEstado(tx: Leitor, agora: Date): Estado {
+export function lerEstado(tx: Leitor, agora: Date, opcoes: OpcoesLerEstado = {}): Estado {
+  const desde = somarDias(dataNoLuxemburgo(agora), -DIAS_RECENTES);
+  const periodos = tx.select().from(esquema.indisponibilidades);
+  const problemas = tx.select().from(esquema.problemas);
   const linhas: LinhasBd = {
     clientes: tx.select().from(esquema.clientes).all(),
     locais: tx.select().from(esquema.locais).all(),
@@ -204,11 +297,21 @@ export function lerEstado(tx: Leitor, agora: Date): Estado {
       })
       .from(esquema.pessoas)
       .all(),
+    indisponibilidades: opcoes.completo
+      ? periodos.all()
+      : periodos
+          .where(or(isNull(esquema.indisponibilidades.fim), gte(esquema.indisponibilidades.fim, desde)))
+          .all(),
+    problemas: opcoes.completo
+      ? problemas.all()
+      : problemas
+          .where(or(isNull(esquema.problemas.resolvidoEm), gte(esquema.problemas.resolvidoEm, desde)))
+          .all(),
   };
   return montarEstado(linhas, lerVersao(tx), agora.toISOString());
 }
 
 /** Lê todas as tabelas numa só transação (leitura coerente mesmo que a importação esteja a gravar). */
-export function carregarEstado(bd: Bd, agora: Date = new Date()): Estado {
-  return bd.transaction((tx) => lerEstado(tx, agora));
+export function carregarEstado(bd: Bd, agora: Date = new Date(), opcoes: OpcoesLerEstado = {}): Estado {
+  return bd.transaction((tx) => lerEstado(tx, agora, opcoes));
 }

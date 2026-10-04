@@ -1,11 +1,15 @@
 // Cabeçalho do modo reunião, pensado para uma TV 1920×1080 vista de longe: a marca, o dia e a hora,
 // "Atualizado às HH:MM", Quadro | Mapa (e Casas | Carrinhas no Quadro) e "Sair da reunião".
-// Sem Editar nem Histórico: a reunião é só para ver. Sem os contadores (Livres nas casas, Sem transporte…):
+// Sem Editar: a reunião é só para ver. O Histórico abre (M2), mas sem "Reverter…" (DialogoHistorico).
+// "Ecrã inteiro" e "Histórico" só com o ícone (o nome na dica e para os leitores de ecrã): com os nomes, a
+// 1920 px fora do ecrã inteiro os filtros passavam a uma 2.ª linha (cabeçalho de 94 para 161 px). Sem os contadores (Livres nas casas, Sem transporte…):
 // saíram a pedido do Rafael (04/10/2026) e o Quadro/Mapa da TV fica com esse espaço. No Quadro, a partir de
 // xl, os filtros dos clientes e das obras ficam aqui, a seguir à hora (FiltrosReuniao, em Quadro.tsx).
 
 import { useEffect, useState } from 'react';
 import { Marca } from '../comum/Marca';
+import { IconeRelogio } from '../edicao/icones';
+import { useUiEdicao } from '../edicao/ui';
 import { useLoja } from '../estado/loja';
 import { FOCO_VISIVEL } from '../paineis/classes';
 import { AlternadorAgrupamento, ComutadorReuniao } from './Comutador';
@@ -84,9 +88,18 @@ export function CabecalhoReuniao() {
             className={`${BOTAO} border-slate-300 bg-white text-slate-800 hover:bg-slate-50`}
           >
             <IconeEcraInteiro />
-            Ecrã inteiro
+            <span className="sr-only">Ecrã inteiro</span>
           </button>
         )}
+        <button
+          type="button"
+          onClick={() => useUiEdicao.getState().abrirDialogo({ tipo: 'historico' })}
+          title="Histórico: quem mudou o quê"
+          className={`${BOTAO} border-slate-300 bg-white text-slate-800 hover:bg-slate-50`}
+        >
+          <IconeRelogio />
+          <span className="sr-only">Histórico</span>
+        </button>
         <button
           type="button"
           onClick={sairDaReuniao}

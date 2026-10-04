@@ -1,32 +1,49 @@
 // Gravação das edições num lote com histórico (POST /api/lotes) e leitura do histórico (GET /api/historico).
 // As regras (compactar, validar, conflitos, aplicar) são as de src/dominio/operacoes.ts, as mesmas que o
 // browser usa na simulação; aqui só se acrescenta a gravação atómica. As frases são funções puras.
-// Um lote pode mudar pessoas (casa, carrinha, obra), o condutor das carrinhas e onde elas dormem: cada
-// campo que muda fica numa linha de `alteracoes` (entidade 'pessoa' ou 'carrinha').
+// Um lote pode mudar pessoas (casa, carrinha, obra), o condutor das carrinhas e onde elas dormem e, no M2,
+// os campos das fichas ('campo') e criar/apagar registos ('registo': pessoas novas, obras e os seus locais,
+// períodos de indisponibilidade, problemas): cada campo que muda fica numa linha de `alteracoes`; um registo
+// criado ou apagado fica numa só linha (CAMPO_REGISTO) com o registo inteiro em JSON.
 
-import { and, asc, desc, eq, gt, inArray } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, inArray, isNotNull, sql } from 'drizzle-orm';
 import type { AlteracaoHistorico, ConflitoServidor, EntradaHistorico } from '../dominio/api';
 import {
+  type EntidadeApagavel,
+  type EntidadeCriavel,
+  type EntidadeEditavel,
+  eCampoEditavel,
+  eEntidadeEditavel,
+  encontrarRegisto,
+  ROTULO_CAMPO,
+} from '../dominio/campos';
+import {
   aplicarOperacoes,
+  CAMPO_CONDUTOR,
+  CAMPO_DORMIDA,
+  CAMPO_REGISTO,
   type CampoMovivel,
   type ChaveDormida,
   type Conflito,
   chaveDormida,
+  chaveOperacao,
   compactarOperacoes,
   descreverOperacao,
   encontrarConflitos,
   lerChaveDormida,
   nomeDaDormida,
-  nomeDoRegisto,
+  nomeDeRegisto,
   nomeDoValor,
   type Operacao,
   validarOperacoes,
+  valorLegivel,
 } from '../dominio/operacoes';
+import { operacaoDaAlteracao, podeReverter } from '../dominio/reverter';
 import type { Carrinha, Estado, Id, Pessoa } from '../dominio/tipos';
 import { descreverAlteracaoDosDados } from '../importacao/sincronizar';
 import * as esquema from './db/esquema';
 import type { Bd } from './db/ligacao';
-import { type Leitor, lerEstado, lerVersao } from './estado';
+import { type Leitor, lerEstado, lerVersao, registoNaFormaDoEstado } from './estado';
 import { limitarErros } from './pedidos';
 
 /** Campos da pessoa que uma gravação pode mudar, pela ordem em que ficam no histórico. */
@@ -44,14 +61,12 @@ const SEM_VALOR: Record<CampoMovivel, string> = {
   obraId: 'sem obra',
 };
 
-/** Campo do condutor na tabela `alteracoes` (entidade 'carrinha'). */
-export const CAMPO_CONDUTOR = 'condutorId';
-
 /**
- * Campo de onde dorme a carrinha na tabela `alteracoes` (entidade 'carrinha'). O antes e o depois são a
- * chave em JSON ("casa:<id>", "local:<id>" ou null = por definir), não as duas colunas da tabela.
+ * Campo do condutor (CAMPO_CONDUTOR) e de onde dorme a carrinha (CAMPO_DORMIDA: a chave "casa:<id>",
+ * "local:<id>" ou null em JSON, não as duas colunas da tabela) na tabela `alteracoes` (entidade 'carrinha').
+ * Vêm do domínio; continuam a sair daqui para quem já os importava.
  */
-export const CAMPO_DORMIDA = 'dormida';
+export { CAMPO_CONDUTOR, CAMPO_DORMIDA };
 
 const NOME_MARCA: Record<string, string> = {
   casaAConfirmar: 'casa a confirmar',
@@ -148,8 +163,21 @@ function nomeDaPessoa(estado: Estado, id: Id): string {
   return estado.pessoas.find((p) => p.id === id)?.nomeCurto ?? id;
 }
 
+/** O registo de que se fala quando já não se sabe o nome. */
+const ARTIGO_REGISTO: Readonly<Record<EntidadeEditavel, string>> = {
+  pessoa: 'A pessoa',
+  casa: 'A casa',
+  carrinha: 'A carrinha',
+  obra: 'A obra',
+  local: 'A morada',
+  indisponibilidade: 'O período de indisponibilidade',
+  problema: 'O problema',
+};
+
 /**
  * Ex.: "Ana T. — carrinha: esperavas ZZ 1002, mas agora está em ZZ 1001 (alguém mudou entretanto)";
+ * "Casa Um — lotação: esperavas 8, mas agora é 10 (alguém mudou entretanto)";
+ * "Obra X — já não existe (alguém apagou entretanto)";
  * "ZZ 1001 — condutor: esperavas Ana T., mas agora é Rui S. (alguém mudou entretanto)";
  * "ZZ 1001 — onde dorme: esperavas Casa Um, mas agora dorme em Parque (alguém mudou entretanto)".
  */
@@ -169,15 +197,25 @@ export function descreverConflito(estado: Estado, conflito: Conflito): string {
     const agora = conflito.atual === null ? 'não tem condutor' : `é ${nomeDaPessoa(estado, conflito.atual)}`;
     return `${carrinha} — condutor: esperavas ${esperado}, mas agora ${agora} (alguém mudou entretanto)`;
   }
-  // CONTRATO DO M2 (módulo base): frases legíveis dos conflitos das fichas e dos registos (docs/m2.md).
   if (conflito.tipo === 'campo') {
-    const quem = nomeDoRegisto(estado, conflito.entidade, conflito.id);
-    return conflito.existe
-      ? `${quem} — ${conflito.campo}: alguém mudou entretanto`
-      : `${quem} — já não existe (alguém apagou entretanto)`;
+    const { entidade, campo } = conflito;
+    const registo = encontrarRegisto(estado, entidade, conflito.id);
+    if (!conflito.existe || !registo) {
+      return `${ARTIGO_REGISTO[entidade]} que estavas a mudar já não existe (alguém apagou entretanto)`;
+    }
+    const quem = nomeDeRegisto(estado, entidade, registo as unknown as Record<string, unknown>);
+    const rotulo = (ROTULO_CAMPO[entidade] as Record<string, string>)[campo] ?? campo;
+    const valor = (v: typeof conflito.atual) => valorLegivel(estado, entidade, campo, v);
+    return `${quem} — ${rotulo}: esperavas ${valor(conflito.esperado)}, mas agora é ${valor(conflito.atual)} (alguém mudou entretanto)`;
   }
   if (conflito.tipo === 'registo') {
-    return `${nomeDoRegisto(estado, conflito.entidade, conflito.id)} — alguém mudou entretanto`;
+    const registo = (conflito.atual ?? conflito.esperado) as unknown as Record<string, unknown> | null;
+    const quem = registo
+      ? nomeDeRegisto(estado, conflito.entidade, registo)
+      : ARTIGO_REGISTO[conflito.entidade];
+    if (conflito.esperado === null) return `${quem} — já existe (alguém o criou entretanto)`;
+    if (conflito.atual === null) return `${quem} — já não existe (alguém apagou entretanto)`;
+    return `${quem} — alguém mudou entretanto (não se apaga sem veres o que mudou)`;
   }
   const { campo, esperado, atual } = conflito;
   const agora = atual === null ? SEM_VALOR[campo] : `em ${nomeDoValor(estado, campo, atual)}`;
@@ -217,11 +255,24 @@ interface LinhaAlteracao {
 }
 
 /**
- * Frase legível de uma alteração, com os nomes ATUAIS (casa, carrinha, obra, pessoa).
- * Ex.: "Gil N. — casa: Fora das casas CMF → Casa Três"; "Gil N. — casa a confirmar: sim → não";
- * "ZZ 1001 — condutor: sem condutor → Gil N."; "ZZ 1001 — onde dorme: por definir → Casa Três".
+ * Frase legível de uma alteração, com os nomes ATUAIS (casa, carrinha, obra, pessoa), a mesma do domínio
+ * (descreverOperacao sobre a operação que a linha gravou, operacaoDaAlteracao).
+ * Ex.: "Gil N. — casa: Fora das casas CMF → Casa Três"; "Gil N. — casa confirmada";
+ * "ZZ 1001 — condutor: sem condutor → Gil N."; "ZZ 1001 — onde dorme: por definir → Casa Três";
+ * "Casa Um — lotação: 8 → 9"; "Obra Nova — criada (Costantini, Rue X)"; "Ana T. — indisponível de …".
  */
 export function descreverAlteracao(estado: Estado, a: LinhaAlteracao): string {
+  // M2: registos criados/apagados e campos das fichas com os dois valores (do programa ou da sincronização).
+  const doPrograma =
+    a.campo === CAMPO_REGISTO ||
+    (a.antes !== null &&
+      a.depois !== null &&
+      eEntidadeEditavel(a.entidade) &&
+      eCampoEditavel(a.entidade, a.campo));
+  if (doPrograma) {
+    const op = operacaoDaAlteracao(a);
+    if (op && (op.tipo === 'campo' || op.tipo === 'registo')) return descreverOperacao(estado, op);
+  }
   if (a.entidade === 'carrinha' && a.campo === CAMPO_DORMIDA) {
     return descreverOperacao(estado, {
       tipo: 'dormida',
@@ -264,6 +315,11 @@ export interface PedidoLote {
   comentario: string | null;
   autor: string;
   agora: Date;
+  /**
+   * M2: lotes que este reverte (PedidoGuardar.reverte). Cada um tem de existir e passar no podeReverter;
+   * fica em lotes.reverte (o Histórico diz "Reverte a gravação…" e, no revertido, "Revertida").
+   */
+  reverte?: readonly number[];
   /**
    * Versão sobre a qual o rascunho foi feito. Só serve para os conflitos escondidos pela regra do
    * condutor (ver conflitosDoCondutor); os outros vêm do `de` de cada operação.
@@ -373,20 +429,120 @@ function blocos<T>(lista: T[]): T[][] {
   return r;
 }
 
+type Transacao = Parameters<Parameters<Bd['transaction']>[0]>[0];
+
+/** A tabela de cada entidade das fichas (as colunas têm os nomes dos campos do domínio). */
+const TABELAS = {
+  pessoa: esquema.pessoas,
+  casa: esquema.casas,
+  carrinha: esquema.carrinhas,
+  obra: esquema.obras,
+  local: esquema.locais,
+  indisponibilidade: esquema.indisponibilidades,
+  problema: esquema.problemas,
+} as const satisfies Record<EntidadeEditavel, unknown>;
+
+/**
+ * Campos com valor único na base de dados. Quando mudam, gravam-se em dois passos (um valor provisório, depois
+ * o final), como na sincronização: uma troca entre dois registos (ex.: dois nomes no mapa) não colide.
+ */
+const CAMPOS_UNICOS_FICHAS: Readonly<Partial<Record<EntidadeEditavel, readonly string[]>>> = {
+  pessoa: ['nomeCurto', 'numero'],
+  casa: ['nome'],
+  carrinha: ['matricula'],
+};
+
+/** Inserts com os locais antes das obras e as pessoas antes dos períodos; deletes ao contrário. */
+const ORDEM_INSERTS: readonly EntidadeCriavel[] = [
+  'local',
+  'obra',
+  'pessoa',
+  'indisponibilidade',
+  'problema',
+];
+const ORDEM_DELETES: readonly EntidadeApagavel[] = ['problema', 'indisponibilidade', 'obra', 'local'];
+
+/** Separador dos valores provisórios (nunca aparece num valor escrito à mão). */
+const SEPARADOR_PROVISORIO = String.fromCharCode(1);
+
+/** O valor provisório de um campo único de um registo (diferente para cada registo e campo). */
+function valorProvisorio(entidade: EntidadeEditavel, id: Id, campo: string): string {
+  return [SEPARADOR_PROVISORIO, 'ficha', entidade, id, campo].join(SEPARADOR_PROVISORIO);
+}
+
+/** A tabela (com o tipo de uma qualquer: as colunas usadas são as do registo, que batem certo). */
+function tabelaDe(entidade: EntidadeEditavel): typeof esquema.pessoas {
+  return TABELAS[entidade] as unknown as typeof esquema.pessoas;
+}
+
+function atualizarRegisto(
+  tx: Transacao,
+  entidade: EntidadeEditavel,
+  id: Id,
+  valores: Record<string, unknown>,
+): void {
+  const tabela = tabelaDe(entidade);
+  tx.update(tabela)
+    .set(valores as Partial<typeof esquema.pessoas.$inferInsert>)
+    .where(eq(tabela.id, id))
+    .run();
+}
+
+/**
+ * O lote que se quer reverter existe, passa no podeReverter (autor, tipo, estado) e o pedido desfaz pelo
+ * menos uma linha dele: a inversa de uma operação tem a mesma chave (chaveOperacao) que a operação gravada.
+ * Sem isto, um pedido feito à mão marcava como "Revertida" uma gravação que não voltou atrás.
+ */
+function podeSerRevertido(tx: Leitor, loteId: number, chaves: ReadonlySet<string>): boolean {
+  const lote = tx
+    .select({ autor: esquema.lotes.autor, tipo: esquema.lotes.tipo, estado: esquema.lotes.estado })
+    .from(esquema.lotes)
+    .where(eq(esquema.lotes.id, loteId))
+    .get();
+  if (lote === undefined || !podeReverter(lote)) return false;
+  return tx
+    .select({
+      entidade: esquema.alteracoes.entidade,
+      entidadeId: esquema.alteracoes.entidadeId,
+      campo: esquema.alteracoes.campo,
+      antes: esquema.alteracoes.antes,
+      depois: esquema.alteracoes.depois,
+    })
+    .from(esquema.alteracoes)
+    .where(eq(esquema.alteracoes.loteId, loteId))
+    .all()
+    .some((linha) => {
+      const op = operacaoDaAlteracao(linha);
+      return op !== null && chaves.has(chaveOperacao(op));
+    });
+}
+
 /**
  * Grava as operações num lote, tudo ou nada. Verificação e escrita correm na mesma transação
  * (IMMEDIATE: o bloqueio de escrita é pedido logo ao abrir, por isso ninguém grava pelo meio,
- * nem outro processo como a importação).
+ * nem outro processo como a importação). O estado lê-se COMPLETO (com os períodos e os problemas antigos):
+ * conflitos, sobreposições e validação contam com eles.
  *
  * Os conflitos vêm antes da validação: se alguém mudou entretanto as mesmas pessoas ou carrinhas, a
  * resposta certa é "recarrega" (409), mesmo que o rascunho, sobre o estado novo, também deixasse de ser
  * válido (ex.: o condutor escolhido já não vai naquela carrinha). Com `versaoBase`, contam também os
- * conflitos escondidos pela regra do condutor (conflitosDoCondutor).
+ * conflitos escondidos pela regra do condutor (conflitosDoCondutor). Depois, cada lote de `reverte` tem de
+ * existir, de se poder reverter (podeReverter) e de ter alguma linha que o pedido desfaz; um lote que ainda
+ * não existe (o próprio) nunca passa.
+ *
+ * As FK só se verificam no COMMIT (PRAGMA defer_foreign_keys) e, mesmo assim, escreve-se pelas fases do
+ * domínio, nunca pela ordem do pedido: 1) inserts (locais antes das obras, pessoas antes dos períodos);
+ * 2) 'campo' (os campos únicos em dois passos; os dos registos novos entram provisórios na fase 1); 3) mover, condutor e onde dorme; 4) deletes (problemas e
+ * períodos, depois as obras, depois os locais). Uma linha de `alteracoes` por campo mudado; 'registo' numa só
+ * linha (CAMPO_REGISTO) com o registo inteiro na forma do Estado. O lote é 'ficha' se só tiver 'campo' e
+ * 'registo'; senão 'mudanca'.
  */
 export function gravarLote(bd: Bd, pedido: PedidoLote): ResultadoGravacao {
   return bd.transaction(
     (tx): ResultadoGravacao => {
-      const estado = lerEstado(tx, pedido.agora);
+      // Só vale até ao fim desta transação (o SQLite repõe-no no COMMIT/ROLLBACK).
+      tx.run(sql`PRAGMA defer_foreign_keys = ON`);
+      const estado = lerEstado(tx, pedido.agora, { completo: true });
       const ops = compactarOperacoes(pedido.operacoes);
       if (ops.length === 0) return { tipo: 'vazio' };
 
@@ -404,29 +560,114 @@ export function gravarLote(bd: Bd, pedido: PedidoLote): ResultadoGravacao {
       const erros = validarOperacoes(estado, ops);
       if (erros.length > 0) return { tipo: 'invalido', erros: limitarErros(erros) };
 
-      const alteracoes = alteracoesDasOperacoes(estado, ops);
-      const condutores = alteracoesDeCondutor(estado, ops);
-      const dormidas = alteracoesDeDormida(estado, ops);
+      const reverte = [...new Set(pedido.reverte ?? [])];
+      const chaves = new Set(ops.map(chaveOperacao));
+      const naoRevertiveis = reverte.filter((id) => !podeSerRevertido(tx, id, chaves));
+      if (naoRevertiveis.length > 0) {
+        return {
+          tipo: 'invalido',
+          erros: naoRevertiveis.map((id) => `A gravação nº ${id} não se pode reverter.`),
+        };
+      }
+
+      const soFichas = ops.every((op) => op.tipo === 'campo' || op.tipo === 'registo');
       const quando = pedido.agora.toISOString();
       const { id: loteId } = tx
         .insert(esquema.lotes)
         .values({
           autor: pedido.autor,
-          tipo: 'mudanca',
+          tipo: soFichas ? 'ficha' : 'mudanca',
           estado: 'aplicado',
           criadoEm: quando,
           efetivoEm: quando,
           comentario: pedido.comentario,
+          reverte: reverte.length > 0 ? JSON.stringify(reverte) : null,
         })
         .returning({ id: esquema.lotes.id })
         .get();
+      const linhas: (LinhaAlteracao & { loteId: number })[] = [];
+      const linha = (entidade: string, entidadeId: Id, campo: string, antes: unknown, depois: unknown) =>
+        linhas.push({
+          loteId,
+          entidade,
+          entidadeId,
+          campo,
+          antes: antes === undefined ? null : JSON.stringify(antes),
+          depois: depois === undefined ? null : JSON.stringify(depois),
+        });
 
+      // 1. Registos novos. Os campos únicos entram num valor provisório e acertam-se na fase 2: o valor final
+      // pode ser um que outro registo só larga nos 'campo' deste lote (ex.: renomear a Élia e criar outra
+      // pessoa com o nome antigo dela). A restrição UNIQUE não espera pelo COMMIT, como as FK.
+      const unicosDosNovos: { entidade: EntidadeEditavel; id: Id; valores: Record<string, unknown> }[] = [];
+      for (const entidade of ORDEM_INSERTS) {
+        for (const op of ops) {
+          if (op.tipo !== 'registo' || op.entidade !== entidade || op.de !== null || op.para === null)
+            continue;
+          const registo = registoNaFormaDoEstado(entidade, op.para);
+          const valores = registo as unknown as Record<string, unknown>;
+          const unicos = (CAMPOS_UNICOS_FICHAS[entidade] ?? []).filter((c) => valores[c] != null);
+          tx.insert(tabelaDe(entidade))
+            .values({
+              ...valores,
+              ...Object.fromEntries(unicos.map((c) => [c, valorProvisorio(entidade, op.id, c)])),
+            } as unknown as typeof esquema.pessoas.$inferInsert)
+            .run();
+          if (unicos.length > 0) {
+            unicosDosNovos.push({
+              entidade,
+              id: op.id,
+              valores: Object.fromEntries(unicos.map((c) => [c, valores[c]])),
+            });
+          }
+          linha(entidade, op.id, CAMPO_REGISTO, undefined, registo);
+        }
+      }
+
+      // 2. Campos das fichas: uma atualização por registo; os únicos que mudam primeiro num valor provisório.
+      // Os únicos dos registos novos ficam com o valor final depois de os outros largarem os deles.
+      const porRegisto = new Map<
+        string,
+        { entidade: EntidadeEditavel; id: Id; valores: Record<string, unknown> }
+      >();
+      for (const op of ops) {
+        if (op.tipo !== 'campo') continue;
+        const chave = `${op.entidade}${SEPARADOR_PROVISORIO}${op.id}`;
+        const atual = porRegisto.get(chave) ?? { entidade: op.entidade, id: op.id, valores: {} };
+        atual.valores[op.campo] = op.para;
+        porRegisto.set(chave, atual);
+        linha(op.entidade, op.id, op.campo, op.de, op.para);
+      }
+      for (const { entidade, id, valores } of porRegisto.values()) {
+        const unicos = (CAMPOS_UNICOS_FICHAS[entidade] ?? []).filter((c) => Object.hasOwn(valores, c));
+        if (unicos.length === 0) continue;
+        atualizarRegisto(
+          tx,
+          entidade,
+          id,
+          Object.fromEntries(unicos.map((c) => [c, valorProvisorio(entidade, id, c)])),
+        );
+      }
+      for (const { entidade, id, valores } of unicosDosNovos) atualizarRegisto(tx, entidade, id, valores);
+      for (const { entidade, id, valores } of porRegisto.values())
+        atualizarRegisto(tx, entidade, id, valores);
+
+      // 3. Mover, condutor e onde dorme, a partir do estado com os registos novos e os campos já mudados (uma
+      // pessoa nova tem de ir para a casa no mesmo lote).
+      const intermedio = aplicarOperacoes(
+        estado,
+        ops.filter((op) => op.tipo === 'campo' || (op.tipo === 'registo' && op.de === null)),
+      );
+      const alteracoes = alteracoesDasOperacoes(intermedio, ops);
+      const condutores = alteracoesDeCondutor(intermedio, ops);
+      const dormidas = alteracoesDeDormida(intermedio, ops);
       // Uma atualização por pessoa, só com os campos que mudam.
       const porPessoa = new Map<Id, Partial<Pick<Pessoa, CampoGravado>>>();
       for (const a of alteracoes) {
         const valores = porPessoa.get(a.pessoaId) ?? {};
         Object.assign(valores, { [a.campo]: a.depois });
         porPessoa.set(a.pessoaId, valores);
+        linha('pessoa', a.pessoaId, a.campo, a.antes, a.depois);
       }
       for (const [id, valores] of porPessoa) {
         tx.update(esquema.pessoas).set(valores).where(eq(esquema.pessoas.id, id)).run();
@@ -436,40 +677,28 @@ export function gravarLote(bd: Bd, pedido: PedidoLote): ResultadoGravacao {
           .set({ condutorId: c.depois })
           .where(eq(esquema.carrinhas.id, c.carrinhaId))
           .run();
+        linha('carrinha', c.carrinhaId, CAMPO_CONDUTOR, c.antes, c.depois);
       }
       for (const d of dormidas) {
         tx.update(esquema.carrinhas)
           .set(colunasDaDormida(d.depois))
           .where(eq(esquema.carrinhas.id, d.carrinhaId))
           .run();
+        linha('carrinha', d.carrinhaId, CAMPO_DORMIDA, d.antes, d.depois);
       }
 
-      const linhas = [
-        ...alteracoes.map((a) => ({
-          loteId,
-          entidade: 'pessoa',
-          entidadeId: a.pessoaId,
-          campo: a.campo,
-          antes: JSON.stringify(a.antes),
-          depois: JSON.stringify(a.depois),
-        })),
-        ...condutores.map((c) => ({
-          loteId,
-          entidade: 'carrinha',
-          entidadeId: c.carrinhaId,
-          campo: CAMPO_CONDUTOR,
-          antes: JSON.stringify(c.antes),
-          depois: JSON.stringify(c.depois),
-        })),
-        ...dormidas.map((d) => ({
-          loteId,
-          entidade: 'carrinha',
-          entidadeId: d.carrinhaId,
-          campo: CAMPO_DORMIDA,
-          antes: JSON.stringify(d.antes),
-          depois: JSON.stringify(d.depois),
-        })),
-      ];
+      // 4. Registos apagados (já ninguém aponta para eles): problemas e períodos, obras, locais.
+      for (const entidade of ORDEM_DELETES) {
+        for (const op of ops) {
+          if (op.tipo !== 'registo' || op.entidade !== entidade || op.para !== null || op.de === null)
+            continue;
+          const atual = encontrarRegisto(estado, entidade, op.id) ?? op.de;
+          const tabela = tabelaDe(entidade);
+          tx.delete(tabela).where(eq(tabela.id, op.id)).run();
+          linha(entidade, op.id, CAMPO_REGISTO, registoNaFormaDoEstado(entidade, atual as never), undefined);
+        }
+      }
+
       for (const b of blocos(linhas)) tx.insert(esquema.alteracoes).values(b).run();
 
       return {
@@ -504,12 +733,68 @@ export function nomeDoAutor(autor: string, nomesPorEmail: ReadonlyMap<string, st
   return nomesPorEmail.get(autor) ?? autor;
 }
 
-/** Os `limite` lotes mais recentes (o mais recente primeiro), cada um com as suas alterações por ordem. */
+/** A lista do Estado de cada entidade que se cria ou apaga no programa. */
+const LISTA_DO_ESTADO = {
+  pessoa: 'pessoas',
+  obra: 'obras',
+  local: 'locais',
+  indisponibilidade: 'indisponibilidades',
+  problema: 'problemas',
+} as const satisfies Record<EntidadeCriavel, keyof Estado>;
+
+/**
+ * O estado com os registos que as linhas CAMPO_REGISTO mostram e que já lá não estão (apagados entretanto),
+ * só para as frases: "Ana T. — obra: Obra Nova → sem obra" em vez do id da obra apagada.
+ */
+function comRegistosDoHistorico(estado: Estado, linhas: readonly LinhaAlteracao[]): Estado {
+  let resultado = estado;
+  for (const l of linhas) {
+    if (l.campo !== CAMPO_REGISTO || !Object.hasOwn(LISTA_DO_ESTADO, l.entidade)) continue;
+    const registo = lerJson(l.antes ?? l.depois);
+    if (
+      registo === null ||
+      typeof registo !== 'object' ||
+      (registo as { id?: unknown }).id !== l.entidadeId
+    ) {
+      continue;
+    }
+    const lista = LISTA_DO_ESTADO[l.entidade as EntidadeCriavel];
+    const atuais = resultado[lista] as readonly { id: string }[];
+    if (atuais.some((r) => r.id === l.entidadeId)) continue;
+    resultado = { ...resultado, [lista]: [...atuais, registo] };
+  }
+  return resultado;
+}
+
+/** Lista de ids de lotes guardada em JSON (lotes.reverte); qualquer outra coisa é []. */
+function listaDeLotes(texto: string | null): number[] {
+  const valor = lerJson(texto);
+  return Array.isArray(valor) ? valor.filter((x): x is number => Number.isInteger(x)) : [];
+}
+
+/**
+ * Os `limite` lotes mais recentes (o mais recente primeiro), cada um com TODAS as suas alterações por ordem
+ * (o browser junta as frases seguidas iguais; o Reverter precisa de todas, ex.: a lat e a lng), os lotes que
+ * reverte e os que o reverteram.
+ */
 export function lerHistorico(bd: Bd, limite: number, agora: Date = new Date()): EntradaHistorico[] {
   return bd.transaction((tx) => {
     const lotes = tx.select().from(esquema.lotes).orderBy(desc(esquema.lotes.id)).limit(limite).all();
     if (lotes.length === 0) return [];
-    const estado = lerEstado(tx, agora);
+    // Completo: as frases dos períodos e problemas antigos também têm o nome da pessoa/casa.
+    const estado = lerEstado(tx, agora, { completo: true });
+    // Quem reverteu quem: lê-se de todos os lotes (são poucos os que revertem).
+    const revertidoPor = new Map<number, number[]>();
+    for (const l of tx
+      .select({ id: esquema.lotes.id, reverte: esquema.lotes.reverte })
+      .from(esquema.lotes)
+      .where(isNotNull(esquema.lotes.reverte))
+      .orderBy(asc(esquema.lotes.id))
+      .all()) {
+      for (const revertido of listaDeLotes(l.reverte)) {
+        revertidoPor.set(revertido, [...(revertidoPor.get(revertido) ?? []), l.id]);
+      }
+    }
     const linhas = tx
       .select()
       .from(esquema.alteracoes)
@@ -522,6 +807,8 @@ export function lerHistorico(bd: Bd, limite: number, agora: Date = new Date()): 
       .orderBy(asc(esquema.alteracoes.id))
       .all();
 
+    // Os registos que já não existem (ex.: uma obra apagada) continuam com nome nas frases destes lotes.
+    const comApagados = comRegistosDoHistorico(estado, linhas);
     const porLote = new Map<number, AlteracaoHistorico[]>();
     for (const l of linhas) {
       const alteracao: AlteracaoHistorico = {
@@ -530,7 +817,7 @@ export function lerHistorico(bd: Bd, limite: number, agora: Date = new Date()): 
         campo: l.campo,
         antes: l.antes,
         depois: l.depois,
-        descricao: descreverAlteracao(estado, l),
+        descricao: descreverAlteracao(comApagados, l),
       };
       const lista = porLote.get(l.loteId);
       if (lista) lista.push(alteracao);
@@ -557,6 +844,8 @@ export function lerHistorico(bd: Bd, limite: number, agora: Date = new Date()): 
       estado: l.estado,
       comentario: l.comentario ?? null,
       alteracoes: porLote.get(l.id) ?? [],
+      reverte: listaDeLotes(l.reverte),
+      revertidoPor: revertidoPor.get(l.id) ?? [],
     }));
   });
 }

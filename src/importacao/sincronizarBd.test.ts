@@ -366,6 +366,7 @@ describe('aplicarSincronizacao', () => {
       criadoEm: AGORA.toISOString(),
       efetivoEm: AGORA.toISOString(),
       comentario: resumoDoPlano(r.plano),
+      reverte: null,
     });
     const linhas = bd
       .select()
@@ -438,7 +439,9 @@ describe('ensaio e linha de comandos', () => {
     });
     // "--db" (engano comum) gravava na base de dados verdadeira: agora é erro.
     expect(lerArgumentosSincronizacao(['--db', 'dados/copia.db', '--aplicar'])).toEqual({
-      erro: 'Argumento desconhecido: --db. Use só --aplicar, --bd <caminho> e --relatorio <caminho>.',
+      erro:
+        'Argumento desconhecido: --db. Use só --aplicar, --bd <caminho>, --relatorio <caminho> e ' +
+        '--usar-json entidade:id:campo.',
     });
     expect(lerArgumentosSincronizacao(['--aplicar', '--bd'])).toEqual({
       erro: 'Falta o caminho depois de --bd.',
@@ -460,5 +463,41 @@ describe('ensaio e linha de comandos', () => {
       executarSincronizacao({ aplicar: true, bd: caminho, relatorio: join(pasta, 'relatorio.html') }),
     ).toBe(1);
     expect(existsSync(caminho)).toBe(false);
+  });
+
+  it('--aplicar com migrações por aplicar: recusa sem migrar (só o servidor migra, com a cópia antes)', () => {
+    const erros: string[] = [];
+    vi.spyOn(console, 'error').mockImplementation((m: unknown) => {
+      erros.push(String(m));
+    });
+    const pasta = mkdtempSync(join(tmpdir(), 'mapa-cmf-sincronizar-'));
+    pastas.push(pasta);
+    const caminho = join(pasta, 'antiga.db');
+    const bd = abrirBd(caminho);
+    // Como uma BD que ainda não tem a última migração.
+    const ultima = bd.$client.prepare('SELECT MAX(created_at) AS ultima FROM __drizzle_migrations').get() as {
+      ultima: number;
+    };
+    bd.$client.prepare('DELETE FROM __drizzle_migrations WHERE created_at = ?').run(ultima.ultima);
+    const migracoes = () =>
+      (bd.$client.prepare('SELECT COUNT(*) AS n FROM __drizzle_migrations').get() as { n: number }).n;
+    const antes = migracoes();
+    bd.$client.close();
+
+    expect(
+      executarSincronizacao({ aplicar: true, bd: caminho, relatorio: join(pasta, 'relatorio.html') }),
+    ).toBe(1);
+    expect(erros.join('\n')).toMatch(/migração por aplicar \(0\d{3}_[^)]+\): não se gravou nada/);
+    expect(erros.join('\n')).toContain('arranque o servidor uma vez');
+    expect(existsSync(join(pasta, 'relatorio.html'))).toBe(false);
+    const depois = abrirBdSoLeitura(caminho);
+    try {
+      expect(
+        (depois.$client.prepare('SELECT COUNT(*) AS n FROM __drizzle_migrations').get() as { n: number }).n,
+      ).toBe(antes);
+      expect(depois.select().from(lotes).all()).toEqual([]);
+    } finally {
+      depois.$client.close();
+    }
   });
 });

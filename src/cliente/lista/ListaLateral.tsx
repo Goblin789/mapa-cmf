@@ -3,10 +3,14 @@
 // No PC: à direita do mapa, com scroll próprio; "Alargar" mostra as secções em colunas lado a lado.
 // No telemóvel: por baixo do mapa (a página faz scroll).
 // O atributo data-caixas-laterais serve à pesquisa para encontrar aqui o nome de uma pessoa.
+// M2: no separador Obras, no modo de edição, "Nova obra…" em cima (abre o DialogoObra); o título de cada
+// obra abre a ficha dela (SeccaoLista).
 
 import { useMemo, useState } from 'react';
+import { BOTAO_PEQUENO } from '../edicao/classes';
+import { IconeObra } from '../edicao/icones';
 import { operacoesConfirmarSugestoes } from '../edicao/ondeDorme';
-import { useUiEdicao } from '../edicao/ui';
+import { abrirObra, useUiEdicao } from '../edicao/ui';
 import { useLoja } from '../estado/loja';
 import { clientesPorOrdem } from '../paineis/agrupar';
 import { useEcraLargo } from '../paineis/ganchos';
@@ -26,12 +30,26 @@ import {
 /** Colunas do painel alargado: tantas quantas couberem, como as colunas da folha do Michael. */
 const GRELHA_ALARGADA = 'grid grid-cols-[repeat(auto-fill,minmax(13.5rem,1fr))] items-start gap-2.5';
 
-function NotaSemObras() {
+function NotaSemObras({ modoEdicao }: { modoEdicao: boolean }) {
   return (
     <p className="mb-3 rounded-md border border-slate-200 bg-white px-3 py-2 text-xs leading-snug text-slate-600">
-      Ainda não há obras. Vão chegar do GPS das carrinhas ou criar-se à mão numa etapa seguinte. Até lá, toda
-      a gente está em “Sem obra”, com a cor do seu cliente.
+      Ainda não há obras: toda a gente está em “Sem obra”, com a cor do seu cliente.{' '}
+      {modoEdicao
+        ? 'Cria uma com “Nova obra…” (aqui em cima) ou com o clique direito no mapa.'
+        : 'Criam-se no modo de edição (Editar); mais tarde chegam também do GPS das carrinhas.'}
     </p>
+  );
+}
+
+/** "Nova obra…" no separador Obras, no modo de edição. */
+function BotaoNovaObra() {
+  return (
+    <div className="flex">
+      <button type="button" onClick={() => abrirObra(null)} className={BOTAO_PEQUENO}>
+        <IconeObra className="h-3.5 w-3.5" />
+        Nova obra…
+      </button>
+    </div>
   );
 }
 
@@ -138,7 +156,8 @@ export function ListaLateral() {
           sem isto escapavam-lhe e a página inteira passava a rolar (a roda do rato na legenda escondia o topo). */}
       <div className="relative md:min-h-0 md:flex-1 md:overflow-y-auto md:overscroll-contain">
         <div className="flex flex-col gap-4 px-3 pt-3 pb-6">
-          {vista === 'obras' && estado.obras.length === 0 && <NotaSemObras />}
+          {vista === 'obras' && modoEdicao && <BotaoNovaObra />}
+          {vista === 'obras' && estado.obras.length === 0 && <NotaSemObras modoEdicao={modoEdicao} />}
           {comFiltros && mostradas === 0 && (
             <p className="text-xs text-slate-600">
               Ninguém corresponde aos filtros.{' '}

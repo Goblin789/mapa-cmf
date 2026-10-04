@@ -158,3 +158,44 @@ export function inserirUtilizador(bd: Bd, u: { id: string; email: string; nome: 
     .values({ ...u, criadoEm: '2026-01-01T00:00:00.000Z', ultimaEntradaEm: '2026-01-01T00:00:00.000Z' })
     .run();
 }
+
+/**
+ * M2: períodos de indisponibilidade e problemas fictícios, à volta de "hoje" = 2026-10-04 (o Estado só leva
+ * os recentes): um período que acabou há mais de 30 dias e outro há exatamente 30; um atual sem fim; um
+ * futuro; um problema resolvido há 31 dias, outro há 30, e dois abertos.
+ */
+export function inserirDadosM2(bd: Bd): void {
+  bd.insert(esquema.indisponibilidades)
+    .values([
+      { id: 'indisp-antigo01', pessoaId: 'p-ze', inicio: '2026-08-01', fim: '2026-09-03' },
+      { id: 'indisp-limite01', pessoaId: 'p-elia', inicio: '2026-08-20', fim: '2026-09-04' },
+      { id: 'indisp-atual001', pessoaId: 'p-ze', inicio: '2026-10-01', fim: null },
+      { id: 'indisp-futuro01', pessoaId: 'p-elia', inicio: '2026-12-01', fim: '2026-12-24' },
+    ])
+    .run();
+  bd.insert(esquema.problemas)
+    .values([
+      {
+        id: 'problema-velho01',
+        casaId: 'casa-monte',
+        texto: 'Torneira a pingar',
+        abertoEm: '2026-08-01',
+        resolvidoEm: '2026-09-03',
+      },
+      {
+        id: 'problema-limite1',
+        carrinhaId: 'car-1',
+        texto: 'Luz do travão',
+        abertoEm: '2026-08-15',
+        resolvidoEm: '2026-09-04',
+      },
+      {
+        id: 'problema-aberto1',
+        casaId: 'casa-ribeira',
+        texto: 'Esquentador avariado',
+        abertoEm: '2026-09-20',
+      },
+      { id: 'problema-aberto2', carrinhaId: 'car-2', texto: 'Pneu furado', abertoEm: '2026-10-02' },
+    ])
+    .run();
+}

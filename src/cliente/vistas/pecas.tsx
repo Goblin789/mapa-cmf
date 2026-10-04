@@ -12,6 +12,10 @@
 // nome. Fica sempre numa só linha (com reticências e o nome inteiro no title, se não couber).
 // A Tabela mostra o nome completo (`nome`) e sem a sigla (`semSigla`: a coluna Cliente já a tem); por
 // omissão é o nome curto com a sigla (Quadro, reunião).
+// M2: quem está indisponível hoje leva sempre a marca com o "até 12/10" à vista (MarcaIndisponivel; na TV
+// e no telemóvel um title não se vê) e o nome um pouco esbatido; com `saiu` (Tabela, "Mostrar quem saiu") o
+// nome fica esbatido com a etiqueta "saiu". O ponto âmbar conta também as fichas e os períodos
+// (pessoaTemAlteracoes, com o estado visível).
 
 import { useContext, useState } from 'react';
 import { COR_TEXTO_NOMES, clienteEfetivoId } from '../../dominio/cores';
@@ -21,13 +25,16 @@ import type { Pessoa } from '../../dominio/tipos';
 import { modoDoClique } from '../arrastar/selecao';
 import { IconeVolante } from '../comum/IconeVolante';
 import { ESTILO_NIVEL } from '../comum/lotacao';
+import { CLASSE_NOME_INDISPONIVEL, MarcaIndisponivel, usePeriodoHoje } from '../comum/MarcaIndisponivel';
 import { ContextoOrdemPessoas } from '../comum/ordemPessoas';
+import { pessoaTemAlteracoes } from '../edicao/resumo';
 import { useUiEdicao } from '../edicao/ui';
 import { useLoja } from '../estado/loja';
 import { FOCO_VISIVEL } from '../paineis/classes';
 import { nomeCompleto, textoLotacao } from '../paineis/textos';
 import { exportarExcel } from './excel';
 import { IconeDescarregar } from './icones';
+import { descricaoIndisponivel } from './linhasTabela';
 
 export function NomeVista({
   pessoa,
@@ -37,6 +44,7 @@ export function NomeVista({
   arrastavel = false,
   nome,
   semSigla = false,
+  saiu = false,
 }: {
   pessoa: Pessoa;
   /** Conduz a carrinha onde vai: leva o volante antes do nome. */
@@ -50,18 +58,14 @@ export function NomeVista({
   nome?: string;
   /** Sem a sigla do cliente (a Tabela tem a coluna Cliente ao lado). */
   semSigla?: boolean;
+  /** M2: saiu da empresa (Tabela com "Mostrar quem saiu"): esbatido, com a etiqueta "saiu". */
+  saiu?: boolean;
 }) {
   const indices = useLoja((s) => s.indices);
   const modoEdicao = useLoja((s) => s.modoEdicao);
-  const alterado = useLoja(
-    (s) =>
-      s.modoEdicao &&
-      s.pendentes.some((op) =>
-        op.tipo === 'condutor'
-          ? op.de === pessoa.id || op.para === pessoa.id
-          : op.tipo === 'mover' && op.pessoaId === pessoa.id,
-      ),
-  );
+  // O estado visível (3.º argumento) é obrigatório: sem ele, as datas mudadas de um período não marcam a pessoa.
+  const alterado = useLoja((s) => s.modoEdicao && pessoaTemAlteracoes(s.pendentes, pessoa.id, s.estado));
+  const indisponivel = usePeriodoHoje(pessoa.id);
   const emFoco = useLoja((s) => interativo && s.foco?.tipo === 'pessoa' && s.foco.id === pessoa.id);
   const selecionado = useLoja((s) => interativo && s.modoEdicao && s.selecao.has(pessoa.id));
   const ordem = useContext(ContextoOrdemPessoas);
@@ -74,6 +78,8 @@ export function NomeVista({
     condutor ? 'condutor' : null,
     cliente?.nome,
     aConfirmar ? 'a confirmar' : null,
+    indisponivel ? descricaoIndisponivel(indisponivel) : null,
+    saiu ? 'saiu da empresa' : null,
     alterado ? 'alterado, por guardar' : null,
     interativo && arrastavel && modoEdicao ? 'arraste para mudar' : null,
   ]
@@ -83,7 +89,15 @@ export function NomeVista({
   const conteudo = (
     <>
       {condutor && <IconeVolante tamanho={12} rotulo="condutor" className="size-[0.95em]" />}
-      <span className="min-w-0 flex-1 truncate">{nome ?? pessoa.nomeCurto}</span>
+      <span className={`min-w-0 flex-1 truncate ${indisponivel || saiu ? CLASSE_NOME_INDISPONIVEL : ''}`}>
+        {nome ?? pessoa.nomeCurto}
+      </span>
+      <MarcaIndisponivel pessoaId={pessoa.id} texto />
+      {saiu && (
+        <span className="shrink-0 rounded-[0.2em] bg-white/80 px-[0.3em] text-[0.8em] leading-[1.3] font-semibold text-slate-700">
+          saiu<span className="sr-only"> da empresa</span>
+        </span>
+      )}
       {aConfirmar && (
         <>
           <span

@@ -227,6 +227,25 @@ desaparece.
 - **Excel**: na Tabela com filtros, a folha Pessoas leva só as linhas filtradas, pela ordem da Tabela, e o
   ficheiro diz "(filtrado)"; as folhas Casas e Carrinhas ficam inteiras. Sem filtros é igual a antes.
 
+## M2 nas vistas (05/10/2026)
+
+Desenho em `docs/m2.md`; aqui só o que muda na Tabela, no Quadro e na reunião.
+- **Tabela**: coluna "Indisponível" ("até 12/10", "sem regresso"; "a partir de 20/10" a cinzento quando só
+  há um período futuro; ordena pela data de regresso) e filtro "Indisponível" (Indisponíveis hoje,
+  Disponíveis hoje, Com períodos futuros). No modo de edição a célula tem "Marcar…" ou "Já voltou".
+  "Mostrar quem saiu" (não é um filtro: "Limpar filtros" não a tira) junta quem saiu da empresa, esbatido e
+  só de leitura (sem caixa de seleção nem listas); o Excel leva essas linhas com "(saiu)" no nome. Excel:
+  colunas "Indisponível até" e, nas folhas Casas e Carrinhas, "Problemas abertos". Mostrar uma obra (pesquisa,
+  obra criada) realça as linhas de quem lá trabalha.
+- **Quadro**: 3.º agrupamento **Obras** (um bloco por obra, por cliente, "Sem obra" no fim; cada nome com a
+  casa de onde vem). Ícone de problemas nos blocos. Numa carrinha, quem está indisponível hoje não conta na
+  pastilha (8/9) mas continua desenhado na sua caixa: as caixas são as do cartão do Mapa.
+- **Ficha da vista**: no telemóvel, enquanto há um campo aberto, ocupa o ecrã todo (abaixo de 640 px); o aviso
+  curto vai para cima quando há uma ficha aberta, para não a tapar.
+- **Reunião**: só leitura; vê as marcas ("até 12/10") e os ícones; o cabeçalho tem "Histórico" (sem
+  "Reverter…"). "Ecrã inteiro" e "Histórico" ficam só com o ícone (com os nomes, a 1920 px fora do ecrã
+  inteiro os filtros passavam a uma 2.ª linha).
+
 ## O que fica igual
 
 O Mapa e a lista lateral (pesquisa, ficha — agora também arrastável no PC —, cartões, arrastar, caixa de

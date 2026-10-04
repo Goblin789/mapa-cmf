@@ -304,10 +304,10 @@ describe('descreverAlteracao', () => {
 
   it('marcas "a confirmar"', () => {
     expect(descreverAlteracao(estado, linha('casaAConfirmar', 'true', 'false'))).toBe(
-      'Gil N. — casa a confirmar: sim → não',
+      'Gil N. — casa confirmada',
     );
     expect(descreverAlteracao(estado, linha('carrinhaAConfirmar', 'false', 'true', 'p-duarte'))).toBe(
-      'Duarte S. — carrinha a confirmar: não → sim',
+      'Duarte S. — carrinha a confirmar',
     );
   });
 
@@ -380,9 +380,7 @@ describe('descreverAlteracao', () => {
         depois: null,
       }),
     ).toBe('obra obra-x — campoDesconhecido: 3 → —');
-    expect(descreverAlteracao(estado, linha('telefone', 'null', '"000"'))).toBe(
-      'pessoa p-gil — telefone: null → "000"',
-    );
+    expect(descreverAlteracao(estado, linha('telefone', 'null', '"000"'))).toBe('Gil N. — telefone: — → 000');
   });
 });
 
@@ -441,9 +439,11 @@ describe('gravarLote e lerHistorico na base de dados', () => {
           campo: 'casaAConfirmar',
           antes: 'true',
           depois: 'false',
-          descricao: 'Álvaro Exemplo — casa a confirmar: sim → não',
+          descricao: 'Álvaro Exemplo — casa confirmada',
         },
       ],
+      reverte: [],
+      revertidoPor: [],
     });
   });
 
@@ -452,7 +452,7 @@ describe('gravarLote e lerHistorico na base de dados', () => {
     expect(gravarLote(bd, pedido([mover('p-ze', 'casaId', 'casa-monte', null)]))).toMatchObject({
       tipo: 'conflito',
     });
-    expect(gravarLote(bd, pedido([mover('p-bruno', 'casaId', 'casa-monte', null)]))).toStrictEqual({
+    expect(gravarLote(bd, pedido([mover('p-bruno', 'casaId', 'casa-monte', 'casa-ribeira')]))).toStrictEqual({
       tipo: 'invalido',
       erros: ['Bruno Fictício não está ativa.'],
     });
@@ -967,7 +967,7 @@ describe('gravarLote e lerHistorico na base de dados', () => {
     expect(gravarLote(bd, pedido(ops))).toMatchObject({ tipo: 'gravado', alteracoes: 4 });
     expect(lerHistorico(bd, 1)[0]?.alteracoes.map((a) => a.descricao)).toStrictEqual([
       'Álvaro Exemplo — carrinha: Sem transporte da empresa → ZZ 0001',
-      'Álvaro Exemplo — carrinha a confirmar: sim → não',
+      'Álvaro Exemplo — carrinha confirmada',
       'ZZ 0001 — condutor: sem condutor → Álvaro Exemplo',
       'ZZ 0001 — onde dorme: Parque → Casa Ribeira',
     ]);

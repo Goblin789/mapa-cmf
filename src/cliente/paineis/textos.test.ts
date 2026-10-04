@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { dormidasDasCarrinhas } from '../../dominio/dormidas';
 import { indexar } from '../../dominio/indices';
+import { estadoExemplo } from '../../dominio/teste-fabrica';
 import { estadoFicticio, pessoaFicticia } from './dadosFicticios';
 import {
   artigoDoVeiculo,
@@ -10,14 +11,75 @@ import {
   formatarData,
   hojeISO,
   nomeCompleto,
+  notaCorDaObra,
+  rotuloDoCampo,
+  textoAntes,
   textoApartamento,
   textoCarta,
+  textoCondutorIndisponivel,
   textoContrato,
   textoDormida,
   textoLotacao,
   textoMarcaModelo,
+  textoMorada,
   textoTelefone,
+  textoValorCampo,
 } from './textos';
+
+// --- M2: campos das fichas (dados fictícios de dominio/teste-fabrica.ts) ----------------------------
+
+describe('M2: valores dos campos das fichas', () => {
+  const exemplo = estadoExemplo();
+
+  it('formata os valores como o Histórico, com Sim/Não e a carta por extenso', () => {
+    expect(textoValorCampo(exemplo, 'pessoa', 'temCarta', true)).toBe('Tem');
+    expect(textoValorCampo(exemplo, 'pessoa', 'temCarta', false)).toBe('Não tem');
+    expect(textoValorCampo(exemplo, 'pessoa', 'temCarta', null)).toBe('Não sei');
+    expect(textoValorCampo(exemplo, 'casa', 'sempreCheia', true)).toBe('Sim');
+    expect(textoValorCampo(exemplo, 'casa', 'sempreCheia', false)).toBe('Não');
+    expect(textoValorCampo(exemplo, 'casa', 'tolerado', null)).toBe('—');
+    expect(textoValorCampo(exemplo, 'casa', 'lotacao', 9)).toBe('9');
+    expect(textoValorCampo(exemplo, 'pessoa', 'cartaValidade', '2027-03-01')).toBe('01/03/2027');
+    expect(textoValorCampo(exemplo, 'pessoa', 'clienteId', 'cliente-b')).toBe('Beta Obras');
+    expect(textoValorCampo(exemplo, 'carrinha', 'matricula', 'ZZ1001')).toBe('ZZ 1001');
+    expect(textoValorCampo(exemplo, 'carrinha', 'matriculasAlternativas', ['QQ9999', 'AB12'])).toBe(
+      'QQ 9999, AB 12',
+    );
+    expect(textoValorCampo(exemplo, 'carrinha', 'matriculasAlternativas', [])).toBe('—');
+    expect(textoValorCampo(exemplo, 'casa', 'localId', 'local-b')).toBe(
+      '1 Rue Fictícia, L-0000 Lugar local-b',
+    );
+  });
+
+  it('"antes: …" com o valor gravado', () => {
+    expect(textoAntes(exemplo, 'casa', 'lotacao', 8)).toBe('antes: 8');
+    expect(textoAntes(exemplo, 'pessoa', 'telefone', null)).toBe('antes: —');
+    expect(textoAntes(exemplo, 'pessoa', 'temCarta', null)).toBe('antes: não sei');
+  });
+
+  it('rótulos com maiúscula e a morada com o país fora do Luxemburgo', () => {
+    expect(rotuloDoCampo('pessoa', 'nomeCurto')).toBe('Nome no mapa');
+    expect(rotuloDoCampo('carrinha', 'matriculasAlternativas')).toBe('Outras matrículas');
+    expect(textoMorada({ morada: '1 Rue X', pais: 'FR', nome: 'Casa' })).toBe('1 Rue X (FR)');
+  });
+
+  it('o condutor indisponível hoje', () => {
+    const periodo = { id: 'indisp-x', pessoaId: 'p', inicio: '2026-10-01' };
+    expect(textoCondutorIndisponivel({ ...periodo, fim: '2026-10-12' })).toBe(
+      'O condutor está indisponível até 12/10.',
+    );
+    expect(textoCondutorIndisponivel({ ...periodo, fim: null })).toBe(
+      'O condutor está indisponível (sem data de regresso).',
+    );
+  });
+
+  it('a nota da cor de quem tem obra', () => {
+    expect(notaCorDaObra('Beta Obras', 'Obra Beta')).toBe(
+      'No mapa tem a cor de Beta Obras, o cliente da obra Obra Beta.',
+    );
+    expect(notaCorDaObra(null, 'Obra Beta')).toBe('No mapa tem a cor do cliente da obra Obra Beta.');
+  });
+});
 
 describe('comPlural', () => {
   it('usa o singular só para 1', () => {

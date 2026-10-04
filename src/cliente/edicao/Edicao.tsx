@@ -67,9 +67,14 @@ export function ContornoEdicao() {
   );
 }
 
-/** Aviso curto em baixo ao centro ("Desfeito: …", "Alterações guardadas."); some ao fim de uns segundos. */
+/**
+ * Aviso curto em baixo ao centro ("Desfeito: …", "Alterações guardadas."); some ao fim de uns segundos. No
+ * telemóvel, com uma ficha aberta (que fica em baixo, ou no ecrã todo com um campo aberto), vai para cima,
+ * para não tapar a parte de baixo da ficha.
+ */
 function AvisoFlutuante() {
   const aviso = useUiEdicao((s) => s.aviso);
+  const fichaAberta = useLoja((s) => s.foco !== null);
   const limparAviso = useUiEdicao((s) => s.limparAviso);
   useEffect(() => {
     if (!aviso) return;
@@ -77,7 +82,11 @@ function AvisoFlutuante() {
     return () => window.clearTimeout(t);
   }, [aviso, limparAviso]);
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-4 z-[1200] flex justify-center px-4">
+    <div
+      className={`pointer-events-none fixed inset-x-0 z-[1200] flex justify-center px-4 ${
+        fichaAberta ? 'bottom-4 max-sm:top-2 max-sm:bottom-auto' : 'bottom-4'
+      }`}
+    >
       <p
         role="status"
         aria-live="polite"

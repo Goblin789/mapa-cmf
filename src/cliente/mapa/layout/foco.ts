@@ -1,7 +1,9 @@
 // Foco: que cartões se realçam e que linhas se desenham.
 // - pessoa: a casa e a carrinha dela, linha do lugar na casa ao lugar na carrinha (e daí à obra, se houver);
 // - casa: linhas para as carrinhas dos moradores;
-// - carrinha: linhas para as casas dos passageiros.
+// - carrinha: linhas para as casas dos passageiros;
+// - obra (M2): realça o cartão da obra e liga-o às casas e às carrinhas de quem lá trabalha ("quem vem para
+//   esta obra e de onde"). Com a camada das obras desligada (sem cartão), as linhas saem do sítio da obra.
 // As pontas resolvem-se com a disposição calculada (disposicao.ts), por isso ficam certas depois de
 // mudar o zoom ou abrir cartões, sem medir o DOM.
 
@@ -18,10 +20,18 @@ import {
   type Segmento,
   segmentoEntre,
 } from './geometria';
-import { chaveCarrinha, chaveCasa } from './grupos';
+import { chaveCarrinha, chaveCasa, chaveObra } from './grupos';
 import { projetarArredondado } from './projecao';
 
-export type Ponta = { tipo: 'cartao'; chave: string; lugar: number | null } | { tipo: 'obra'; obraId: Id };
+export type Ponta =
+  | {
+      tipo: 'cartao';
+      chave: string;
+      lugar: number | null;
+      /** Onde fica a ponta se o cartão não estiver no mapa (ex.: a obra com a camada desligada). */
+      alternativa?: Ponta;
+    }
+  | { tipo: 'obra'; obraId: Id };
 
 export interface Ligacao {
   de: Ponta;
@@ -29,7 +39,7 @@ export interface Ligacao {
 }
 
 export interface RelacoesFoco {
-  /** Cartões a realçar ("casa:<id>", "carrinha:<id>"). */
+  /** Cartões a realçar ("casa:<id>", "carrinha:<id>", "obra:<id>"). */
   destaques: ReadonlySet<string>;
   ligacoes: Ligacao[];
 }
@@ -90,6 +100,8 @@ export function relacoesFoco(foco: Foco, ind: Indices): RelacoesFoco {
     return { destaques, ligacoes };
   }
 
+  if (foco.tipo === 'obra') return relacoesObra(foco.id, ind);
+
   if (!ind.carrinhas.has(foco.id)) return SEM_RELACOES;
   const de: Ponta = { tipo: 'cartao', chave: chaveCarrinha(foco.id), lugar: null };
   const destaques = new Set<string>([de.chave]);
@@ -104,10 +116,38 @@ export function relacoesFoco(foco: Foco, ind: Indices): RelacoesFoco {
   return { destaques, ligacoes };
 }
 
+/**
+ * Obra em foco: o cartão dela e, para cada casa e cada carrinha de quem lá trabalha (sem repetir), uma
+ * linha da obra até lá. Primeiro as casas, depois as carrinhas, pela ordem das pessoas.
+ */
+function relacoesObra(obraId: Id, ind: Indices): RelacoesFoco {
+  if (!ind.obras.has(obraId)) return SEM_RELACOES;
+  const de: Ponta = {
+    tipo: 'cartao',
+    chave: chaveObra(obraId),
+    lugar: null,
+    alternativa: { tipo: 'obra', obraId },
+  };
+  const destaques = new Set<string>([de.chave]);
+  const ligacoes: Ligacao[] = [];
+  const ligar = (chave: string) => {
+    if (destaques.has(chave)) return;
+    destaques.add(chave);
+    ligacoes.push({ de, para: { tipo: 'cartao', chave, lugar: null } });
+  };
+  const pessoas = ind.trabalhadores.get(obraId) ?? [];
+  for (const p of pessoas) if (p.casaId && ind.casas.has(p.casaId)) ligar(chaveCasa(p.casaId));
+  for (const p of pessoas)
+    if (p.carrinhaId && ind.carrinhas.has(p.carrinhaId)) ligar(chaveCarrinha(p.carrinhaId));
+  return { destaques, ligacoes };
+}
+
 interface PontaResolvida {
   retangulo: Retangulo;
   /** Um lugar ou um ponto (a linha vai ao centro); senão é um cartão (a linha para na borda). */
   exata: boolean;
+  /** A ponta é o sítio desta obra (não o cartão dela): desenha-se o marcador com o nome. */
+  obraId?: Id;
 }
 
 /** Onde fica uma ponta na disposição atual (píxeis do mundo); null se não estiver no mapa. */
@@ -117,10 +157,10 @@ export function resolverPonta(ponta: Ponta, d: Disposicao, ind: Indices): PontaR
     const local = obra ? ind.locais.get(obra.localId) : undefined;
     if (!local || local.lat === null || local.lng === null) return null;
     const p = projetarArredondado(local.lat, local.lng, d.zoom);
-    return { retangulo: { x: p.x, y: p.y, largura: 0, altura: 0 }, exata: true };
+    return { retangulo: { x: p.x, y: p.y, largura: 0, altura: 0 }, exata: true, obraId: ponta.obraId };
   }
   const cartao = d.cartoes.get(ponta.chave);
-  if (!cartao) return null;
+  if (!cartao) return ponta.alternativa ? resolverPonta(ponta.alternativa, d, ind) : null;
   const lugar = ponta.lugar !== null && cartao.lugares ? cartao.lugares[ponta.lugar] : undefined;
   if (lugar) return { retangulo: lugar, exata: true };
   return { retangulo: cartao.retangulo, exata: false };
@@ -130,6 +170,11 @@ export interface LinhaFoco extends Segmento {
   chave: string;
   /** A ponta de chegada é esta obra (desenha-se um marcador com o nome). */
   obraId: Id | null;
+  /**
+   * A ponta de partida é o sítio desta obra (foco numa obra com a camada das obras desligada): desenha-se
+   * o marcador na partida (o nome só na primeira linha).
+   */
+  obraOrigemId: Id | null;
 }
 
 const COMPRIMENTO_MINIMO = 4;
@@ -157,7 +202,8 @@ export function linhasFoco(relacoes: RelacoesFoco, d: Disposicao, ind: Indices):
     linhas.push({
       ...segmento,
       chave: `ligacao-${i}`,
-      obraId: ligacao.para.tipo === 'obra' ? ligacao.para.obraId : null,
+      obraId: b.obraId ?? null,
+      obraOrigemId: a.obraId ?? null,
     });
   });
   return linhas;

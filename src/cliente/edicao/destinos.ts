@@ -1,9 +1,17 @@
 // Destinos do diálogo "Mover para…": casas, carrinhas e obras (com os grupos especiais), com a
 // lotação do estado visível e o resultado se as pessoas forem para lá. Filtrar e andar com o teclado.
 // Funções puras.
+// M2: numa carrinha, quem está indisponível hoje não ocupa lugar (Indices.ocupadosCarrinha), nem quem lá
+// está nem quem vai; os lugares que só estão livres até alguém voltar vêm em `temporarios`
+// ("1 livre até 12/10"), para ninguém contar com eles. Nas casas a cama não se liberta.
 
 import type { Indices } from '../../dominio/indices';
-import { type NivelLotacao, nivelLotacao } from '../../dominio/ocupacao';
+import {
+  lugaresTemporarios,
+  type NivelLotacao,
+  nivelLotacao,
+  textoLugaresTemporarios,
+} from '../../dominio/ocupacao';
 import { type Alvo, chaveAlvo } from '../../dominio/operacoes';
 import { compactar, normalizarTexto } from '../../dominio/pesquisa';
 import type { Estado, Id, Pessoa } from '../../dominio/tipos';
@@ -21,6 +29,11 @@ export interface LotacaoDestino {
   /** Ocupados se as pessoas forem para lá (quem já lá está não conta duas vezes). */
   depois: number;
   nivelDepois: NivelLotacao;
+  /**
+   * M2 (só carrinhas): "1 livre até 12/10" quando há lugares livres só porque alguém está indisponível
+   * hoje (voltam a ser ocupados quando essa pessoa voltar); null sem nenhum.
+   */
+  temporarios: string | null;
 }
 
 export interface Destino {
@@ -61,7 +74,12 @@ export function textoLivres(ocupados: number, lugares: number): string {
   return `${ocupados - lugares} a mais`;
 }
 
-function lotacao(ocupados: number, lugares: number, entram: number): LotacaoDestino {
+function lotacao(
+  ocupados: number,
+  lugares: number,
+  entram: number,
+  temporarios: string | null = null,
+): LotacaoDestino {
   const depois = ocupados + entram;
   return {
     ocupados,
@@ -69,6 +87,7 @@ function lotacao(ocupados: number, lugares: number, entram: number): LotacaoDest
     nivel: nivelLotacao(ocupados, lugares),
     depois,
     nivelDepois: nivelLotacao(depois, lugares),
+    temporarios,
   };
 }
 
@@ -133,15 +152,18 @@ export function montarDestinos(estado: Estado, ind: Indices, pessoaIds: readonly
 
   const carrinhas: Destino[] = estado.carrinhas.map((carrinha) => {
     const jaLa = contar((p) => p.carrinhaId === carrinha.id);
-    const ocupados = ind.passageiros.get(carrinha.id)?.length ?? 0;
+    // Quem está indisponível hoje não ocupa lugar: nem quem lá vai, nem quem se está a mudar para lá.
+    const ocupados = ind.ocupadosCarrinha.get(carrinha.id) ?? 0;
+    const entram = contar((p) => p.carrinhaId !== carrinha.id && !ind.indisponiveis.has(p.id));
+    const temporarios = textoLugaresTemporarios(lugaresTemporarios(ind, carrinha.id));
     return destino({
       alvo: { tipo: 'carrinha', id: carrinha.id },
       tipo: 'carrinha',
       rotulo: formatarMatricula(carrinha.matricula),
       detalhe: textoMarcaModelo(carrinha),
       especial: false,
-      lotacao: lotacao(ocupados, carrinha.lugares, n - jaLa),
-      pessoas: ocupados,
+      lotacao: lotacao(ocupados, carrinha.lugares, entram, temporarios),
+      pessoas: ind.passageiros.get(carrinha.id)?.length ?? 0,
       jaLa,
       clienteId: null,
       termos: termos(carrinha.marca, carrinha.modelo),

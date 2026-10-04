@@ -1,13 +1,26 @@
 // Vista Tabela: uma linha por pessoa ativa, com ordenação por coluna, pesquisa (indiferente a acentos),
-// filtros de escolha múltipla por cliente, casa, carrinha e obra, e o realce do que está em foco (a ficha)
-// ou da linha em que se clicou. Funções puras, sem browser (usadas também pelo Excel).
+// filtros de escolha múltipla por cliente, casa, carrinha, obra e (M2) indisponível, e o realce do que está
+// em foco (a ficha) ou da linha em que se clicou. Funções puras, sem browser (usadas também pelo Excel).
+// M2 (docs/m2.md, "Indisponível"): coluna "Indisponível" ("até 12/10", "sem regresso"; só as datas, nunca
+// o motivo) e, com "Mostrar quem saiu", também as pessoas com ativa = false (marcadas 'saiu').
 
 import { clienteEfetivoId } from '../../dominio/cores';
+import { formatarDiaCompleto, formatarDiaMes } from '../../dominio/datas';
 import type { Indices } from '../../dominio/indices';
+import { periodosFuturos } from '../../dominio/indisponibilidade';
 import { formatarMatricula } from '../../dominio/matricula';
 import { nomeComMaiusculasNormais } from '../../dominio/nomes';
 import { compactar, normalizarTexto } from '../../dominio/pesquisa';
-import type { Carrinha, Casa, Cliente, Estado, Id, Obra, Pessoa } from '../../dominio/tipos';
+import type {
+  Carrinha,
+  Casa,
+  Cliente,
+  Estado,
+  Id,
+  Indisponibilidade,
+  Obra,
+  Pessoa,
+} from '../../dominio/tipos';
 import { GRUPO_ESPECIAIS, type OpcaoFiltro, passaFiltro } from '../comum/escolhaMultipla';
 import { carrinhaConduzida } from '../paineis/condutor';
 import { nomeCompleto, ROTULO_FORA_DAS_CASAS, ROTULO_SEM_TRANSPORTE } from '../paineis/textos';
@@ -36,14 +49,28 @@ export interface LinhaTabela {
   condutor: boolean;
   casaAConfirmar: boolean;
   carrinhaAConfirmar: boolean;
+  /** M2: o período em que está indisponível hoje (Indices.indisponiveis); null = disponível. */
+  indisponivel: Indisponibilidade | null;
+  /** M2: o 1.º dia do próximo período de indisponibilidade que ainda não começou; null sem nenhum. */
+  proximoInicio: string | null;
+  /** M2: saiu da empresa (ativa = false); só aparece com "Mostrar quem saiu". */
+  saiu: boolean;
   /** Tudo o que a pesquisa procura, já normalizado: nomes, cliente, obra, casa e matrículas. */
   textoPesquisa: string;
 }
 
-/** Uma linha por pessoa ativa, pela ordem do estado (quem mostra ordena). */
-export function linhasDaTabela(estado: Estado, ind: Indices): LinhaTabela[] {
+export interface OpcoesLinhasTabela {
+  /** M2: junta também quem saiu da empresa (ativa = false). */
+  comQuemSaiu?: boolean;
+}
+
+/**
+ * Uma linha por pessoa ativa (com `comQuemSaiu`, também as que saíram), pela ordem do estado (quem mostra
+ * ordena). Quem está indisponível hoje vem dos índices (`ind.indisponiveis`, feitos com o hoje da loja).
+ */
+export function linhasDaTabela(estado: Estado, ind: Indices, opcoes: OpcoesLinhasTabela = {}): LinhaTabela[] {
   return estado.pessoas
-    .filter((p) => p.ativa)
+    .filter((p) => p.ativa || opcoes.comQuemSaiu === true)
     .map((p) => {
       const clienteId = clienteEfetivoId(p, ind.obras);
       const cliente = ind.clientes.get(clienteId) ?? null;
@@ -69,6 +96,10 @@ export function linhasDaTabela(estado: Estado, ind: Indices): LinhaTabela[] {
         condutor: carrinhaConduzida(p, ind) !== null,
         casaAConfirmar: p.casaAConfirmar,
         carrinhaAConfirmar: p.carrinhaAConfirmar,
+        indisponivel: ind.indisponiveis.get(p.id) ?? null,
+        proximoInicio:
+          ind.hoje === null ? null : (periodosFuturos(estado, p.id, ind.hoje)[0]?.inicio ?? null),
+        saiu: !p.ativa,
         textoPesquisa: normalizarTexto(
           [
             p.nomeCurto,
@@ -97,6 +128,7 @@ export type ColunaTabela =
   | 'casa'
   | 'carrinha'
   | 'condutor'
+  | 'indisponivel'
   | 'aConfirmar';
 
 export const COLUNAS_TABELA: readonly { id: ColunaTabela; rotulo: string }[] = [
@@ -107,6 +139,7 @@ export const COLUNAS_TABELA: readonly { id: ColunaTabela; rotulo: string }[] = [
   { id: 'casa', rotulo: 'Casa' },
   { id: 'carrinha', rotulo: 'Carrinha' },
   { id: 'condutor', rotulo: 'Condutor' },
+  { id: 'indisponivel', rotulo: 'Indisponível' },
   { id: 'aConfirmar', rotulo: 'A confirmar' },
 ];
 
@@ -146,6 +179,9 @@ function valor(l: LinhaTabela, coluna: ColunaTabela): string | number | null {
     case 'condutor':
       // Crescente = quem conduz primeiro.
       return l.condutor ? 0 : 1;
+    case 'indisponivel':
+      // Crescente = quem volta primeiro; sem data de regresso depois; os disponíveis no fim.
+      return l.indisponivel ? (l.indisponivel.fim ?? '9999-12-31') : null;
     case 'aConfirmar':
       return l.casaAConfirmar || l.carrinhaAConfirmar ? 0 : 1;
   }
@@ -201,8 +237,15 @@ export interface FiltrosTabela {
   carrinhas: ReadonlySet<string>;
   /** Ids das obras e/ou SEM (sem obra). */
   obras: ReadonlySet<string>;
+  /** M2: INDISPONIVEL_HOJE, DISPONIVEL_HOJE e/ou COM_FUTUROS. */
+  indisponivel: ReadonlySet<string>;
   soAConfirmar: boolean;
 }
+
+/** Valores do filtro "Indisponível" (M2). */
+export const INDISPONIVEL_HOJE = 'hoje';
+export const DISPONIVEL_HOJE = 'disponivel';
+export const COM_FUTUROS = 'futuros';
 
 export const FILTROS_INICIAIS: FiltrosTabela = {
   texto: '',
@@ -210,8 +253,17 @@ export const FILTROS_INICIAIS: FiltrosTabela = {
   casas: new Set(),
   carrinhas: new Set(),
   obras: new Set(),
+  indisponivel: new Set(),
   soAConfirmar: false,
 };
+
+/** Os valores do filtro "Indisponível" de uma linha: indisponível hoje ou não, e se tem períodos futuros. */
+function valoresIndisponivel(l: Pick<LinhaTabela, 'indisponivel' | 'proximoInicio'>): string[] {
+  return [
+    l.indisponivel ? INDISPONIVEL_HOJE : DISPONIVEL_HOJE,
+    ...(l.proximoInicio !== null ? [COM_FUTUROS] : []),
+  ];
+}
 
 export function filtrosTabelaAtivos(f: FiltrosTabela): boolean {
   return (
@@ -220,6 +272,7 @@ export function filtrosTabelaAtivos(f: FiltrosTabela): boolean {
     f.casas.size > 0 ||
     f.carrinhas.size > 0 ||
     f.obras.size > 0 ||
+    f.indisponivel.size > 0 ||
     f.soAConfirmar
   );
 }
@@ -236,6 +289,7 @@ export function filtrarLinhas(linhas: readonly LinhaTabela[], f: FiltrosTabela):
     if (!passaFiltro(f.casas, l.casa?.id ?? SEM)) return false;
     if (!passaFiltro(f.carrinhas, l.carrinha?.id ?? SEM)) return false;
     if (!passaFiltro(f.obras, l.obra?.id ?? SEM)) return false;
+    if (!passaFiltro(f.indisponivel, valoresIndisponivel(l))) return false;
     if (f.soAConfirmar && !(l.casaAConfirmar || l.carrinhaAConfirmar)) return false;
     if (palavras.length === 0) return true;
     if (palavras.every((p) => l.textoPesquisa.includes(p))) return true;
@@ -250,6 +304,8 @@ export interface OpcoesFiltrosTabela {
   carrinhas: OpcaoFiltro[];
   /** Vazia enquanto não há obras: o filtro fica desativado ("Obra: sem obras"). */
   obras: OpcaoFiltro[];
+  /** M2: Indisponíveis hoje, Disponíveis hoje e Com períodos futuros. */
+  indisponivel: OpcaoFiltro[];
 }
 
 /** Rótulos das opções especiais dos filtros (quem não tem). */
@@ -331,7 +387,39 @@ export function opcoesFiltrosTabela(
       grupo: GRUPO_ESPECIAIS,
       contagem: porObra(SEM),
     });
-  return { clientes, casas, carrinhas, obras };
+  const porIndisponivel = (valor: string) =>
+    linhas.filter((l) => valoresIndisponivel(l).includes(valor)).length;
+  const indisponivel: OpcaoFiltro[] = [
+    { valor: INDISPONIVEL_HOJE, rotulo: 'Indisponíveis hoje', contagem: porIndisponivel(INDISPONIVEL_HOJE) },
+    { valor: DISPONIVEL_HOJE, rotulo: 'Disponíveis hoje', contagem: porIndisponivel(DISPONIVEL_HOJE) },
+    {
+      valor: COM_FUTUROS,
+      rotulo: 'Com períodos futuros',
+      grupo: GRUPO_ESPECIAIS,
+      contagem: porIndisponivel(COM_FUTUROS),
+    },
+  ];
+  return { clientes, casas, carrinhas, obras, indisponivel };
+}
+
+// --- Indisponível (M2): só as datas, nunca o motivo ----------------------------------------------
+
+/** À vista ao lado do nome e na célula da Tabela: "até 12/10" ou "sem regresso". */
+export function textoAteCurto(periodo: Pick<Indisponibilidade, 'fim'>): string {
+  return periodo.fim === null ? 'sem regresso' : `até ${formatarDiaMes(periodo.fim)}`;
+}
+
+/** No title e para leitores de ecrã: "Indisponível até 12/10" / "Indisponível desde 06/10, sem data de regresso". */
+export function descricaoIndisponivel(periodo: Pick<Indisponibilidade, 'inicio' | 'fim'>): string {
+  return periodo.fim === null
+    ? `Indisponível desde ${formatarDiaMes(periodo.inicio)}, sem data de regresso`
+    : `Indisponível até ${formatarDiaMes(periodo.fim)}`;
+}
+
+/** Excel, coluna "Indisponível até": "12/10/2026", "sem data" ou vazio (disponível hoje). */
+export function textoIndisponivelExcel(periodo: Pick<Indisponibilidade, 'fim'> | null): string {
+  if (!periodo) return '';
+  return periodo.fim === null ? 'sem data' : formatarDiaCompleto(periodo.fim);
 }
 
 /** "a confirmar: casa", "casa e carrinha"… (texto para o Excel e para os leitores de ecrã). */

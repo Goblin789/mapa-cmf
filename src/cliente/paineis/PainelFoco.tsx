@@ -28,34 +28,58 @@
 // M2 (docs/m2.md): a moldura e as peças do corpo estão em MolduraFicha.tsx; a ficha da obra (FichaObra.tsx),
 // a secção Indisponível da pessoa (SeccaoIndisponivel.tsx) e a dos problemas da casa/carrinha
 // (SeccaoProblemas.tsx) são ficheiros próprios, montados aqui. A lotação da carrinha não conta quem está
-// indisponível hoje (ocupacaoDaCarrinha).
+// indisponível hoje (ocupacaoDaCarrinha); com o condutor indisponível hoje, a ficha da carrinha avisa.
+// M2, fichas editáveis: no modo de edição cada campo de CAMPOS_EDITAVEIS da pessoa, da casa e da carrinha
+// muda-se no sítio (CamposFicha.tsx: lápis → campo → Enter/✓ = um passo; Esc cancela; "antes: …" por baixo
+// do que mudou). A morada da casa edita o LOCAL (aviso quando é partilhado). Fora do modo de edição as
+// fichas só se leem, com os campos que têm valor. A validade da carta compara com loja.hoje (o dia no
+// Luxemburgo). Quem saiu da empresa tem a marca "Saiu da empresa" e "Voltou à empresa…".
 
 import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { LIMITES } from '../../dominio/campos';
 import { clienteEfetivoId } from '../../dominio/cores';
 import type { Dormida } from '../../dominio/dormidas';
 import type { Indices } from '../../dominio/indices';
 import { nomeComMaiusculasNormais } from '../../dominio/nomes';
-import { ocupacaoCasa, ocupacaoDaCarrinha } from '../../dominio/ocupacao';
-import type { Carrinha, Casa, Id, Pessoa } from '../../dominio/tipos';
+import {
+  lugaresTemporarios,
+  ocupacaoCasa,
+  ocupacaoDaCarrinha,
+  textoLugaresTemporarios,
+} from '../../dominio/ocupacao';
+import {
+  type Carrinha,
+  type Casa,
+  type Estado,
+  type Id,
+  type Pessoa,
+  TIPOS_VEICULO,
+} from '../../dominio/tipos';
 import { IconeVolante } from '../comum/IconeVolante';
 import { ESTILO_AVISO_CONTRATO } from '../comum/lotacao';
 import { formatarMatricula } from '../comum/Matricula';
+import { BOTAO_PEQUENO } from '../edicao/classes';
 import {
   AcoesDormida,
   AcoesPessoa,
   CondutorGravado,
+  ConfirmarMarca,
   DormidaGravada,
+  MarcaSaiu,
   MovimentosPendentes,
   PassageirosEmEdicao,
   usePessoaAlterada,
   useSitioAlterado,
   ValorGravado,
 } from '../edicao/PecasFoco';
+import { abrirSaida } from '../edicao/ui';
 import { useLoja } from '../estado/loja';
 import { useVista } from '../vistas/vista';
+import { CampoCarta, CampoFicha, CampoMoradaCasa } from './CamposFicha';
 import { carrinhaConduzida, condutorDaCarrinha, ROTULO_SEM_CONDUTOR } from './condutor';
 import { FichaObra } from './FichaObra';
 import {
+  avisoNomeNoMapa,
   cadeiaDaPessoa,
   carrinhasDasPessoas,
   carrinhasQueDormemEm,
@@ -63,6 +87,7 @@ import {
   extrasDaPessoa,
   fichaCompactaTemCorpo,
   fichaPessoaCompacta,
+  outrasCasasNoLocal,
   type VistaFicha,
 } from './fichas';
 import {
@@ -85,13 +110,14 @@ import { SeccaoProblemas } from './SeccaoProblemas';
 import {
   APARTAMENTO_POR_CONFIRMAR,
   comPlural,
-  hojeISO,
   nomeCompleto,
+  notaCorDaObra,
   ROTULO_FORA_DAS_CASAS,
   ROTULO_SEM_TRANSPORTE,
   ROTULO_TIPO_VEICULO,
+  SEM_DADOS,
   textoApartamento,
-  textoCarta,
+  textoCondutorIndisponivel,
   textoContrato,
   textoDormida,
   textoMarcaModelo,
@@ -104,20 +130,118 @@ export type { LugarFicha } from './MolduraFicha';
 const ROTULO_ELEMENTO = { casa: 'Casa', carrinha: 'Carrinha', obra: 'Obra' } as const;
 const CAMPO_ELEMENTO = { casa: 'casaId', carrinha: 'carrinhaId', obra: 'obraId' } as const;
 
+/** Os clientes como opções de uma lista (pela ordem dos clientes). */
+function opcoesClientes(estado: Estado) {
+  return [...estado.clientes].sort((a, b) => a.ordem - b.ordem).map((c) => ({ valor: c.id, rotulo: c.nome }));
+}
+
+const TEXTO_CURTO = { tipo: 'texto', opcional: false, max: LIMITES.textoCurto } as const;
+const TEXTO_CURTO_OPCIONAL = { tipo: 'texto', opcional: true, max: LIMITES.textoCurto } as const;
+const TEXTO_LONGO = { tipo: 'texto', opcional: true, max: LIMITES.textoLongo } as const;
+
+/**
+ * No modo de edição, os campos de quem a pessoa é: nº, nome, apelidos, nome no mapa (com o aviso de repetido
+ * enquanto se escreve) e cliente (com a nota da cor da obra, quando tem obra). Na ficha completa e na
+ * compacta da Tabela.
+ */
+function CamposDaPessoa({ pessoa, indices }: { pessoa: Pessoa; indices: Indices }) {
+  const estado = useLoja((s) => s.estado);
+  if (!estado) return null;
+  const proprio = indices.clientes.get(pessoa.clienteId) ?? null;
+  const obra = pessoa.obraId ? indices.obras.get(pessoa.obraId) : undefined;
+  const clienteDaObra = obra ? (indices.clientes.get(obra.clienteId)?.nome ?? null) : null;
+  return (
+    <>
+      <CampoFicha
+        entidade="pessoa"
+        id={pessoa.id}
+        campo="numero"
+        rotulo="Nº"
+        valor={pessoa.numero}
+        editor={{ tipo: 'texto', opcional: true, max: LIMITES.numero }}
+      />
+      <CampoFicha entidade="pessoa" id={pessoa.id} campo="nome" valor={pessoa.nome} editor={TEXTO_CURTO} />
+      <CampoFicha
+        entidade="pessoa"
+        id={pessoa.id}
+        campo="apelidos"
+        valor={pessoa.apelidos}
+        editor={TEXTO_CURTO}
+      />
+      <CampoFicha
+        entidade="pessoa"
+        id={pessoa.id}
+        campo="nomeCurto"
+        valor={pessoa.nomeCurto}
+        editor={TEXTO_CURTO}
+        aoEscrever={(texto) => avisoNomeNoMapa(estado.pessoas, texto, pessoa.id)}
+      />
+      <CampoFicha
+        entidade="pessoa"
+        id={pessoa.id}
+        campo="clienteId"
+        valor={pessoa.clienteId}
+        editor={{ tipo: 'escolha', opcoes: opcoesClientes(estado) }}
+        mostrar={
+          <span className="inline-flex items-center gap-1.5">
+            <MarcaCliente cliente={proprio} />
+            {proprio?.nome ?? <Vazio>desconhecido</Vazio>}
+          </span>
+        }
+        nota={obra ? notaCorDaObra(clienteDaObra, obra.nome) : undefined}
+      />
+    </>
+  );
+}
+
+/** O telefone e a carta (no modo de edição mudam-se aqui; fora dele, só se leem). */
+function ContactosDaPessoa({
+  pessoa,
+  foraDaEdicao,
+}: {
+  pessoa: Pessoa;
+  foraDaEdicao: 'sempre' | 'com-valor';
+}) {
+  const temCarta = pessoa.temCarta !== null;
+  const modoEdicao = useLoja((s) => s.modoEdicao);
+  return (
+    <>
+      <CampoFicha
+        entidade="pessoa"
+        id={pessoa.id}
+        campo="telefone"
+        valor={pessoa.telefone}
+        editor={{ tipo: 'texto', opcional: true, max: LIMITES.telefone }}
+        tipoTeclado="tel"
+        foraDaEdicao={foraDaEdicao}
+        mostrar={pessoa.telefone?.trim() ? textoTelefone(pessoa) : <Vazio>{SEM_DADOS}</Vazio>}
+      />
+      {(modoEdicao || foraDaEdicao === 'sempre' || temCarta) && <CampoCarta pessoa={pessoa} />}
+    </>
+  );
+}
+
 function FichaPessoa({ pessoa, indices }: { pessoa: Pessoa; indices: Indices }) {
   const cliente = indices.clientes.get(clienteEfetivoId(pessoa, indices.obras)) ?? null;
   // Como na Tabela: maiúsculas normais (só para mostrar).
   const nome = nomeComMaiusculasNormais(nomeCompleto(pessoa));
-  const hoje = hojeISO();
   const alterada = usePessoaAlterada(pessoa.id);
   const conduz = carrinhaConduzida(pessoa, indices);
   const modoEdicao = useLoja((s) => s.modoEdicao);
-  const subtitulo = [
+  const texto = [
     pessoa.numero ? `Nº ${pessoa.numero}` : 'Sem Nº',
     pessoa.nomeCurto !== nome ? `no mapa: ${pessoa.nomeCurto}` : null,
   ]
     .filter(Boolean)
     .join(' · ');
+  const subtitulo = pessoa.ativa ? (
+    texto
+  ) : (
+    <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-0.5">
+      {texto}
+      <MarcaSaiu />
+    </span>
+  );
 
   const cadeia = cadeiaDaPessoa(pessoa, indices);
   // Texto corrido (parte onde calhar): casa → carrinha → obra numa ou duas linhas.
@@ -173,12 +297,16 @@ function FichaPessoa({ pessoa, indices }: { pessoa: Pessoa; indices: Indices }) 
       acoes={acoes}
     >
       <dl>
-        <Linha rotulo="Cliente">
-          <span className="inline-flex items-center gap-1.5">
-            <MarcaCliente cliente={cliente} />
-            {cliente?.nome ?? <Vazio>desconhecido</Vazio>}
-          </span>
-        </Linha>
+        {modoEdicao ? (
+          <CamposDaPessoa pessoa={pessoa} indices={indices} />
+        ) : (
+          <Linha rotulo="Cliente">
+            <span className="inline-flex items-center gap-1.5">
+              <MarcaCliente cliente={cliente} />
+              {cliente?.nome ?? <Vazio>desconhecido</Vazio>}
+            </span>
+          </Linha>
+        )}
       </dl>
       <Secao titulo="Casa → Carrinha → Obra">
         <ol className="space-y-0.5">
@@ -202,6 +330,7 @@ function FichaPessoa({ pessoa, indices }: { pessoa: Pessoa; indices: Indices }) 
                   <Vazio>{el.rotulo}</Vazio>
                 )}
                 {el.aConfirmar && <MarcaAConfirmar />}
+                {el.aConfirmar && el.tipo !== 'obra' && <ConfirmarMarca pessoa={pessoa} qual={el.tipo} />}
                 <ValorGravado pessoaId={pessoa.id} campo={CAMPO_ELEMENTO[el.tipo]} />
               </span>
             </li>
@@ -221,12 +350,7 @@ function FichaPessoa({ pessoa, indices }: { pessoa: Pessoa; indices: Indices }) 
         )}
       </Secao>
       <dl className="mt-3 border-t border-slate-200 pt-2">
-        <Linha rotulo="Telefone">
-          {pessoa.telefone ? textoTelefone(pessoa) : <Vazio>{textoTelefone(pessoa)}</Vazio>}
-        </Linha>
-        <Linha rotulo="Carta">
-          {pessoa.temCarta === null ? <Vazio>{textoCarta(pessoa, hoje)}</Vazio> : textoCarta(pessoa, hoje)}
-        </Linha>
+        <ContactosDaPessoa pessoa={pessoa} foraDaEdicao="sempre" />
       </dl>
       {/* M2: indisponível (hoje e os próximos períodos; no modo de edição, marcar e terminar). */}
       <SeccaoIndisponivel pessoa={pessoa} />
@@ -239,24 +363,54 @@ function FichaPessoa({ pessoa, indices }: { pessoa: Pessoa; indices: Indices }) 
  * A ficha da pessoa na Tabela: só o que a linha não mostra. Sem Nº, cliente nem casa → carrinha → obra
  * (estão nas colunas) e sem os botões "Mudar…" e de condutor (no modo de edição são as listas e o botão
  * das células). Fica: o tipo, o nome, "no mapa: …" (se for outro), "Ver no mapa" e ✕ no cabeçalho; o aviso
- * de quem conduz sem carta; o telefone e a carta, se existirem. Sem nenhum deles, só o cabeçalho.
- * (M2: o indisponível está na coluna da Tabela, não aqui.)
+ * de quem conduz sem carta; o telefone e a carta, se existirem. Sem nenhum deles, só o cabeçalho (quem saiu
+ * da empresa tem sempre o "Voltou à empresa…", por baixo do telefone e da carta).
+ * (M2: o indisponível está na coluna da Tabela, não aqui.) No modo de edição (M2) tem os campos que se
+ * mudam na ficha (nº, nome, apelidos, nome no mapa, cliente, telefone, carta) e "Saiu da empresa…"; a casa
+ * → carrinha → obra e o condutor continuam nas células.
  */
 function FichaPessoaCompacta({ pessoa, indices }: { pessoa: Pessoa; indices: Indices }) {
   const alterada = usePessoaAlterada(pessoa.id);
-  const extras = extrasDaPessoa(pessoa, hojeISO());
+  const hoje = useLoja((s) => s.hoje);
+  const modoEdicao = useLoja((s) => s.modoEdicao);
+  const extras = extrasDaPessoa(pessoa, hoje);
   // (Quem não tem carta tem sempre a linha Carta: "Não tem".)
   const semCarta = pessoa.temCarta === false && carrinhaConduzida(pessoa, indices) !== null;
+  const noMapa = extras.nomeNoMapa ? `no mapa: ${extras.nomeNoMapa}` : undefined;
   return (
     <Moldura
       tipo="Pessoa"
       titulo={nomeComMaiusculasNormais(nomeCompleto(pessoa))}
-      subtitulo={extras.nomeNoMapa ? `no mapa: ${extras.nomeNoMapa}` : undefined}
+      subtitulo={
+        pessoa.ativa ? (
+          noMapa
+        ) : (
+          <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-0.5">
+            {noMapa}
+            <MarcaSaiu />
+          </span>
+        )
+      }
       alterado={alterada}
       compacta
     >
-      {/* Sem nada para mostrar, a ficha fica só com o cabeçalho (a Moldura não põe o corpo). */}
-      {fichaCompactaTemCorpo(extras, semCarta) ? (
+      {modoEdicao ? (
+        <>
+          {semCarta && (
+            <p className="mb-1 rounded border border-red-500 bg-red-100 px-2 py-1 text-xs font-medium text-red-900">
+              <span aria-hidden="true">▲ </span>
+              Conduz, mas não tem carta.
+            </p>
+          )}
+          <dl>
+            <CamposDaPessoa pessoa={pessoa} indices={indices} />
+            <ContactosDaPessoa pessoa={pessoa} foraDaEdicao="com-valor" />
+          </dl>
+          <AcoesDaCompacta pessoa={pessoa} />
+        </>
+      ) : /* Sem nada para mostrar, a ficha fica só com o cabeçalho (a Moldura não põe o corpo). Quem saiu
+         tem sempre corpo: o telefone e a carta (se existirem) e "Voltou à empresa…". */
+      !pessoa.ativa || fichaCompactaTemCorpo(extras, semCarta) ? (
         <>
           {semCarta && (
             <p className="mb-1 rounded border border-red-500 bg-red-100 px-2 py-1 text-xs font-medium text-red-900">
@@ -270,9 +424,105 @@ function FichaPessoaCompacta({ pessoa, indices }: { pessoa: Pessoa; indices: Ind
               {extras.carta && <Linha rotulo="Carta">{extras.carta}</Linha>}
             </dl>
           )}
+          {!pessoa.ativa && <AcoesPessoa pessoa={pessoa} />}
         </>
       ) : null}
     </Moldura>
+  );
+}
+
+/** Na ficha compacta, no modo de edição: só "Saiu da empresa…" (ou "Voltou à empresa…"). */
+function AcoesDaCompacta({ pessoa }: { pessoa: Pessoa }) {
+  if (!pessoa.ativa) return <AcoesPessoa pessoa={pessoa} />;
+  return (
+    <div className="mt-2 border-t border-slate-200 pt-2">
+      <button type="button" onClick={() => abrirSaida(pessoa.id)} className={BOTAO_PEQUENO}>
+        Saiu da empresa…
+      </button>
+    </div>
+  );
+}
+
+/**
+ * No modo de edição, os campos da casa: nome, morada (o LOCAL, com o aviso de morada partilhada e "Mudar
+ * para outra morada…"), apartamento, lotação, máx. do contrato, tolerado, nota do contrato, sempre cheia,
+ * senhorio (só o contacto da casa) e equipamento.
+ */
+function CamposDaCasa({ casa, indices }: { casa: Casa; indices: Indices }) {
+  const local = indices.locais.get(casa.localId);
+  const moradores = indices.moradores.get(casa.id) ?? [];
+  const oc = ocupacaoCasa(casa, moradores.length);
+  const inteiro = (nulo: boolean) => ({ tipo: 'inteiro', nulo, min: 0, max: LIMITES.lotacaoMaxima }) as const;
+  return (
+    <dl>
+      <CampoFicha entidade="casa" id={casa.id} campo="nome" valor={casa.nome} editor={TEXTO_CURTO} />
+      {local && <CampoMoradaCasa casa={casa} local={local} outras={outrasCasasNoLocal(casa, indices)} />}
+      <CampoFicha
+        entidade="casa"
+        id={casa.id}
+        campo="apartamento"
+        valor={casa.apartamento}
+        editor={TEXTO_CURTO_OPCIONAL}
+      />
+      <CampoFicha
+        entidade="casa"
+        id={casa.id}
+        campo="lotacao"
+        valor={casa.lotacao}
+        editor={inteiro(false)}
+        mostrar={
+          <span className="inline-flex flex-wrap items-center gap-1.5">
+            {casa.lotacao}
+            <PastilhaLotacao ocupados={oc.ocupados} lugares={oc.lotacao} nivel={oc.nivel} />
+          </span>
+        }
+      />
+      <CampoFicha
+        entidade="casa"
+        id={casa.id}
+        campo="maxContrato"
+        valor={casa.maxContrato}
+        editor={inteiro(true)}
+        mostrar={casa.maxContrato === null ? <Vazio>não fixado</Vazio> : undefined}
+      />
+      <CampoFicha
+        entidade="casa"
+        id={casa.id}
+        campo="tolerado"
+        valor={casa.tolerado}
+        editor={inteiro(true)}
+      />
+      <CampoFicha
+        entidade="casa"
+        id={casa.id}
+        campo="notaContrato"
+        valor={casa.notaContrato}
+        editor={TEXTO_LONGO}
+      />
+      <CampoFicha
+        entidade="casa"
+        id={casa.id}
+        campo="sempreCheia"
+        valor={casa.sempreCheia}
+        editor={{ tipo: 'simNao' }}
+        nota="Os lugares são os moradores (sem vagas)."
+      />
+      <CampoFicha
+        entidade="casa"
+        id={casa.id}
+        campo="senhorio"
+        valor={casa.senhorio}
+        editor={TEXTO_LONGO}
+        nota="Só o contacto da casa."
+      />
+      <CampoFicha
+        entidade="casa"
+        id={casa.id}
+        campo="equipamento"
+        valor={casa.equipamento}
+        editor={TEXTO_LONGO}
+      />
+    </dl>
   );
 }
 
@@ -293,6 +543,7 @@ function FichaCasa({
   const dormem = carrinhasQueDormemEm(casa.id, indices, dormidas);
   const apartamento = textoApartamento(casa, indices.casasPorLocal.get(casa.localId)?.length ?? 1);
   const alterada = useSitioAlterado('casaId', casa.id);
+  const modoEdicao = useLoja((s) => s.modoEdicao);
 
   return (
     <Moldura
@@ -313,26 +564,33 @@ function FichaCasa({
         </p>
       }
     >
-      <dl>
-        {apartamento !== null && (
-          <Linha rotulo="Apartamento">
-            {apartamento === APARTAMENTO_POR_CONFIRMAR ? <Vazio>{apartamento}</Vazio> : apartamento}
+      {modoEdicao ? (
+        <CamposDaCasa casa={casa} indices={indices} />
+      ) : (
+        <dl>
+          {apartamento !== null && (
+            <Linha rotulo="Apartamento">
+              {apartamento === APARTAMENTO_POR_CONFIRMAR ? <Vazio>{apartamento}</Vazio> : apartamento}
+            </Linha>
+          )}
+          <Linha rotulo="Ocupação">
+            <PastilhaLotacao ocupados={oc.ocupados} lugares={oc.lotacao} nivel={oc.nivel} />
           </Linha>
-        )}
-        <Linha rotulo="Ocupação">
-          <PastilhaLotacao ocupados={oc.ocupados} lugares={oc.lotacao} nivel={oc.nivel} />
-        </Linha>
-        <Linha rotulo="Máx. contrato">{textoContrato(casa)}</Linha>
-        {casa.senhorio && <Linha rotulo="Senhorio">{casa.senhorio}</Linha>}
-        {casa.equipamento && <Linha rotulo="Equipamento">{casa.equipamento}</Linha>}
-      </dl>
+          <Linha rotulo="Máx. contrato">{textoContrato(casa)}</Linha>
+          {casa.sempreCheia && <Linha rotulo="Sempre cheia">Sim</Linha>}
+          {casa.senhorio && <Linha rotulo="Senhorio">{casa.senhorio}</Linha>}
+          {casa.equipamento && <Linha rotulo="Equipamento">{casa.equipamento}</Linha>}
+        </dl>
+      )}
       {aviso && (
         <p className={`mt-1 rounded border px-2 py-1 text-xs font-medium ${aviso.classe}`}>
           <span aria-hidden="true">▲ </span>
           {aviso.rotulo}: {comPlural(oc.usados, 'lugar usado', 'lugares usados')} para {textoContrato(casa)}.
         </p>
       )}
-      {casa.notaContrato && <p className="mt-1 text-xs text-slate-700 italic">{casa.notaContrato}</p>}
+      {!modoEdicao && casa.notaContrato && (
+        <p className="mt-1 text-xs text-slate-700 italic">{casa.notaContrato}</p>
+      )}
       <MovimentosPendentes campo="casaId" id={casa.id} />
       {/* M2: problemas pendurados na casa (abertos e "Resolver"; no modo de edição, novo problema). */}
       <SeccaoProblemas alvo={{ tipo: 'casa', id: casa.id }} />
@@ -378,6 +636,72 @@ function FichaCasa({
   );
 }
 
+/**
+ * No modo de edição, os campos da carrinha: matrícula (única; mostrada formatada), outras matrículas
+ * (separadas por vírgulas), tipo, marca, modelo, lugares (1 a LIMITES.lugaresMaximos) e nota. Nada de
+ * CT/revisão/correia nem estados (M3).
+ */
+function CamposDaCarrinha({ carrinha }: { carrinha: Carrinha }) {
+  return (
+    <>
+      <CampoFicha
+        entidade="carrinha"
+        id={carrinha.id}
+        campo="matricula"
+        valor={carrinha.matricula}
+        editor={{ tipo: 'matricula' }}
+      />
+      <CampoFicha
+        entidade="carrinha"
+        id={carrinha.id}
+        campo="matriculasAlternativas"
+        valor={carrinha.matriculasAlternativas}
+        editor={{ tipo: 'matriculas' }}
+      />
+      <CampoFicha
+        entidade="carrinha"
+        id={carrinha.id}
+        campo="tipo"
+        valor={carrinha.tipo}
+        editor={{
+          tipo: 'escolha',
+          opcoes: TIPOS_VEICULO.map((t) => ({ valor: t, rotulo: ROTULO_TIPO_VEICULO[t] })),
+        }}
+        mostrar={ROTULO_TIPO_VEICULO[carrinha.tipo]}
+      />
+      <CampoFicha
+        entidade="carrinha"
+        id={carrinha.id}
+        campo="marca"
+        valor={carrinha.marca}
+        editor={TEXTO_CURTO_OPCIONAL}
+      />
+      <CampoFicha
+        entidade="carrinha"
+        id={carrinha.id}
+        campo="modelo"
+        valor={carrinha.modelo}
+        editor={TEXTO_CURTO_OPCIONAL}
+      />
+      <CampoFicha
+        entidade="carrinha"
+        id={carrinha.id}
+        campo="lugares"
+        valor={carrinha.lugares}
+        editor={{ tipo: 'inteiro', nulo: false, min: 1, max: LIMITES.lugaresMaximos }}
+        nota="Com o do condutor."
+      />
+      <CampoFicha
+        entidade="carrinha"
+        id={carrinha.id}
+        campo="nota"
+        valor={carrinha.nota}
+        editor={TEXTO_LONGO}
+      />
+    </>
+  );
+}
+
 function FichaCarrinha({
   carrinha,
   indices,
@@ -390,6 +714,8 @@ function FichaCarrinha({
   const passageiros = indices.passageiros.get(carrinha.id) ?? [];
   // M2: quem está indisponível hoje continua na lista, mas o lugar dele fica livre.
   const oc = ocupacaoDaCarrinha(indices, carrinha);
+  // M2: o lugar de quem está indisponível só está livre até voltar ("1 livre até 12/10").
+  const livresAte = textoLugaresTemporarios(lugaresTemporarios(indices, carrinha.id));
   const dormida = dormidas.get(carrinha.id);
   const dorme = textoDormida(dormida, indices);
   const sugerida = dormida?.confianca === 'sugerida';
@@ -397,11 +723,13 @@ function FichaCarrinha({
   const tipo = ROTULO_TIPO_VEICULO[carrinha.tipo];
   const { casas, semCasa } = casasDasPessoas(passageiros, indices);
   const alternativas = carrinha.matriculasAlternativas.length
-    ? `também ${carrinha.matriculasAlternativas.join(', ')}`
+    ? `também ${carrinha.matriculasAlternativas.map(formatarMatricula).join(', ')}`
     : null;
   const alterada = useSitioAlterado('carrinhaId', carrinha.id);
   const modoEdicao = useLoja((s) => s.modoEdicao);
   const condutor = condutorDaCarrinha(carrinha, indices);
+  // M2: o condutor indisponível hoje não muda de carrinha nem deixa de ser o condutor; só se avisa.
+  const condutorIndisponivel = condutor ? indices.indisponiveis.get(condutor.id) : undefined;
 
   return (
     <Moldura
@@ -442,9 +770,14 @@ function FichaCarrinha({
       acoes={modoEdicao ? <AcoesDormida carrinha={carrinha} /> : null}
     >
       <dl>
-        <Linha rotulo="Modelo">{marcaModelo ?? <Vazio>desconhecido</Vazio>}</Linha>
+        {modoEdicao ? (
+          <CamposDaCarrinha carrinha={carrinha} />
+        ) : (
+          <Linha rotulo="Modelo">{marcaModelo ?? <Vazio>desconhecido</Vazio>}</Linha>
+        )}
         <Linha rotulo="Ocupação">
           <PastilhaLotacao ocupados={oc.ocupados} lugares={oc.lugares} nivel={oc.nivel} />
+          {livresAte && <span className="ml-1.5 text-xs font-medium text-amber-800">{livresAte}</span>}
         </Linha>
         <Linha rotulo="Condutor">
           <span className="flex flex-wrap items-center gap-1.5">
@@ -456,6 +789,12 @@ function FichaCarrinha({
             )}
             <CondutorGravado carrinhaId={carrinha.id} />
           </span>
+          {condutorIndisponivel && (
+            <span className="mt-0.5 block rounded border border-amber-500 bg-amber-50 px-1.5 py-0.5 text-xs font-medium text-amber-950">
+              <span aria-hidden="true">▲ </span>
+              {textoCondutorIndisponivel(condutorIndisponivel)}
+            </span>
+          )}
         </Linha>
         <Linha rotulo="Onde dorme">
           {sugerida && (
@@ -479,7 +818,7 @@ function FichaCarrinha({
           <AcoesDormida carrinha={carrinha} />
         </Linha>
       </dl>
-      {carrinha.nota && <p className="mt-1 text-xs text-slate-700 italic">{carrinha.nota}</p>}
+      {!modoEdicao && carrinha.nota && <p className="mt-1 text-xs text-slate-700 italic">{carrinha.nota}</p>}
       <MovimentosPendentes campo="carrinhaId" id={carrinha.id} />
       {/* M2: problemas pendurados na carrinha (abertos e "Resolver"; no modo de edição, novo problema). */}
       <SeccaoProblemas alvo={{ tipo: 'carrinha', id: carrinha.id }} />

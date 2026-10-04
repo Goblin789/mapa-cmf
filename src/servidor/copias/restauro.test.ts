@@ -355,10 +355,10 @@ describe('prepararBd', () => {
     expect((erro as Error).message).not.toContain('SEGREDO-FALSO');
   });
 
-  it('sem cópias configuradas e com migrações por aplicar → só avisa', async () => {
+  it('em produção, sem cópias configuradas e com migrações por aplicar → só avisa (no PC: preparar.test.ts)', async () => {
     const caminho = join(pasta, 'mapa.db');
     new Database(caminho).close();
-    await prepararBd(caminho, null, {});
+    await prepararBd(caminho, null, {}, { producao: true });
     expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('migra-se sem cópia'));
   });
 

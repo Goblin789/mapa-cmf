@@ -97,6 +97,7 @@ export function gerarRelatorioSincronizacao(
     numero('locais', textoContagem(n.locais)),
     numero('pessoas ficam sem transporte (a confirmar)', String(n.semTransporte)),
     numero('condutores retirados', String(n.condutoresRetirados)),
+    numero('campos ficaram com o valor do programa', String(n.mantidos)),
   ].join('')}</div>`;
 
   const frases = frasesDoPlano(plano, estado);
@@ -133,6 +134,12 @@ export function gerarRelatorioSincronizacao(
         ...plano.removidos.carrinhas.map((c) => [rotuloVeiculo(c), consequenciasDaSaida(plano, c)]),
         ...plano.removidos.casas.map((c) => [c.nome, 'Sai (não tinha moradores).']),
         ...plano.removidos.clientes.map((c) => [`Cliente ${c.nome}`, 'Sai (não tinha pessoas nem obras).']),
+        ...plano.problemasApagados.map((p) => {
+          const casa = estado.casas.find((c) => c.id === p.casaId);
+          const carrinha = estado.carrinhas.find((c) => c.id === p.carrinhaId);
+          const de = casa ? casa.nome : carrinha ? rotuloVeiculo(carrinha) : (p.casaId ?? p.carrinhaId ?? '');
+          return [`Problema resolvido de ${de}`, `«${p.texto}»: apaga-se antes (fica no histórico).`];
+        }),
       ],
     ) +
       (plano.semTransporte.length > 0
@@ -210,11 +217,40 @@ export function gerarRelatorioSincronizacao(
         : ''),
   );
 
+  const mantidos = secao(
+    'programa',
+    '6. Ficou o valor do programa',
+    '<p class="nota">' +
+      e(
+        'Estes campos mudaram nos JSON, mas tinham sido mudados no programa: a sincronização nunca desfaz uma ' +
+          'edição, por isso fica o valor do programa. Daí em diante estes campos mudam-se no programa. Para ' +
+          'aplicar mesmo o valor do JSON: npm run sincronizar -- --aplicar --usar-json entidade:id:campo ' +
+          '(ex.: casa:<id>:lotacao; pode repetir-se).',
+      ) +
+      '</p>' +
+      tabela(
+        ['Registo', 'Campo', 'No programa (fica)', 'No JSON', 'Para usar o do JSON'],
+        plano.mantidos.map((m) => [
+          m.rotulo,
+          nomeCampo(m.campo),
+          formatarValor(m.valorPrograma, nomeLocal, m.campo),
+          formatarValor(m.valorJson, nomeLocal, m.campo),
+          `--usar-json ${m.entidade}:${m.id}:${m.campo}`,
+        ]),
+      ) +
+      (plano.apagadosNoPrograma.length > 0
+        ? `<p class="nota">${e(
+            `Apagados no programa (não voltam a entrar): ${plano.apagadosNoPrograma.map((a) => a.rotulo).join(', ')}.`,
+          )}</p>`
+        : ''),
+  );
+
   const naoSeMexe = secao(
     'nao-mexe',
-    '6. O que nunca se mexe',
+    '7. O que nunca se mexe',
     '<ul>' +
       [
+        'Campos dos JSON que foram mudados no programa (secção 6), a não ser com --usar-json.',
         'Pessoas: casa, carrinha, obra e "a confirmar" (só mudam as pessoas dos veículos que saem da frota).',
         'Condutores das carrinhas (só se retira o dos veículos que saem).',
         'Onde dorme cada carrinha (só fica por definir se a casa onde dormia sair).',
@@ -254,7 +290,7 @@ export function gerarRelatorioSincronizacao(
       '. Compara dados-iniciais/{clientes,casas,carrinhas,locais}.json com a base de dados. ' +
       'Contém nomes de pessoas: não partilhar nem pôr no git.',
   )}</p>
-${[resumo, erros, saem, entram, mudam, naoSeMexe].join('\n')}
+${[resumo, erros, saem, entram, mudam, mantidos, naoSeMexe].join('\n')}
 </main>
 </body>
 </html>

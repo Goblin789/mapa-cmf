@@ -7,6 +7,7 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import readXlsxFile from 'read-excel-file/node';
 import { config } from '../servidor/config';
+import { recusaPorMigracoesPendentes } from '../servidor/copias/migracoes';
 import { abrirBd } from '../servidor/db/ligacao';
 import { aplicarNaBd, ErroGravacoesNoPrograma } from './aplicar';
 import {
@@ -152,8 +153,18 @@ export async function executarImportacao({
 
   if (aplicar) {
     meta.bd = resolve(config.bd);
+    // Nunca migra uma BD que já existe (sem a cópia de antes de migrar, que só o servidor faz).
+    let faltamMigracoes: string | null = null;
+    try {
+      faltamMigracoes = recusaPorMigracoesPendentes(config.bd);
+    } catch (erro) {
+      faltamMigracoes = `Não consegui ler a base de dados: ${erro instanceof Error ? erro.message : String(erro)}`;
+    }
     if (resumo.errosBloqueantes > 0) {
       meta.modo = 'recusado';
+    } else if (faltamMigracoes) {
+      meta.modo = 'falhou';
+      meta.falha = faltamMigracoes;
     } else {
       try {
         const bd = abrirBd(config.bd);

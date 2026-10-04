@@ -7,8 +7,9 @@ import {
   operacaoCondutor,
   operacoesParaAlvo,
 } from '../../dominio/operacoes';
-import { criarObra } from '../../dominio/teste-fabrica';
+import { criarIndisponibilidade, criarObra } from '../../dominio/teste-fabrica';
 import {
+  acaoIndisponivel,
   acaoTeclaLista,
   alvoDaEscolha,
   antesDaCelula,
@@ -20,6 +21,7 @@ import {
   opcoesObra,
   rotuloBotaoCondutor,
   rotuloDaCelula,
+  rotulosAcaoIndisponivel,
   type TeclaLista,
   teclaMudaLista,
   valorDaCelula,
@@ -261,5 +263,55 @@ describe('teclado nas listas', () => {
     expect(acaoTeclaLista(tecla('Escape'), provisoria)).toBe('anular');
     expect(acaoTeclaLista(tecla('z', { ctrlKey: true }), provisoria)).toBe('anular');
     expect(acaoTeclaLista(tecla('y', { ctrlKey: true }), provisoria)).toBe('refazer');
+  });
+});
+
+describe('indisponível nas células (M2)', () => {
+  // Hoje 04/10: a Ana (XX 1001, com o Zé) fora até 12/10. Dados fictícios.
+  const comPeriodo = {
+    ...servidor,
+    indisponibilidades: [
+      criarIndisponibilidade({ id: 'indisp-1', pessoaId: 'p-2', inicio: '2026-10-01', fim: '2026-10-12' }),
+    ],
+  };
+  const indP = indexar(comPeriodo, '2026-10-04');
+
+  it('a lista das carrinhas não conta quem está indisponível hoje', () => {
+    expect(opcoesCarrinha(comPeriodo, indP).find((o) => o.valor === 'XX1001')?.rotulo).toBe('XX 1001 · 1/5');
+    expect(
+      opcoesCarrinha(comPeriodo, indexar(comPeriodo, null)).find((o) => o.valor === 'XX1001')?.rotulo,
+    ).toBe('XX 1001 · 2/5');
+  });
+
+  it('o botão da célula: "Já voltou" a quem está fora, "Marcar…" aos outros, nada a quem saiu', () => {
+    const linhas = linhasDaTabela(comPeriodo, indP, { comQuemSaiu: true });
+    const de = (id: string) => linhas.find((l) => l.pessoa.id === id);
+    const ana = de('p-2');
+    const ze = de('p-1');
+    const velho = de('p-9');
+    expect(ana && acaoIndisponivel(ana, '2026-10-04')).toEqual({
+      tipo: 'voltou',
+      periodoId: 'indisp-1',
+      apaga: false,
+    });
+    expect(ze && acaoIndisponivel(ze, '2026-10-04')).toEqual({ tipo: 'marcar' });
+    expect(velho && acaoIndisponivel(velho, '2026-10-04')).toBeNull();
+    expect(rotulosAcaoIndisponivel('Ana Barros', { tipo: 'marcar' })).toEqual({
+      texto: 'Marcar…',
+      nome: 'Marcar Ana Barros indisponível…',
+    });
+    expect(
+      rotulosAcaoIndisponivel('Ana Barros', { tipo: 'voltou', periodoId: 'indisp-1', apaga: false }),
+    ).toEqual({ texto: 'Já voltou', nome: 'Ana Barros já voltou (o período acaba ontem)' });
+  });
+
+  it('"Já voltou" de um período que começou hoje diz que o apaga (como a ficha)', () => {
+    const linhas = linhasDaTabela(comPeriodo, indexar(comPeriodo, '2026-10-01'));
+    const ana = linhas.find((l) => l.pessoa.id === 'p-2');
+    const acao = ana ? acaoIndisponivel(ana, '2026-10-01') : null;
+    expect(acao).toEqual({ tipo: 'voltou', periodoId: 'indisp-1', apaga: true });
+    expect(acao && rotulosAcaoIndisponivel('Ana Barros', acao).nome).toBe(
+      'Ana Barros já voltou (o período apaga-se: começou hoje)',
+    );
   });
 });

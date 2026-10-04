@@ -8,10 +8,12 @@ import {
   carrinhas,
   casas,
   clientes,
+  indisponibilidades,
   locais,
   lotes,
   obras,
   pessoas,
+  problemas,
 } from '../servidor/db/esquema';
 import type { Bd } from '../servidor/db/ligacao';
 import type { Entidades } from './tipos';
@@ -46,7 +48,8 @@ export function contarGravacoesDoPrograma(bd: Pick<Bd, 'select'>): number {
 
 /**
  * Substitui o conteúdo da base de dados pelas entidades importadas e regista um lote de importação.
- * Apaga também o histórico (lotes e alterações). Devolve o id do lote.
+ * Apaga também o histórico (lotes e alterações) e, do M2, os períodos de indisponibilidade e os problemas.
+ * Devolve o id do lote.
  * Se já houver gravações feitas no programa, recusa (ErroGravacoesNoPrograma) a não ser com `forcar`.
  */
 export function aplicarNaBd(
@@ -65,6 +68,9 @@ export function aplicarNaBd(
       tx.update(carrinhas).set({ condutorId: null }).run();
       tx.delete(alteracoes).run();
       tx.delete(lotes).run();
+      // M2: os períodos apontam para as pessoas; os problemas para as casas e os veículos.
+      tx.delete(problemas).run();
+      tx.delete(indisponibilidades).run();
       tx.delete(pessoas).run();
       tx.delete(obras).run();
       tx.delete(carrinhas).run();

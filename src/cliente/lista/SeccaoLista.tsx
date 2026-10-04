@@ -4,12 +4,16 @@
 // Quem conduz leva o volante ao lado do nome (em todas as vistas); nas carrinhas o condutor vem primeiro
 // e as que levam gente sem condutor dizem-no, discretamente. Cada carrinha mostra a marca e o modelo, se é
 // carro ou carrinha e onde dorme (definido ou "≈ sugerido"); no modo de edição, com um botão para o mudar.
+// M2: os nomes de quem está indisponível hoje mostram "até 12/10" à vista; a pastilha da carrinha não os
+// conta (Indices.ocupadosCarrinha: o lugar fica livre, a pessoa continua na lista); as secções de casa e
+// de carrinha têm o ícone dos problemas abertos ao lado da pastilha.
 
 import { useId, useMemo } from 'react';
 import type { Indices } from '../../dominio/indices';
-import { type NivelLotacao, ocupacaoCarrinha, ocupacaoCasa } from '../../dominio/ocupacao';
+import { type NivelLotacao, ocupacaoCasa, ocupacaoDaCarrinha } from '../../dominio/ocupacao';
 import { chaveAlvo } from '../../dominio/operacoes';
 import type { Pessoa } from '../../dominio/tipos';
+import { IconeProblemas } from '../comum/IconeProblemas';
 import { IconeVolante } from '../comum/IconeVolante';
 import { ESTILO_AVISO_CONTRATO, ESTILO_NIVEL } from '../comum/lotacao';
 import { Matricula } from '../comum/Matricula';
@@ -99,7 +103,7 @@ function ListaNomes({ pessoas, vazios, indices }: { pessoas: Pessoa[]; vazios: n
     <ul className="grid grid-cols-1 gap-1 @min-[17rem]:grid-cols-2 @min-[34rem]:grid-cols-3 @min-[46rem]:grid-cols-4 @min-[58rem]:grid-cols-5">
       {pessoas.map((p) => (
         <li key={p.id} className="min-w-0">
-          <NomeChip pessoa={p} condutor={ehCondutor(p, indices)} />
+          <NomeChip pessoa={p} condutor={ehCondutor(p, indices)} textoIndisponivel />
         </li>
       ))}
       {Array.from({ length: vazios }, (_, i) => (
@@ -168,7 +172,8 @@ export function SeccaoLista({ seccao: s, soCabecalho, recolhida, aoAlternar, com
         : undefined;
 
   const ocCasa = casa ? ocupacaoCasa(casa, s.total) : null;
-  const ocCarrinha = carrinha ? ocupacaoCarrinha(carrinha, s.total) : null;
+  // O s.total da secção conta toda a gente; a lotação da carrinha não conta quem está indisponível hoje.
+  const ocCarrinha = carrinha ? ocupacaoDaCarrinha(indices, carrinha) : null;
   const aviso = ocCasa ? ESTILO_AVISO_CONTRATO[ocCasa.aviso] : null;
   const dormidaCarrinha = carrinha ? dormidas?.get(carrinha.id) : undefined;
   const dormida = carrinha && dormidas ? textoDormida(dormidaCarrinha, indices) : null;
@@ -271,6 +276,11 @@ export function SeccaoLista({ seccao: s, soCabecalho, recolhida, aoAlternar, com
             </button>
           )}
         </h3>
+        {casa ? (
+          <IconeProblemas alvo={{ tipo: 'casa', id: casa.id }} />
+        ) : carrinha ? (
+          <IconeProblemas alvo={{ tipo: 'carrinha', id: carrinha.id }} />
+        ) : null}
         {ocCasa ? (
           <PastilhaNivel ocupados={ocCasa.ocupados} lugares={ocCasa.lotacao} nivel={ocCasa.nivel} />
         ) : ocCarrinha ? (

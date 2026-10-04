@@ -1,9 +1,9 @@
-// Comutadores das vistas: Mapa | Tabela | Quadro (cabeçalho), Quadro | Mapa (reunião), Casas | Carrinhas
-// (Quadro) e o botão "Reunião". Botões segmentados com aria-pressed num <fieldset> com legenda, como o
+// Comutadores das vistas: Mapa | Tabela | Quadro (cabeçalho), Quadro | Mapa (reunião), Casas | Carrinhas |
+// Obras (Quadro, também na reunião) e o botão "Reunião". Botões segmentados com aria-pressed num <fieldset> com legenda, como o
 // "Ver por" da lista lateral. Cada opção tem ícone e texto.
 
 import type { ComponentType } from 'react';
-import { IconeCarrinha, IconeCasa } from '../lista/icones';
+import { IconeCarrinha, IconeCasa, IconeObra } from '../lista/icones';
 import { FOCO_VISIVEL } from '../paineis/classes';
 import { IconeMapa, IconeQuadro, IconeReuniao, IconeTabela } from './icones';
 import { pedirReuniao } from './modoReuniao';
@@ -113,9 +113,15 @@ const OPCOES_AGRUPAMENTO: readonly Opcao<Agrupamento>[] = [
     titulo: 'Uma coluna por carrinha, com quem lá vai (o condutor primeiro)',
     Icone: IconeCarrinha,
   },
+  {
+    id: 'obras',
+    rotulo: 'Obras',
+    titulo: 'Uma coluna por obra, por cliente, com quem lá trabalha e a casa de onde vem',
+    Icone: IconeObra,
+  },
 ];
 
-/** Casas | Carrinhas, no Quadro. */
+/** Casas | Carrinhas | Obras, no Quadro (e no cabeçalho da reunião). */
 export function AlternadorAgrupamento({ grande = false }: { grande?: boolean }) {
   const agrupamento = useVista((s) => s.agrupamento);
   const definirAgrupamento = useVista((s) => s.definirAgrupamento);

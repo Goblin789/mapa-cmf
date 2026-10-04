@@ -174,3 +174,55 @@ export function IconePorDefinir({ className }: PropsIcone) {
     </Icone>
   );
 }
+
+// --- M2 ---
+
+/** Seta a voltar atrás num círculo: "Reverter" uma gravação do Histórico. */
+export function IconeReverter({ className }: PropsIcone) {
+  return (
+    <Icone className={className}>
+      <path d="M3.25 8a4.75 4.75 0 101.4-3.35" />
+      <path d="M4.5 2.25v2.5H7" />
+      <path d="M8 5.75V8l1.5 1" />
+    </Icone>
+  );
+}
+
+/** Sinal de mais: o menu "Novo…" da barra de edição. */
+export function IconeMais({ className }: PropsIcone) {
+  return (
+    <Icone className={className}>
+      <path d="M8 3v10M3 8h10" />
+    </Icone>
+  );
+}
+
+/** Pausa num círculo: "Indisponível…" (férias, falta; nunca o motivo). */
+export function IconeIndisponivel({ className }: PropsIcone) {
+  return (
+    <Icone className={className}>
+      <circle cx="8" cy="8" r="6" />
+      <path d="M6.5 5.75v4.5M9.5 5.75v4.5" />
+    </Icone>
+  );
+}
+
+/** Seta pequena para baixo: o botão abre um menu. */
+export function IconeAbrirMenu({ className }: PropsIcone) {
+  return (
+    <Icone className={className ?? 'h-3 w-3'}>
+      <path d="M4.5 6.5L8 10l3.5-3.5" />
+    </Icone>
+  );
+}
+
+/** Uma pessoa com um mais: "Nova pessoa". */
+export function IconePessoaNova({ className }: PropsIcone) {
+  return (
+    <Icone className={className}>
+      <circle cx="6.5" cy="5" r="2.5" />
+      <path d="M2 13.5a4.5 4.5 0 019 0" />
+      <path d="M13 5.5v4M11 7.5h4" />
+    </Icone>
+  );
+}

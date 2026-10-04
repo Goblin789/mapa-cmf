@@ -4,7 +4,7 @@
 // carrinha o lugar fica livre (não conta na lotação: Indices.ocupadosCarrinha); na casa fica marcada sem
 // libertar a cama. "Hoje" é o dia no Luxemburgo (datas.ts, dataNoLuxemburgo).
 //
-// CONTRATO DO M2: as assinaturas estão fechadas; o módulo base escreve os testes (e corrige o que for preciso).
+// CONTRATO DO M2: as assinaturas estão fechadas (testes em indisponibilidade.test.ts e contrato-m2.test.ts).
 
 import { formatarDiaMes, somarDias } from './datas';
 import { novoId, type Operacao, operacaoApagar, operacaoCampo, operacaoCriar } from './operacoes';

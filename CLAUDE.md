@@ -29,6 +29,12 @@ M1 (login, tempo real, cópias, vistas, publicação): desenho e variáveis em `
   grava num só lote (autor 'dados-iniciais', tipo 'ficha') do Histórico, sem tocar em condutores, onde
   dormem, pessoas (exceto as de veículos que saem) nem histórico. `--bd <caminho>` e `--relatorio <caminho>`
   para trabalhar numa cópia. É assim que se aplicam dados novos depois de haver edições no programa.
+  **Não desfaz campos editados no programa** (M2): esses ficam e aparecem na secção "Ficou o valor do
+  programa" do relatório; daí em diante mudam-se no programa, ou, de propósito, com
+  `--aplicar --usar-json casa:<id>:lotacao` (repetível). Um registo apagado no programa não volta. Recusa se
+  uma casa ou um veículo que sai dos JSON tiver problemas por resolver (os resolvidos apagam-se antes).
+  Nunca migra: com migrações por aplicar recusa (também com `--aplicar`) e manda arrancar o servidor uma
+  vez, que faz a cópia antes de migrar.
 - `npm run geocodificar` — coordenadas das moradas de `dados-iniciais/locais.json`.
 - `npm run bd:gerar` — nova migração depois de mudar `src/servidor/db/esquema.ts`.
 
@@ -41,7 +47,9 @@ M1 (login, tempo real, cópias, vistas, publicação): desenho e variáveis em `
     rotas `/api/auth/*`, fornecedor falso para testes.
   - `eventos.ts` — tempo real (SSE em `GET /api/eventos`).
   - `copias/` — cópias cifradas (AES-256-GCM) para uma pasta ou S3 (Cloudflare R2), retenção, restauro
-    verificado, cópia antes de migrar e restauro ao arrancar.
+    verificado, cópia antes de migrar e restauro ao arrancar. **No PC** (sem `COPIAS_DESTINO`), com migrações
+    por aplicar, o servidor faz antes uma cópia simples da BD (backup do SQLite) para
+    `<pasta da BD>/copias/<nome>-antes-<migração>-<AAAA-MM-DD-HHMMSS>.db` e não arranca se ela falhar.
 - `src/importacao/` + `scripts/importar.ts` — leitura dos Excel e relatório de discrepâncias.
 - `src/cliente/` — React 19 + Vite + Tailwind + Zustand (`estado/loja.ts`). O mapa é Leaflet com uma
   camada própria de cartões (`mapa/`); as posições dos cartões são funções puras em `mapa/layout/`.
@@ -81,3 +89,20 @@ camadas, lista lateral, **modo de edição** (rascunho, arrastar, Mover para…,
   continua a calcular (a legenda do Mapa usa `pessoasPorCliente`). Filtros de escolha múltipla: `comum/FiltroMultiplo.tsx`.
 - Todos os nomes têm o mesmo texto (`COR_TEXTO_NOMES`); as cores dos clientes são claras (ver `docs/cores.md`).
 - Tipos da API em `src/dominio/api.ts`; formato das matrículas em `src/dominio/matricula.ts`.
+
+**M2 construído e ensaiado, por juntar** (`docs/m2.md`; decisões em `docs/decisoes.md`, "M2"): domínio (`campos.ts`, `operacoes.ts` com 'campo' e
+'registo', `reverter.ts`, `indisponibilidade.ts`, `problemas.ts`, `datas.ts`), migração 0004
+(`indisponibilidades`, `problemas`, `lotes.reverte`), `POST /api/lotes` com as operações novas e `reverte`,
+`POST /api/geocodificar(/inverso)`, sincronizar sem desfazer edições, e a loja (`hoje`, `reverte`). As
+interfaces estão feitas (fichas editáveis, nova pessoa e saída, indisponível e problemas, obras com o
+`CampoMorada` e o Quadro por obras, histórico com Reverter, Guardar com os grupos novos, barra com "Novo…").
+Os serviços de moradas estão ligados (geoportail.lu, IGN e Nominatim com 1 pedido/s, em
+`src/servidor/geocodificacao.ts`) e o `npm run geocodificar` usa o mesmo módulo; **nos ensaios arrancar o
+servidor com `MORADAS=desligadas`** (503, nada sai para os serviços). O `GET /api/estado` leva só os períodos
+e problemas dos últimos 30 dias. Construído na worktree `C:/dev/mapa-cmf-m2` (branch m2), por juntar com o
+mapa fechado.
+No compactar, `resolvidoEm` de um problema e `ativa`/marcas "a confirmar" de uma pessoa NÃO se dobram na
+criação: ficam 'campo' a seguir (criar e resolver no mesmo rascunho grava-se). As reversões do rascunho saem
+por `reversoesDoRascunho()` (loja) para o registo do localStorage (também no `protegerRascunho`, quando a
+sessão termina). `importar`, `sessoes` e `sincronizar` nunca migram uma BD que já existe
+(`recusaPorMigracoesPendentes`): só o arranque do servidor migra, com a cópia antes.

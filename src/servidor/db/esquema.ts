@@ -3,7 +3,15 @@
 // Nunca editar uma migração já aplicada; criar sempre uma nova.
 
 import { sql } from 'drizzle-orm';
-import { type AnySQLiteColumn, index, integer, real, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import {
+  type AnySQLiteColumn,
+  check,
+  index,
+  integer,
+  real,
+  sqliteTable,
+  text,
+} from 'drizzle-orm/sqlite-core';
 import { PAISES, TIPOS_LOCAL, TIPOS_VEICULO } from '../../dominio/tipos';
 
 export const clientes = sqliteTable('clientes', {
@@ -101,6 +109,48 @@ export const pessoas = sqliteTable('pessoas', {
   ativa: integer('ativa', { mode: 'boolean' }).notNull().default(true),
 });
 
+/**
+ * M2: períodos em que uma pessoa não está disponível (férias, falta, baixa). De propósito SEM motivo nem
+ * texto livre: só a pessoa e as datas (AAAA-MM-DD; `fim` inclusive, null = sem data de regresso).
+ */
+export const indisponibilidades = sqliteTable(
+  'indisponibilidades',
+  {
+    /** Gerado no browser ("indisp-<uuid>"). */
+    id: text('id').primaryKey(),
+    pessoaId: text('pessoa_id')
+      .notNull()
+      .references(() => pessoas.id),
+    inicio: text('inicio').notNull(),
+    fim: text('fim'),
+  },
+  (t) => [index('indisponibilidades_pessoa_idx').on(t.pessoaId)],
+);
+
+/** M2: problemas pendurados numa casa ou numa carrinha (exatamente uma) até estarem resolvidos. */
+export const problemas = sqliteTable(
+  'problemas',
+  {
+    /** Gerado no browser ("problema-<uuid>"). */
+    id: text('id').primaryKey(),
+    casaId: text('casa_id').references(() => casas.id),
+    carrinhaId: text('carrinha_id').references(() => carrinhas.id),
+    texto: text('texto').notNull(),
+    /** AAAA-MM-DD. */
+    abertoEm: text('aberto_em').notNull(),
+    /** AAAA-MM-DD; null = aberto. */
+    resolvidoEm: text('resolvido_em'),
+  },
+  (t) => [
+    index('problemas_casa_idx').on(t.casaId),
+    index('problemas_carrinha_idx').on(t.carrinhaId),
+    check(
+      'problemas_um_alvo',
+      sql`(${t.casaId} IS NOT NULL AND ${t.carrinhaId} IS NULL) OR (${t.casaId} IS NULL AND ${t.carrinhaId} IS NOT NULL)`,
+    ),
+  ],
+);
+
 /** Um conjunto de alterações gravado de uma vez (ou agendado). O histórico vive aqui. */
 export const lotes = sqliteTable('lotes', {
   id: integer('id').primaryKey({ autoIncrement: true }),
@@ -112,6 +162,8 @@ export const lotes = sqliteTable('lotes', {
   estado: text('estado', { enum: ['aplicado', 'agendado', 'cancelado', 'falhou'] }).notNull(),
   tipo: text('tipo', { enum: ['importacao', 'mudanca', 'correcao', 'ficha'] }).notNull(),
   comentario: text('comentario'),
+  /** M2: ids dos lotes que este reverte ("Reverter" no Histórico), em JSON (number[]); null = nenhum. */
+  reverte: text('reverte'),
 });
 
 /** Uma alteração de um campo. Só se acrescenta (exceto limpezas de retenção). */

@@ -7,6 +7,7 @@ import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import type { Estado } from '../dominio/tipos';
 import { config } from '../servidor/config';
+import { migracoesPendentes, TEXTO_FALTAM_MIGRACOES } from '../servidor/copias/migracoes';
 import { abrirBd } from '../servidor/db/ligacao';
 import { estaDentro, lerDadosReferencia, PASTA_DADOS_INICIAIS, RAIZ } from './executar';
 import { gerarRelatorioSincronizacao, type MetaSincronizacao } from './relatorioSincronizacao';
@@ -22,6 +23,25 @@ import {
 import { abrirBdSoLeitura, aplicarSincronizacao, ensaiarSincronizacao } from './sincronizarBd';
 
 export const CAMINHO_RELATORIO_SINCRONIZACAO = join(RAIZ, 'dados', 'relatorio-sincronizacao.html');
+
+/** A frase de quando faltam migrações (o sincronizar nunca migra: nem no ensaio, nem com --aplicar). */
+export { TEXTO_FALTAM_MIGRACOES };
+
+/** Antes do --aplicar: a BD já tem as migrações todas? Se não, diz porquê na consola (e não se grava nada). */
+function semMigracoesPendentes(caminhoBd: string): boolean {
+  let pendentes: string[];
+  try {
+    pendentes = migracoesPendentes(caminhoBd);
+  } catch (erro) {
+    console.error(`Não consegui ler a base de dados: ${erro instanceof Error ? erro.message : String(erro)}`);
+    return false;
+  }
+  if (pendentes.length === 0) return true;
+  const quais = plural(pendentes.length, 'migração por aplicar', 'migrações por aplicar');
+  console.error(`A base de dados tem ${quais} (${pendentes.join(', ')}): não se gravou nada.`);
+  console.error(TEXTO_FALTAM_MIGRACOES);
+  return false;
+}
 
 /** Resumo para a consola: contagens e o que muda (sem nomes de pessoas). Função pura. */
 export function textoConsola(
@@ -48,12 +68,27 @@ export function textoConsola(
     `  Clientes: ${textoContagem(n.clientes)} · Casas: ${textoContagem(n.casas, PALAVRAS.casas)} · Locais: ${textoContagem(n.locais)}`,
     `  Pessoas que ficam sem transporte (a confirmar): ${n.semTransporte} · Condutores retirados: ${n.condutoresRetirados}` +
       (n.dormidasRetiradas > 0 ? ` · Onde dorme por definir: ${n.dormidasRetiradas}` : ''),
+    `  Ficou o valor do programa (campos mudados no programa): ${n.mantidos}` +
+      (n.problemasApagados > 0 ? ` · Problemas resolvidos apagados: ${n.problemasApagados}` : ''),
     `  Erros bloqueantes: ${n.erros}`,
     ...plano.erros.map((e) => `    ! ${e.mensagem}${e.onde ? ` (${e.onde})` : ''}`),
-    nadaAMudar ? '  O que muda: nada (a base de dados já está igual aos dados iniciais).' : '  O que muda:',
+    nadaAMudar
+      ? n.mantidos > 0
+        ? '  O que muda: nada (só ficam os valores mudados no programa):'
+        : '  O que muda: nada (a base de dados já está igual aos dados iniciais).'
+      : '  O que muda:',
     ...frases.map((f) => `    - ${f}`),
     `  Relatório: ${caminhoRelatorio}`,
   ];
+  if (n.mantidos > 0) {
+    linhas.push(
+      '  Os campos mudados no programa mudam-se daí em diante no programa; para aplicar mesmo o valor do JSON:',
+      `    npm run sincronizar -- --aplicar --usar-json ${plano.mantidos
+        .slice(0, 2)
+        .map((m) => `${m.entidade}:${m.id}:${m.campo}`)
+        .join(' --usar-json ')}`,
+    );
+  }
   if (meta.modo === 'ensaio' && (!nadaAMudar || n.erros > 0)) {
     linhas.push(
       n.erros > 0
@@ -70,11 +105,20 @@ export interface OpcoesSincronizacao {
   bd?: string;
   /** Onde escrever o relatório (por omissão dados/relatorio-sincronizacao.html). */
   relatorio?: string;
+  /**
+   * M2: "entidade:id:campo" em que se aplica o valor do JSON mesmo que tenha sido mudado no programa
+   * (--usar-json, repetível).
+   */
+  usarJson?: string[];
 }
 
+/** "casa:casa-um:lotacao": uma entidade dos JSON, um id e um campo. */
+const FORMATO_USAR_JSON = /^(cliente|local|casa|carrinha):[^:\s]+:[A-Za-z]+$/;
+
 /**
- * Lê os argumentos da linha de comandos (sem `node` nem o script): --aplicar, --bd <caminho> e
- * --relatorio <caminho> (também --bd=<caminho>). Qualquer outro argumento, ou um --bd sem caminho, é erro:
+ * Lê os argumentos da linha de comandos (sem `node` nem o script): --aplicar, --bd <caminho>,
+ * --relatorio <caminho> (também --bd=<caminho>) e --usar-json entidade:id:campo (repetível). Qualquer outro
+ * argumento, ou um --bd sem caminho, é erro:
  * um engano como "--db copia.db --aplicar" ou "--aplicar --bd" não pode acabar a gravar na base de dados
  * por omissão (a verdadeira). Função pura.
  */
@@ -91,9 +135,19 @@ export function lerArgumentosSincronizacao(
     }
     const igual = arg.indexOf('=');
     const nome = igual > 0 ? arg.slice(0, igual) : arg;
+    if (nome === '--usar-json') {
+      const valor = igual > 0 ? arg.slice(igual + 1) : args[++i];
+      if (!valor || !FORMATO_USAR_JSON.test(valor)) {
+        return { erro: '--usar-json leva entidade:id:campo (ex.: --usar-json casa:casa-um:lotacao).' };
+      }
+      opcoes.usarJson = [...(opcoes.usarJson ?? []), valor];
+      continue;
+    }
     if (!Object.hasOwn(comValor, nome)) {
       return {
-        erro: `Argumento desconhecido: ${arg}. Use só --aplicar, --bd <caminho> e --relatorio <caminho>.`,
+        erro:
+          `Argumento desconhecido: ${arg}. Use só --aplicar, --bd <caminho>, --relatorio <caminho> e ` +
+          '--usar-json entidade:id:campo.',
       };
     }
     const chave = comValor[nome as keyof typeof comValor];
@@ -121,6 +175,7 @@ export function executarSincronizacao(opcoes: OpcoesSincronizacao): number {
     console.error(`Não encontrei a base de dados: ${caminhoBd}`);
     return 1;
   }
+  if (opcoes.aplicar && !semMigracoesPendentes(caminhoBd)) return 1;
 
   const dados = lerDadosReferencia();
   const meta: MetaSincronizacao = {
@@ -133,13 +188,14 @@ export function executarSincronizacao(opcoes: OpcoesSincronizacao): number {
   };
   let plano: PlanoSincronizacao;
   let estado: Estado;
+  const usarJson = new Set(opcoes.usarJson ?? []);
 
   if (opcoes.aplicar) {
     try {
-      // Abre com as migrações (como o servidor): a sincronização precisa das colunas mais recentes.
+      // Já tem as migrações todas (visto acima): o abrirBd não migra nada.
       const bd = abrirBd(caminhoBd);
       try {
-        const r = aplicarSincronizacao(bd, dados, { agora });
+        const r = aplicarSincronizacao(bd, dados, { agora, usarJson });
         plano = r.plano;
         estado = r.estado;
         meta.versao = r.estado.versao;
@@ -157,7 +213,7 @@ export function executarSincronizacao(opcoes: OpcoesSincronizacao): number {
     try {
       const bd = abrirBdSoLeitura(caminhoBd);
       try {
-        const r = ensaiarSincronizacao(bd, dados, agora);
+        const r = ensaiarSincronizacao(bd, dados, agora, usarJson);
         plano = r.plano;
         estado = r.estado;
         meta.versao = r.versao;
@@ -168,9 +224,7 @@ export function executarSincronizacao(opcoes: OpcoesSincronizacao): number {
       const motivo = erro instanceof Error ? erro.message : String(erro);
       console.error(`Não consegui ler a base de dados: ${motivo}`);
       if (/no such (column|table)/i.test(motivo)) {
-        console.error(
-          'Faltam as migrações mais recentes: arranque o servidor uma vez (npm run dev), que as aplica, e volte a correr.',
-        );
+        console.error(TEXTO_FALTAM_MIGRACOES);
       }
       return 1;
     }

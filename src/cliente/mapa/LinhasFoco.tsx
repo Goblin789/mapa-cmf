@@ -1,7 +1,9 @@
 // Linhas desenhadas no plano das camadas do Leaflet (coordenadas = píxeis do mundo − origem).
 // - Pinos (por baixo dos cartões): um ponto no sítio exato de cada local e o "pé" até ao cartão mais
 //   próximo desse local; tracejado quando o bloco teve de se afastar (linha de chamada).
-// - Linhas de foco (por cima dos cartões): casa → carrinha → obra da pessoa em foco, etc.
+// - Linhas de foco (por cima dos cartões): casa → carrinha → obra da pessoa em foco, a obra em foco → as
+//   casas e carrinhas de quem lá trabalha (M2), etc. Onde a linha toca o sítio de uma obra (não o cartão
+//   dela), um losango com o nome da obra.
 // A geometria vem do layout calculado (layout/foco.ts), não de medições do DOM: fica certa depois de
 // mudar o zoom, e não há saltos nem ciclos de medição.
 
@@ -60,16 +62,49 @@ interface PropsFoco {
   indices: Indices;
 }
 
+/** Losango no sítio de uma obra, com o nome ao lado (só uma vez: várias linhas podem sair do mesmo sítio). */
+function MarcaObra({ x, y, nome }: { x: number; y: number; nome: string | null }) {
+  return (
+    <g transform={`translate(${x} ${y})`}>
+      <rect
+        x={-7}
+        y={-7}
+        width={14}
+        height={14}
+        transform="rotate(45)"
+        fill="#ffffff"
+        stroke="#0f172a"
+        strokeWidth={3}
+      />
+      {nome !== null && (
+        <text
+          x={12}
+          y={4}
+          fontSize={12}
+          fontWeight={700}
+          fill="#0f172a"
+          stroke="#ffffff"
+          strokeWidth={3}
+          paintOrder="stroke"
+        >
+          {nome}
+        </text>
+      )}
+    </g>
+  );
+}
+
 export function LinhasFoco({ linhas, origem, indices }: PropsFoco) {
   if (linhas.length === 0) return null;
   return (
     <svg width={1} height={1} style={estiloSvg(2)} aria-hidden="true">
-      {linhas.map((l) => {
+      {linhas.map((l, i) => {
         const x1 = l.de.x - origem.x;
         const y1 = l.de.y - origem.y;
         const x2 = l.para.x - origem.x;
         const y2 = l.para.y - origem.y;
         const obra = l.obraId ? indices.obras.get(l.obraId) : undefined;
+        const obraOrigem = l.obraOrigemId ? indices.obras.get(l.obraOrigemId) : undefined;
         return (
           <g key={l.chave}>
             <line
@@ -83,32 +118,13 @@ export function LinhasFoco({ linhas, origem, indices }: PropsFoco) {
               opacity={0.9}
             />
             <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="#0f172a" strokeWidth={3} strokeLinecap="round" />
-            <circle cx={x1} cy={y1} r={4} fill="#0f172a" stroke="#ffffff" strokeWidth={1.5} />
+            {obraOrigem ? (
+              <MarcaObra x={x1} y={y1} nome={i === 0 ? obraOrigem.nome : null} />
+            ) : (
+              <circle cx={x1} cy={y1} r={4} fill="#0f172a" stroke="#ffffff" strokeWidth={1.5} />
+            )}
             {obra ? (
-              <g transform={`translate(${x2} ${y2})`}>
-                <rect
-                  x={-7}
-                  y={-7}
-                  width={14}
-                  height={14}
-                  transform="rotate(45)"
-                  fill="#ffffff"
-                  stroke="#0f172a"
-                  strokeWidth={3}
-                />
-                <text
-                  x={12}
-                  y={4}
-                  fontSize={12}
-                  fontWeight={700}
-                  fill="#0f172a"
-                  stroke="#ffffff"
-                  strokeWidth={3}
-                  paintOrder="stroke"
-                >
-                  {obra.nome}
-                </text>
-              </g>
+              <MarcaObra x={x2} y={y2} nome={obra.nome} />
             ) : (
               <circle cx={x2} cy={y2} r={4} fill="#0f172a" stroke="#ffffff" strokeWidth={1.5} />
             )}

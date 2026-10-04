@@ -4,6 +4,8 @@ import {
   ErroConflito,
   ErroServidor,
   ErroSessao,
+  geocodificarMorada,
+  geocodificarPosicao,
   guardarLote,
   obterEstado,
   obterHistorico,
@@ -108,5 +110,58 @@ describe('as outras respostas ficam como estavam', () => {
     );
     await expect(obterEstado()).rejects.toThrow('Failed to fetch');
     expect(useSessao.getState().estado).toBe('dentro');
+  });
+});
+
+describe('M2: moradas (geocodificar)', () => {
+  const RESULTADO = {
+    rotulo: '1 Rue Fictícia, L-0000 Lugar',
+    lat: 49.6,
+    lng: 6.1,
+    pais: 'LU',
+    fonte: 'geoportail.lu',
+    confianca: 0.9,
+  };
+
+  it('geocodificarMorada: POST JSON com a morada e o país; devolve os resultados', async () => {
+    const falso = responderSempre(200, { resultados: [RESULTADO] });
+    await expect(geocodificarMorada('1 Rue Fictícia', 'LU')).resolves.toStrictEqual([RESULTADO]);
+    const [url, init] = falso.mock.calls[0] ?? [];
+    expect(url).toBe('/api/geocodificar');
+    expect(init?.method).toBe('POST');
+    expect(new Headers(init?.headers).get('content-type')).toBe('application/json');
+    expect(new Headers(init?.headers).get('accept')).toBe('application/json');
+    expect(JSON.parse(String(init?.body))).toStrictEqual({ morada: '1 Rue Fictícia', pais: 'LU' });
+  });
+
+  it('geocodificarPosicao: POST JSON com a posição; null quando não há morada', async () => {
+    const falso = responderSempre(200, { resultado: null });
+    await expect(geocodificarPosicao(49.6, 6.1)).resolves.toBeNull();
+    const [url, init] = falso.mock.calls[0] ?? [];
+    expect(url).toBe('/api/geocodificar/inverso');
+    expect(JSON.parse(String(init?.body))).toStrictEqual({ lat: 49.6, lng: 6.1 });
+    responderSempre(200, { resultado: RESULTADO });
+    await expect(geocodificarPosicao(49.6, 6.1)).resolves.toStrictEqual(RESULTADO);
+  });
+
+  it('erros: a frase do servidor (502, 503, 429, 400); 401 = ErroSessao', async () => {
+    responderSempre(502, {
+      erro: 'O serviço de moradas não respondeu. Tenta outra vez ou escolhe o sítio no mapa.',
+    });
+    await expect(geocodificarMorada('x', 'LU')).rejects.toThrow(
+      'O serviço de moradas não respondeu. Tenta outra vez ou escolhe o sítio no mapa.',
+    );
+    responderSempre(503, { erro: 'O serviço de moradas não está ligado. Escolhe o sítio no mapa.' });
+    await expect(geocodificarPosicao(49.6, 6.1)).rejects.toThrow('não está ligado');
+    responderSempre(400, { erro: 'Pedido inválido.', erros: ['morada: Escreve a morada.'] });
+    const erro = await geocodificarMorada(' ', 'LU').catch((e: unknown) => e);
+    expect(erro).toBeInstanceOf(ErroServidor);
+    expect((erro as ErroServidor).estado).toBe(400);
+    expect((erro as Error).message).toBe('Pedido inválido. morada: Escreve a morada.');
+    responderSempre(500);
+    await expect(geocodificarMorada('x', 'LU')).rejects.toThrow('O servidor respondeu 500.');
+    responderSempre(401, { erro: 'Sem sessão.' });
+    await expect(geocodificarMorada('x', 'LU')).rejects.toBeInstanceOf(ErroSessao);
+    expect(useSessao.getState().estado).toBe('fora');
   });
 });

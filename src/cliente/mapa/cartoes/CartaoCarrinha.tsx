@@ -8,12 +8,16 @@
 // Os carros (tipo 'carro') desenham-se como um carro visto de cima, no mesmo estilo: mais curto e
 // redondo à frente e atrás, capô com a matrícula, os vidros à volta do tejadilho (para-brisas, laterais e
 // de trás) e quatro rodas. O tooltip diz sempre se é carrinha ou carro, a marca e o modelo.
+// M2: a pastilha não conta quem está indisponível hoje (ocupacaoDaCarrinha: o lugar fica livre; a pessoa
+// continua lá, com a marca no nome). O ícone dos problemas abertos fica na linha de trás, entre o "≈" e a
+// pastilha (que continua encostada à direita); a lista vai no tooltip.
 
 import type { ConfiancaDormida } from '../../../dominio/dormidas';
 import { formatarMatricula } from '../../../dominio/matricula';
-import { ocupacaoCarrinha } from '../../../dominio/ocupacao';
+import { ocupacaoDaCarrinha } from '../../../dominio/ocupacao';
 import { chaveAlvo } from '../../../dominio/operacoes';
 import type { Carrinha, Id } from '../../../dominio/tipos';
+import { descricaoProblemas, IconeProblemas, useProblemasAbertos } from '../../comum/IconeProblemas';
 import { ESTILO_NIVEL } from '../../comum/lotacao';
 import { Matricula } from '../../comum/Matricula';
 import { useLoja } from '../../estado/loja';
@@ -197,13 +201,14 @@ function Silhueta({ g, destaque }: { g: GeometriaCarrinha; destaque: Destaque })
 export function CartaoCarrinha({ carrinhaId, geometria: g, x, y, confianca, destaque }: Props) {
   const indices = useLoja((s) => s.indices);
   const definirFoco = useLoja((s) => s.definirFoco);
+  const problemas = useProblemasAbertos({ tipo: 'carrinha', id: carrinhaId });
   const carrinha = indices?.carrinhas.get(carrinhaId);
   if (!indices || !carrinha) return null;
 
   // O condutor vem sempre em primeiro (indices.passageiros).
   const passageiros = indices.passageiros.get(carrinhaId) ?? [];
   const condutorId = passageiros.some((p) => p.id === carrinha.condutorId) ? carrinha.condutorId : null;
-  const oc = ocupacaoCarrinha(carrinha, passageiros.length);
+  const oc = ocupacaoDaCarrinha(indices, carrinha);
   const estilo = ESTILO_NIVEL[oc.nivel];
   const emFoco = destaque === 'foco';
   const sugerida = confianca === 'sugerida';
@@ -214,6 +219,8 @@ export function CartaoCarrinha({ carrinhaId, geometria: g, x, y, confianca, dest
     `${oc.ocupados}/${oc.lugares} lugares`,
     estilo.rotulo,
     sugerida ? TEXTO_SUGERIDO : null,
+    // O ícone dos problemas está numa linha sem rato (o title dele não se vê): a lista vai aqui.
+    descricaoProblemas(problemas) || null,
     carrinha.nota,
     // Compacta (sem os nomes à vista): quem vai lá dentro fica no tooltip, a começar pelo condutor.
     g.compacta && passageiros.length > 0
@@ -259,6 +266,7 @@ export function CartaoCarrinha({ carrinhaId, geometria: g, x, y, confianca, dest
             ≈<span className="sr-only"> {TEXTO_SUGERIDO}</span>
           </span>
         )}
+        <IconeProblemas alvo={{ tipo: 'carrinha', id: carrinhaId }} tamanho="mapa" />
         <span className="ml-auto">
           <PastilhaLotacao ocupados={oc.ocupados} lugares={oc.lugares} nivel={oc.nivel} />
         </span>

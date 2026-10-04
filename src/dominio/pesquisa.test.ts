@@ -166,6 +166,14 @@ describe('pesquisar', () => {
     expect(procurar('estevao')[0]?.detalhe).toBe('? · ?');
     expect(procurar('zz1001')[0]?.detalhe).toBe('2/9 lugares · Carrinha Fictícia');
     expect(procurar('zz1002')[0]?.detalhe).toBe('0/5 lugares');
+    // M2: quem está indisponível hoje não ocupa lugar (como a pastilha).
+    const comPeriodo: Estado = {
+      ...estadoPesquisa(),
+      indisponibilidades: [{ id: 'indisp-ficticio-1', pessoaId: 'joana', inicio: '2026-10-01', fim: null }],
+    };
+    expect(pesquisar(comPeriodo, indexar(comPeriodo, '2026-10-04'), 'zz1001')[0]?.detalhe).toBe(
+      '1/9 lugares · Carrinha Fictícia',
+    );
   });
 
   it('ordenação: pontuação descendente e, no empate, rótulo em português (acentos não baralham)', () => {

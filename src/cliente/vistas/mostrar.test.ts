@@ -19,6 +19,7 @@ describe('chaveElemento e seletorElementos', () => {
     expect(chaveElemento({ tipo: 'pessoa', id: 'p1' })).toBe('pessoa:p1');
     expect(chaveElemento({ tipo: 'casa', id: 'c-2' })).toBe('casa:c-2');
     expect(chaveElemento({ tipo: 'carrinha', id: 'ZZ1001' })).toBe('carrinha:ZZ1001');
+    expect(chaveElemento({ tipo: 'obra', id: 'obra-1' })).toBe('obra:obra-1');
   });
 
   it('o seletor procura o data-elemento de cada chave, com aspas escapadas', () => {
