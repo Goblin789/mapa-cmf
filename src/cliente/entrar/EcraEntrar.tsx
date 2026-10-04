@@ -79,8 +79,39 @@ export function CaixaErro({ children }: { children: ReactNode }) {
 }
 
 /**
- * Cartão com a marca: filete laranja em cima, logótipo da CMF e o título. O logótipo tem 160 px de
- * largura (o manual pede pelo menos 120) e à volta a margem livre de 1/3 da altura do símbolo (20 px).
+ * Logótipo da CMF, filete e "Mapa", como no cabeçalho do site (o logótipo inteiro, 120 px: o mínimo do
+ * manual). `titulo` = é o título da página (h1, lido "Mapa CMF"); sem ele é só decorativo.
+ */
+function LinhaMarca({ titulo }: { titulo: boolean }) {
+  const Elemento = titulo ? 'h1' : 'div';
+  return (
+    <Elemento
+      className="flex items-center gap-[15px] text-[var(--cmf-preto)]"
+      aria-hidden={titulo ? undefined : true}
+    >
+      {titulo && <span className="sr-only">Mapa CMF</span>}
+      <img
+        src="/marca/cmf-logo.svg"
+        alt=""
+        width={120}
+        height={45}
+        decoding="async"
+        className="h-[45px] w-[120px]"
+      />
+      <span aria-hidden="true" className="w-px self-stretch bg-[var(--cmf-linha)]" />
+      <span
+        aria-hidden="true"
+        className="font-[family-name:var(--cmf-titulos)] text-[1.625rem] leading-none font-semibold tracking-[-0.01em]"
+      >
+        Mapa
+      </span>
+    </Elemento>
+  );
+}
+
+/**
+ * Cartão com a marca: filete laranja em cima e a linha da marca. Sem `titulo`, a marca é o título da
+ * página (entrada); com ele (diálogo por cima da app), o título aparece por baixo.
  */
 export function CartaoMarca({
   titulo,
@@ -88,8 +119,8 @@ export function CartaoMarca({
   idTitulo,
   children,
 }: {
-  titulo: ReactNode;
-  /** h1 na página de entrada; h2 dentro do diálogo por cima da app (o h1 é o da app). */
+  titulo?: ReactNode;
+  /** Com `titulo`: h1 numa página própria; h2 dentro do diálogo por cima da app (o h1 é o da app). */
   nivel?: 'h1' | 'h2';
   idTitulo?: string;
   children: ReactNode;
@@ -98,21 +129,16 @@ export function CartaoMarca({
   return (
     <div className="w-full overflow-hidden rounded-xl border border-[var(--cmf-linha)] bg-white text-[var(--cmf-cinzento)] shadow-sm">
       <div aria-hidden="true" className="h-1 bg-[var(--cmf-laranja)]" />
-      <div className="px-6 pt-8 pb-7 sm:px-8 sm:pt-10 sm:pb-8">
-        <img
-          src="/marca/cmf-logo.svg"
-          alt=""
-          width={160}
-          height={60}
-          decoding="async"
-          className="h-[60px] w-[160px]"
-        />
-        <Titulo
-          id={idTitulo}
-          className="mt-7 text-[1.75rem] leading-tight font-semibold tracking-[-0.01em] text-[var(--cmf-preto)]"
-        >
-          {titulo}
-        </Titulo>
+      <div className="px-6 pt-8 pb-7 sm:px-8 sm:pt-9 sm:pb-8">
+        <LinhaMarca titulo={titulo === undefined} />
+        {titulo !== undefined && (
+          <Titulo
+            id={idTitulo}
+            className="mt-6 text-[1.5rem] leading-tight font-semibold tracking-[-0.01em] text-[var(--cmf-preto)]"
+          >
+            {titulo}
+          </Titulo>
+        )}
         {children}
       </div>
     </div>
@@ -128,10 +154,11 @@ export function FundoEntrada({ children }: { children: ReactNode }) {
   );
 }
 
-const SUBTITULO = 'Quem mora em que casa, quem vai em que carrinha e para que obra.';
-
-/** Página de entrada (sem sessão). `erroEntrada` = código que o servidor mandou no URL; `saiu` = carregou em Sair. */
-export function EcraEntrar({ erroEntrada, saiu = false }: { erroEntrada: string | null; saiu?: boolean }) {
+/**
+ * Página de entrada (sem sessão): só a marca e o botão (o Rafael não quer textos a mais). Só aparece uma
+ * frase quando a entrada falhou. `erroEntrada` = código que o servidor mandou no URL.
+ */
+export function EcraEntrar({ erroEntrada }: { erroEntrada: string | null }) {
   const erro = textoErroEntrada(erroEntrada);
 
   useEffect(() => {
@@ -144,18 +171,8 @@ export function EcraEntrar({ erroEntrada, saiu = false }: { erroEntrada: string 
 
   return (
     <FundoEntrada>
-      <CartaoMarca titulo="Mapa CMF">
-        <p className="mt-2 text-[0.9375rem] leading-relaxed">{SUBTITULO}</p>
-        <div className="mt-6 space-y-4">
-          {saiu && !erro && (
-            <p
-              role="status"
-              className="rounded-md border border-[var(--cmf-linha)] bg-[var(--cmf-fundo-alt)] px-3 py-2.5 text-sm leading-snug"
-            >
-              <strong className="font-semibold text-[var(--cmf-preto)]">Saíste do Mapa CMF.</strong> A conta
-              Microsoft continua iniciada neste browser; num computador partilhado, sai também dela.
-            </p>
-          )}
+      <CartaoMarca>
+        <div className="mt-8 space-y-4">
           {erro && (
             <CaixaErro>
               <p>{erro}</p>
@@ -163,7 +180,6 @@ export function EcraEntrar({ erroEntrada, saiu = false }: { erroEntrada: string 
           )}
           <BotaoEntrar />
         </div>
-        <p className="mt-4 text-sm text-[var(--cmf-cinzento-claro)]">Usa a tua conta Microsoft da CMF.</p>
       </CartaoMarca>
     </FundoEntrada>
   );
