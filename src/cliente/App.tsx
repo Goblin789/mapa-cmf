@@ -7,6 +7,7 @@ import { Marca } from './comum/Marca';
 import { BarraEdicao } from './edicao/BarraEdicao';
 import { BotoesCabecalho, ContornoEdicao, Edicao } from './edicao/Edicao';
 import { textoDoErro } from './edicao/erros';
+import { MenuUtilizador } from './entrar/MenuUtilizador';
 import { useLoja } from './estado/loja';
 import { Mapa } from './mapa/Mapa';
 import { CaixasLaterais } from './paineis/CaixasLaterais';
@@ -14,6 +15,8 @@ import { Contadores } from './paineis/Contadores';
 import { Legenda } from './paineis/Legenda';
 import { PainelFoco } from './paineis/PainelFoco';
 import { Pesquisa } from './paineis/Pesquisa';
+import { AvisoTempoReal } from './tempoReal/AvisoTempoReal';
+import { useTempoReal } from './tempoReal/useTempoReal';
 
 export function App() {
   const estado = useLoja((s) => s.estado);
@@ -23,6 +26,9 @@ export function App() {
   useEffect(() => {
     void carregar();
   }, [carregar]);
+
+  // Quando outra pessoa grava, o estado recarrega sozinho (e aparece um aviso).
+  useTempoReal();
 
   // Sem dados nenhuns, o erro ocupa o ecrã. Com dados (ex.: falhou recarregar depois de guardar),
   // fica uma faixa por cima e o mapa continua à vista.
@@ -61,8 +67,9 @@ export function App() {
           <div className="order-4 w-full sm:order-none sm:w-64 2xl:w-72">
             <Pesquisa />
           </div>
-          <div className="order-2 ml-auto sm:order-none sm:ml-0">
+          <div className="order-2 ml-auto flex items-center gap-1.5 sm:order-none sm:ml-0">
             <BotoesCabecalho />
+            <MenuUtilizador />
           </div>
         </div>
       </header>
@@ -85,6 +92,7 @@ export function App() {
         <ContornoEdicao />
       </div>
       <Edicao />
+      <AvisoTempoReal />
     </div>
   );
 }

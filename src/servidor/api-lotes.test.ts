@@ -754,6 +754,7 @@ describe('GET /api/historico', () => {
       {
         loteId: 1,
         autor: 'teste',
+        autorNome: 'teste',
         criadoEm: '2026-01-01T00:00:00.000Z',
         efetivoEm: '2026-01-01T00:00:00.000Z',
         tipo: 'importacao',

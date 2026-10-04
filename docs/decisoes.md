@@ -2,6 +2,22 @@
 
 Registo das decisões do Rafael e das escolhas por omissão. Mais recentes primeiro.
 
+## 04/10/2026 — preparação do M1
+
+- **Domínio**: o DNS de `cmf-lux.lu` está na **DonDominio** (o Rafael gere). O e-mail vai para o Microsoft 365
+  (MX e SPF: não tocar). Há um wildcard `*.cmf-lux.lu` para a página de parking da DonDominio e não há registos
+  CAA. O Mapa fica em **`mapa.cmf-lux.lu`**: no fim do M1 cria-se um CNAME `mapa` → endereço do Render.
+- **Login Microsoft**: aplicação **"Mapa CMF"** registada pelo Rafael no Entra (inquilino CMF S.àr.l), só para a
+  organização, plataforma Web, URIs de retorno `http://localhost:5173/api/auth/retorno` e
+  `https://mapa.cmf-lux.lu/api/auth/retorno`. Na aplicação empresarial, **Assignment required = Yes** e
+  atribuídos o Rafael, o Michael e o João. Client ID e tenant ID no `.env` (não são segredos); o client
+  secret só se cria na publicação e é o Rafael que o cola.
+- O M1 inclui também o **tempo real** e o **autor de cada gravação** (antes no M2), porque a edição já existe e
+  vão ser três pessoas a editar. Desenho técnico em `docs/m1.md`.
+- **Cópias de segurança**: o código aceita uma pasta local ou um destino S3 compatível (Cloudflare R2, como na
+  proposta). *Por responder*: SharePoint da CMF (recomendado por não precisar de conta nova) ou R2.
+- *Por responder*: tamanho/resolução do ecrã da reunião (por omissão TV 1920×1080, Quadro).
+
 ## 04/10/2026 — terceiro feedback do Rafael
 
 - **Texto dos nomes**: igual em todos (o quase-preto da marca, #1C1C1B). Paleta clara: Costantini #F28A7E (coral), Galère #B2ECBC (menta), A+P Kieffer #84A6F4 (pervinca), Phillipe BTP #EACBF7 (lilás), Kisch #FCE55E (amarelo), Enquadramento #F39200 (laranja CMF), Mersch #5CB4B8 (petróleo). Contraste ≥ 7:1 com o texto; ver `docs/cores.md`.

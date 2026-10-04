@@ -502,6 +502,8 @@ export function lerHistorico(bd: Bd, limite: number, agora: Date = new Date()): 
     return lotes.map((l) => ({
       loteId: l.id,
       autor: l.autor,
+      // M1 (contrato): passa a ser o nome do utilizador (tabela utilizadores) ou o rótulo dos autores fixos.
+      autorNome: l.autor,
       criadoEm: l.criadoEm,
       efetivoEm: l.efetivoEm,
       tipo: l.tipo,

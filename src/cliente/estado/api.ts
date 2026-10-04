@@ -15,6 +15,16 @@ export async function obterEstado(): Promise<Estado> {
   return (await resposta.json()) as Estado;
 }
 
+/**
+ * Não há sessão (HTTP 401): nunca se entrou, a sessão expirou ou terminou noutro separador. O Portao mostra
+ * o ecrã de entrada. CONTRATO DO M1: todos os pedidos à API lançam isto num 401.
+ */
+export class ErroSessao extends Error {
+  constructor() {
+    super('A sessão terminou. Entra outra vez com a conta Microsoft.');
+  }
+}
+
 /** O servidor recusou porque alguém mudou entretanto as mesmas pessoas (HTTP 409). Nada foi gravado. */
 export class ErroConflito extends Error {
   constructor(readonly conflitos: ConflitoServidor[]) {

@@ -419,6 +419,7 @@ describe('gravarLote e lerHistorico na base de dados', () => {
     expect(historico[0]).toStrictEqual({
       loteId: 2,
       autor: 'local',
+      autorNome: 'local',
       criadoEm: AGORA.toISOString(),
       efetivoEm: AGORA.toISOString(),
       tipo: 'mudanca',
