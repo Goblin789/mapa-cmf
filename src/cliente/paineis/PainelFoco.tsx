@@ -1,11 +1,17 @@
-// Ficha rápida do que está em foco (pessoa, casa ou carrinha), sobre o canto superior esquerdo do mapa.
-// Fecha com o botão ou com Esc. As casas, carrinhas e nomes da ficha mudam o foco.
+// Ficha rápida do que está em foco (pessoa, casa ou carrinha), sobre o canto superior esquerdo do mapa
+// ou por cima da Tabela e do Quadro. Fecha com o botão ou com Esc. As casas, carrinhas e nomes da ficha
+// (e os nomes dos moradores e passageiros) mudam o foco e levam a vista até lá (vistas/mostrar.ts), sem
+// mudar de vista; no Mapa só mudam o foco.
 // No modo de edição: marca "alterado — por guardar", mostra o valor gravado ao lado do que mudou,
 // quem entra e sai, os botões "Mudar casa/carrinha/obra" (abrem o "Mover para…"), os de condutor
 // ("Tornar condutor" / "Tirar condutor") e os de onde dorme a carrinha ("Mudar onde dorme…",
 // "Confirmar sugestão"). O condutor aparece sempre em primeiro, com o volante.
+// `lugar` diz onde a ficha aparece (docs/vistas-edicao.md). 'mapa' = sobre o canto superior esquerdo do
+// mapa (como sempre); 'vista' = na Tabela e no Quadro, que a montam por cima da sua área de conteúdo (num
+// invólucro `relative`): no PC em cima à direita, 22 rem; no telemóvel em baixo, a toda a largura, até 60 %
+// da altura e a deslizar por dentro. Na vista a ficha tem o botão "Ver no mapa" (o único que muda de vista).
 
-import { type ReactNode, useEffect, useId } from 'react';
+import { createContext, type MouseEvent, type ReactNode, useContext, useEffect, useId } from 'react';
 import { clienteEfetivoId } from '../../dominio/cores';
 import type { Dormida } from '../../dominio/dormidas';
 import type { Indices } from '../../dominio/indices';
@@ -27,6 +33,9 @@ import {
   ValorGravado,
 } from '../edicao/PecasFoco';
 import { type Foco, useLoja } from '../estado/loja';
+import { IconeMapa } from '../vistas/icones';
+import { ATRIBUTO_FICHA, mostrarElemento, seguirPessoaEmFoco } from '../vistas/mostrar';
+import { verNoMapa } from '../vistas/navegar';
 import { alturaMaximaPainelFoco, FOCO_VISIVEL, Z_SOBRE_MAPA } from './classes';
 import { carrinhaConduzida, condutorDaCarrinha, ROTULO_SEM_CONDUTOR } from './condutor';
 import { cadeiaDaPessoa, carrinhasDasPessoas, carrinhasQueDormemEm, casasDasPessoas } from './fichas';
@@ -48,6 +57,25 @@ import {
   textoTelefone,
 } from './textos';
 
+/** Onde a ficha aparece: sobre o mapa ou sobre a Tabela/Quadro. */
+export type LugarFicha = 'mapa' | 'vista';
+
+const ContextoLugar = createContext<LugarFicha>('mapa');
+
+/**
+ * Posição, tamanho e sombra da ficha em cada lugar (a do mapa é a de sempre). Na vista, no telemóvel, é
+ * uma folha em baixo (a sombra para cima separa-a do que está por trás); a partir de 640 px, um cartão em
+ * cima à direita. O conteúdo desliza por dentro (Moldura): a ficha nunca faz a página deslizar.
+ * No telemóvel a folha vai até 60 % da área da vista, mas pode sempre chegar a 16 rem (se a área der):
+ * num ecrã baixo, a editar, a área da vista fica com uns 320 px (cabeçalho e barra de edição) e 60 %
+ * deixava o corpo da ficha com 40 px, sem se verem os botões de mudar.
+ */
+const CLASSES_LUGAR: Record<LugarFicha, string> = {
+  mapa: 'top-3 left-3 w-[min(22rem,calc(100%-4.5rem))] rounded-lg shadow-lg',
+  vista:
+    'inset-x-2 bottom-2 max-h-[max(60%,min(16rem,calc(100%-1rem)))] rounded-xl shadow-[0_-4px_24px_rgb(15_23_42/0.22)] sm:inset-x-auto sm:top-2 sm:right-3 sm:bottom-auto sm:max-h-[calc(100%-1rem)] sm:w-[min(22rem,calc(100%-1.5rem))] sm:rounded-lg sm:shadow-lg',
+};
+
 const ROTULO_ELEMENTO = { casa: 'Casa', carrinha: 'Carrinha', obra: 'Obra' } as const;
 const CAMPO_ELEMENTO = { casa: 'casaId', carrinha: 'carrinhaId', obra: 'obraId' } as const;
 
@@ -68,12 +96,16 @@ function Moldura({
   const definirFoco = useLoja((s) => s.definirFoco);
   const idTitulo = useId();
   const alturaLegenda = useAlturaLegenda();
+  const lugar = useContext(ContextoLugar);
   return (
     <section
       aria-labelledby={idTitulo}
-      // A ficha acaba por cima da legenda (canto inferior esquerdo) em vez de a tapar.
-      style={{ maxHeight: alturaMaximaPainelFoco(alturaLegenda) }}
-      className={`absolute top-3 left-3 ${Z_SOBRE_MAPA} flex w-[min(22rem,calc(100%-4.5rem))] flex-col overflow-hidden rounded-lg border bg-white text-sm shadow-lg ${
+      // Na vista, quem desliza até um elemento (vistas/mostrar.ts) deixa-o fora da ficha.
+      {...{ [ATRIBUTO_FICHA]: lugar }}
+      // No mapa, a ficha acaba por cima da legenda (canto inferior esquerdo) em vez de a tapar.
+      style={lugar === 'mapa' ? { maxHeight: alturaMaximaPainelFoco(alturaLegenda) } : undefined}
+      onClickCapture={lugar === 'vista' ? seguirNomeClicado : undefined}
+      className={`absolute ${CLASSES_LUGAR[lugar]} ${Z_SOBRE_MAPA} flex flex-col overflow-hidden border bg-white text-sm ${
         alterado ? 'border-amber-400' : 'border-slate-300'
       }`}
     >
@@ -88,6 +120,7 @@ function Moldura({
           </h2>
           {subtitulo && <p className="mt-0.5 text-xs text-slate-700">{subtitulo}</p>}
         </div>
+        {lugar === 'vista' && <BotaoVerNoMapa />}
         <button
           type="button"
           aria-label="Fechar a ficha"
@@ -100,6 +133,38 @@ function Moldura({
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2">{children}</div>
     </section>
+  );
+}
+
+/**
+ * Na ficha da vista, os nomes (moradores, passageiros) são NomeChip, que só mudam o foco (e a seleção, no
+ * modo de edição) e não deixam o clique subir. Apanha-se o clique ao descer e, depois de o nome o tratar,
+ * se a pessoa ficou em foco a vista leva-se até ela, como nas outras ligações da ficha. (Um setTimeout e
+ * não uma microtarefa: o React trata o clique ao descer e ao subir em dois ouvintes separados.)
+ */
+function seguirNomeClicado(e: MouseEvent<HTMLElement>) {
+  const nome = e.target instanceof Element ? e.target.closest<HTMLElement>('[data-pessoa-id]') : null;
+  // (contains: um clique num diálogo aberto a partir da ficha também passa por aqui no React.)
+  const id = nome && e.currentTarget.contains(nome) ? nome.dataset.pessoaId : undefined;
+  if (id) setTimeout(() => seguirPessoaEmFoco(id), 0);
+}
+
+/** Na Tabela e no Quadro: o único caminho para o Mapa (leva o mapa até ao que está em foco). */
+function BotaoVerNoMapa() {
+  return (
+    <button
+      type="button"
+      title="Ver no mapa"
+      onClick={() => {
+        const { foco } = useLoja.getState();
+        if (foco) verNoMapa(foco);
+      }}
+      className={`inline-flex h-7 shrink-0 items-center gap-1 rounded border border-slate-300 bg-white px-1.5 text-xs font-medium text-slate-800 hover:bg-slate-50 ${FOCO_VISIVEL}`}
+    >
+      <IconeMapa className="size-4" />
+      {/* No telemóvel só o ícone (o nome do botão fica para os leitores de ecrã). */}
+      <span className="sr-only sm:not-sr-only">Ver no mapa</span>
+    </button>
   );
 }
 
@@ -121,13 +186,15 @@ function Secao({ titulo, children }: { titulo: string; children: ReactNode }) {
   );
 }
 
-/** Texto clicável que muda o foco para uma casa ou carrinha. */
+/**
+ * Texto clicável que muda o foco para uma pessoa, casa ou carrinha. No Mapa só muda o foco (como sempre);
+ * na Tabela e no Quadro a vista também desliza até lá e acende-a.
+ */
 function BotaoFoco({ foco, children }: { foco: NonNullable<Foco>; children: ReactNode }) {
-  const definirFoco = useLoja((s) => s.definirFoco);
   return (
     <button
       type="button"
-      onClick={() => definirFoco(foco)}
+      onClick={() => mostrarElemento(foco, { noMapa: 'so-foco' })}
       className={`rounded-sm text-left font-medium text-blue-800 underline decoration-blue-300 underline-offset-2 hover:decoration-blue-800 ${FOCO_VISIVEL}`}
     >
       {children}
@@ -407,7 +474,15 @@ function FichaCarrinha({
   );
 }
 
-export function PainelFoco() {
+export function PainelFoco({ lugar = 'mapa' }: { lugar?: LugarFicha }) {
+  return (
+    <ContextoLugar.Provider value={lugar}>
+      <Ficha />
+    </ContextoLugar.Provider>
+  );
+}
+
+function Ficha() {
   const foco = useLoja((s) => s.foco);
   const indices = useLoja((s) => s.indices);
   const dormidas = useLoja((s) => s.dormidas);

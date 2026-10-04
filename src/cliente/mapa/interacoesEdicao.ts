@@ -1,6 +1,7 @@
 // O mapa no modo de edição:
 // - enquanto se arrasta um nome (motor em arrastar/), o mapa não se desloca nem faz zoom com o dedo ou
-//   duplo clique, e desliza sozinho quando o ponteiro chega perto da borda;
+//   duplo clique, e desliza sozinho quando o ponteiro chega perto da borda (um arrasto no Quadro ou na
+//   Tabela, com o mapa escondido, não lhe toca);
 // - Shift+arrastar no fundo do mapa desenha uma caixa e seleciona os nomes que ela toca
 //   (o boxZoom do Leaflet está desligado). Fora do modo de edição não faz nada.
 
@@ -33,10 +34,14 @@ export function useArrastoNoMapa(instancia: Instancia | null) {
     const { mapa } = instancia;
     let ponteiro: { x: number; y: number } | null = null;
     let quadro = 0;
+    let travado = false;
+    // Fora do Mapa (Tabela, Quadro) o mapa continua montado mas escondido e inerte (o App põe-lhe inert):
+    // um arrasto na vista não o pode deslocar nem travar.
+    const escondido = () => mapa.getContainer().closest('[inert]') !== null;
 
     const deslizar = () => {
       quadro = 0;
-      if (!ponteiro) return;
+      if (!ponteiro || escondido()) return;
       const r = mapa.getContainer().getBoundingClientRect();
       if (!dentro(ponteiro.x, ponteiro.y, r)) return;
       const vx = velocidadeBorda(ponteiro.x, r.left, r.right, MARGEM_BORDA, VELOCIDADE_BORDA);
@@ -54,8 +59,13 @@ export function useArrastoNoMapa(instancia: Instancia | null) {
     };
 
     const retirar = registarOuvintesArrasto({
-      aoComecar: () => travar(true),
+      aoComecar: () => {
+        if (escondido()) return;
+        travado = true;
+        travar(true);
+      },
       aoMover: (x, y) => {
+        if (escondido()) return;
         ponteiro = { x, y };
         if (!quadro) quadro = requestAnimationFrame(deslizar);
       },
@@ -63,7 +73,9 @@ export function useArrastoNoMapa(instancia: Instancia | null) {
         ponteiro = null;
         cancelAnimationFrame(quadro);
         quadro = 0;
-        travar(false);
+        // Só destrava o que travou (um arrasto que começou noutra vista não lhe tocou).
+        if (travado) travar(false);
+        travado = false;
       },
     });
     return () => {

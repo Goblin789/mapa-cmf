@@ -1,6 +1,8 @@
 // Barra âmbar por baixo do cabeçalho, só no modo de edição: diz que é uma simulação, quantas
 // alterações há por guardar, e tem Desfazer, Refazer, Mover para…, Limpar seleção, Cancelar e Guardar….
 // No telemóvel: 1.ª linha com o estado, Cancelar e Guardar; 2.ª linha com o resto (ícones + textos curtos).
+// A 375 px a 1.ª linha só tem uns 166 px para o estado: sem o lápis e com "Sem alterações", "Edição" e a
+// pastilha cabem lado a lado (antes a pastilha espremia o título até ficar por cima dele).
 
 import { useLoja } from '../estado/loja';
 import { comPlural } from '../paineis/textos';
@@ -47,11 +49,11 @@ export function BarraEdicao() {
         <div className="order-1 flex min-w-0 flex-1 items-center gap-2 text-sm sm:flex-auto">
           <span
             aria-hidden="true"
-            className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[#F39200] text-[#1C1C1B]"
+            className="hidden h-6 w-6 shrink-0 place-items-center rounded-full bg-[#F39200] text-[#1C1C1B] sm:grid"
           >
             <IconeLapis className="h-3.5 w-3.5" />
           </span>
-          <p className="min-w-0 leading-tight sm:whitespace-nowrap">
+          <p className="shrink-0 leading-tight whitespace-nowrap sm:min-w-0 sm:shrink">
             <strong className="font-semibold">
               <span className="sm:hidden">Edição</span>
               <span className="hidden sm:inline">Modo de edição</span>
@@ -63,14 +65,17 @@ export function BarraEdicao() {
             <span className="hidden md:inline 2xl:hidden"> — só fica gravado ao Guardar</span>
           </p>
           <p
-            className={`shrink-0 rounded-full border px-2 text-xs leading-5 font-semibold tabular-nums ${
+            className={`min-w-0 truncate rounded-full border px-2 text-xs leading-5 font-semibold tabular-nums sm:shrink-0 ${
               nPendentes > 0
                 ? 'border-[#B35F00] bg-[#F39200] text-[#1C1C1B]'
                 : 'border-amber-300 bg-white/70 text-amber-900'
             }`}
           >
             {nPendentes === 0 ? (
-              'Nenhuma alteração'
+              <>
+                <span className="sm:hidden">Sem alterações</span>
+                <span className="hidden sm:inline">Nenhuma alteração</span>
+              </>
             ) : (
               <>
                 {nPendentes}

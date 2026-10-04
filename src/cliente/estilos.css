@@ -90,3 +90,51 @@ body {
     font-size: 125%;
   }
 }
+
+/* --- Vistas: mostrar um elemento sem mudar de vista (vistas/mostrar.ts) ------------------------- */
+/* revelarElementos põe data-realce durante 1,6 s no que a pesquisa, os contadores ou a ficha pediram para
+   mostrar (blocos e nomes do Quadro, linhas da Tabela): acende e apaga devagar. Sem o fotograma 100 %, a
+   animação acaba no valor do próprio elemento (o anel de selecionado ou em foco, o fundo branco das
+   células fixas da Tabela) em vez de piscar para "nada" antes de ele voltar. */
+@keyframes realce-elemento {
+  0%,
+  45% {
+    box-shadow:
+      0 0 0 3px #2563eb,
+      0 0 0 7px rgb(37 99 235 / 0.25);
+  }
+}
+
+@keyframes realce-linha {
+  0%,
+  45% {
+    background-color: #dbeafe;
+    box-shadow:
+      inset 0 2px 0 #2563eb,
+      inset 0 -2px 0 #2563eb;
+  }
+}
+
+[data-realce]:not(tr) {
+  animation: realce-elemento 1.6s ease-out;
+}
+
+/* Numa linha da tabela a sombra não se vê: acendem as células. */
+tr[data-realce] > td {
+  animation: realce-linha 1.6s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-realce]:not(tr) {
+    animation: none;
+    box-shadow: 0 0 0 3px #2563eb;
+  }
+
+  tr[data-realce] > td {
+    animation: none;
+    background-color: #dbeafe;
+    box-shadow:
+      inset 0 2px 0 #2563eb,
+      inset 0 -2px 0 #2563eb;
+  }
+}

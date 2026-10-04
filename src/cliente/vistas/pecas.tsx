@@ -1,30 +1,39 @@
 // Peças partilhadas pela Tabela, pelo Quadro e pela reunião: o nome de uma pessoa, a pastilha da
-// lotação, a nota do modo de edição e o botão do Excel.
+// lotação e o botão do Excel.
 //
 // NomeVista tem o aspeto do NomeChip (fundo da cor do cliente, texto quase-preto igual em todos, sigla,
-// volante do condutor, "?" a confirmar, ponto âmbar se mudou no rascunho), mas não se arrasta nem se
-// seleciona: mudar pessoas é só no mapa e na lista. As medidas são em em, para o Quadro poder escalar a
-// letra (na TV da reunião).
+// volante do condutor, "?" a confirmar, ponto âmbar se mudou no rascunho). As medidas são em em, para o
+// Quadro poder escalar a letra (na TV da reunião).
+// Com `interativo` (docs/vistas-edicao.md) porta-se como o NomeChip do mapa e da lista — fora do
+// modo de edição o clique põe a pessoa em foco (abre a ficha; outro clique tira-a); no modo de edição o
+// clique seleciona (Ctrl/⌘+clique junta ou tira, Shift+clique escolhe o intervalo pela ordem do
+// ContextoOrdemPessoas) e põe-na em foco. Com `arrastavel` (só no modo de edição) leva o
+// data-arrastavel-pessoa do motor de arrastar (arrastar/motor.ts). Com `seguirLegenda` apaga-se quando a
+// legenda acende só outro cliente. Sem `interativo` (reunião) é só um nome.
 
-import { useState } from 'react';
+import { useContext, useState } from 'react';
 import { COR_TEXTO_NOMES, clienteEfetivoId } from '../../dominio/cores';
 import type { NivelLotacao } from '../../dominio/ocupacao';
 import type { Pessoa } from '../../dominio/tipos';
+import { modoDoClique } from '../arrastar/selecao';
 import { IconeVolante } from '../comum/IconeVolante';
 import { ESTILO_NIVEL } from '../comum/lotacao';
+import { ContextoOrdemPessoas } from '../comum/ordemPessoas';
 import { useUiEdicao } from '../edicao/ui';
 import { useLoja } from '../estado/loja';
 import { FOCO_VISIVEL } from '../paineis/classes';
 import { nomeCompleto, textoLotacao } from '../paineis/textos';
 import { exportarExcel } from './excel';
-import { IconeDescarregar, IconeMapa } from './icones';
-import { useVista } from './vista';
+import { IconeDescarregar } from './icones';
 
 export function NomeVista({
   pessoa,
   condutor = false,
   quebrar = false,
   className = '',
+  interativo = false,
+  arrastavel = false,
+  seguirLegenda = false,
 }: {
   pessoa: Pessoa;
   /** Conduz a carrinha onde vai: leva o volante antes do nome. */
@@ -35,8 +44,15 @@ export function NomeVista({
    */
   quebrar?: boolean;
   className?: string;
+  /** Botão: foco fora do modo de edição, seleção dentro dele (como o NomeChip). */
+  interativo?: boolean;
+  /** No modo de edição arrasta-se (data-arrastavel-pessoa). Só com `interativo`. */
+  arrastavel?: boolean;
+  /** Apaga-se quando a legenda acende só outro cliente. */
+  seguirLegenda?: boolean;
 }) {
   const indices = useLoja((s) => s.indices);
+  const modoEdicao = useLoja((s) => s.modoEdicao);
   const alterado = useLoja(
     (s) =>
       s.modoEdicao &&
@@ -46,25 +62,29 @@ export function NomeVista({
           : op.tipo === 'mover' && op.pessoaId === pessoa.id,
       ),
   );
+  const emFoco = useLoja((s) => interativo && s.foco?.tipo === 'pessoa' && s.foco.id === pessoa.id);
+  const selecionado = useLoja((s) => interativo && s.modoEdicao && s.selecao.has(pessoa.id));
+  const clienteDestacado = useLoja((s) => (seguirLegenda ? s.clienteDestacado : null));
+  const ordem = useContext(ContextoOrdemPessoas);
   if (!indices) return null;
-  const cliente = indices.clientes.get(clienteEfetivoId(pessoa, indices.obras));
+  const clienteId = clienteEfetivoId(pessoa, indices.obras);
+  const cliente = indices.clientes.get(clienteId);
   const aConfirmar = pessoa.casaAConfirmar || pessoa.carrinhaAConfirmar;
+  // Um nome selecionado nunca fica apagado pela legenda: tem de se ver o que se vai mover.
+  const apagado = clienteDestacado !== null && clienteDestacado !== clienteId && !selecionado;
   const titulo = [
     nomeCompleto(pessoa),
     condutor ? 'condutor' : null,
     cliente?.nome,
     aConfirmar ? 'a confirmar' : null,
     alterado ? 'alterado, por guardar' : null,
+    interativo && arrastavel && modoEdicao ? 'arraste para mudar' : null,
   ]
     .filter(Boolean)
     .join(' · ');
 
-  return (
-    <span
-      title={titulo}
-      className={`relative flex min-w-0 items-center gap-[0.3em] rounded-[0.25em] border border-black/25 px-[0.4em] py-[0.06em] leading-[1.35] ${className}`}
-      style={{ backgroundColor: cliente?.cor ?? '#ffffff', color: COR_TEXTO_NOMES }}
-    >
+  const conteudo = (
+    <>
       {condutor && <IconeVolante tamanho={12} rotulo="condutor" className="size-[0.95em]" />}
       <span className={`min-w-0 flex-1 ${quebrar ? 'break-words' : 'truncate'}`}>{pessoa.nomeCurto}</span>
       {aConfirmar && (
@@ -88,7 +108,54 @@ export function NomeVista({
           <span className="sr-only"> (alterado)</span>
         </>
       )}
-    </span>
+    </>
+  );
+  const base =
+    'relative flex min-w-0 items-center gap-[0.3em] rounded-[0.25em] border px-[0.4em] py-[0.06em] leading-[1.35]';
+  const cores = { backgroundColor: cliente?.cor ?? '#ffffff', color: COR_TEXTO_NOMES };
+
+  if (!interativo) {
+    return (
+      <span title={titulo} className={`${base} border-black/25 ${className}`} style={cores}>
+        {conteudo}
+      </span>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      data-pessoa-id={pessoa.id}
+      data-arrastavel-pessoa={arrastavel && modoEdicao ? pessoa.id : undefined}
+      aria-pressed={modoEdicao ? selecionado : undefined}
+      title={titulo}
+      onClick={(e) => {
+        e.stopPropagation();
+        const { definirFoco, selecionar } = useLoja.getState();
+        if (!modoEdicao) {
+          definirFoco(emFoco ? null : { tipo: 'pessoa', id: pessoa.id });
+          return;
+        }
+        selecionar(pessoa.id, modoDoClique(e), ordem ?? undefined);
+        definirFoco({ tipo: 'pessoa', id: pessoa.id });
+      }}
+      className={[
+        base,
+        'w-full text-left transition-opacity',
+        FOCO_VISIVEL,
+        arrastavel && modoEdicao ? 'cursor-grab' : 'cursor-pointer',
+        selecionado
+          ? 'border-blue-800 ring-2 ring-blue-600 ring-offset-1'
+          : emFoco
+            ? 'border-slate-900 ring-2 ring-slate-900'
+            : 'border-black/25',
+        apagado ? 'opacity-20' : 'opacity-100',
+        className,
+      ].join(' ')}
+      style={cores}
+    >
+      {conteudo}
+    </button>
   );
 }
 
@@ -118,33 +185,6 @@ export function PastilhaVista({
 
 /** Botão das barras da Tabela e do Quadro (h-8, como os do cabeçalho). */
 export const BOTAO_VISTA = `inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border border-slate-300 bg-white px-2.5 text-sm font-medium whitespace-nowrap text-slate-800 hover:bg-slate-50 disabled:cursor-wait disabled:opacity-60 ${FOCO_VISIVEL}`;
-
-/**
- * No modo de edição, a Tabela e o Quadro mostram a simulação (o rascunho por cima do que está gravado).
- * Mudar pessoas continua a ser no mapa e na lista: daí o atalho para o Mapa.
- */
-export function NotaEdicao() {
-  const modoEdicao = useLoja((s) => s.modoEdicao);
-  const nPendentes = useLoja((s) => s.pendentes.length);
-  const mudarVista = useVista((s) => s.mudarVista);
-  if (!modoEdicao) return null;
-  return (
-    <p className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs leading-snug text-amber-950">
-      <span className="font-semibold">
-        {nPendentes > 0 ? 'Simulação: há alterações por guardar.' : 'Modo de edição.'}
-      </span>
-      <span>Para mudar pessoas, usa o mapa ou a lista.</span>
-      <button
-        type="button"
-        onClick={() => mudarVista('mapa')}
-        className={`inline-flex items-center gap-1 rounded border border-amber-400 bg-white px-1.5 py-0.5 font-medium hover:bg-amber-100 ${FOCO_VISIVEL}`}
-      >
-        <IconeMapa className="size-3.5" />
-        Ir para o mapa
-      </button>
-    </p>
-  );
-}
 
 /** Exporta Pessoas, Casas e Carrinhas para Excel (o que se vê: no modo de edição, a simulação). */
 export function BotaoExcel() {

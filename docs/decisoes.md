@@ -2,6 +2,27 @@
 
 Registo das decisões do Rafael e das escolhas por omissão. Mais recentes primeiro.
 
+## 04/10/2026 — Tabela e Quadro editam como o mapa
+
+Pedido do Rafael: clicar ou editar na Tabela ou no Quadro **nunca** leva para o Mapa; a Tabela e o Quadro têm
+as mesmas capacidades do mapa. Desenho em `docs/vistas-edicao.md`.
+- **Nada muda de vista sozinho**: só o botão **"Ver no mapa"** da ficha leva ao Mapa. A linha da Tabela, o
+  título de um bloco do Quadro, a pesquisa, os contadores e as ligações da ficha mostram na vista onde se está.
+- **Pesquisa do cabeçalho em todas as vistas** (fora da reunião), com "/" e Ctrl+K: no Mapa leva o mapa até lá
+  (como antes); na Tabela e no Quadro desliza até ao elemento, acende-o em azul por instantes e abre a ficha.
+  O campo da Tabela passa a ser só um filtro.
+- **Ficha** também na Tabela e no Quadro (no PC em cima à direita; no telemóvel em baixo), com as mesmas ações.
+  Os nomes dos moradores e passageiros da ficha também levam a vista até à pessoa.
+- **Telemóvel fora do Mapa**: os contadores ficam numa só linha que desliza de lado (o cabeçalho passa de 264
+  para 179 px) e a ficha pode sempre chegar a 16 rem, para os botões de mudar se verem num ecrã baixo.
+- **Quadro**: seleciona e arrasta como o mapa (previsão no alvo, toque longo no telemóvel, Shift+arrastar para
+  a caixa de seleção), legenda dos clientes na barra, "Mudar" onde dorme nas carrinhas.
+- **Tabela**: edita nas células (Casa, Carrinha e Obra em listas, condutor num botão), caixas para selecionar
+  linhas e "Mover para…".
+- Tudo entra no mesmo rascunho (Desfazer, Guardar, Cancelar). A nota "usa o mapa ou a lista" desaparece.
+- **Reunião**: continua só de leitura; a casa escolhida nos contadores mostra-se no Quadro sem saltar para o
+  mapa.
+
 ## 04/10/2026 — M1 construído (por publicar)
 
 - **Login**: openid-client (Entra ID, código + PKCE) em vez do Better Auth da proposta. Sessões no SQLite

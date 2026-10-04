@@ -1,7 +1,8 @@
-// "Ver no mapa" a partir da Tabela e do Quadro: muda para o Mapa, põe a pessoa (casa, carrinha) em foco
-// e leva o mapa até lá, como a pesquisa do cabeçalho.
+// "Ver no mapa": o ÚNICO caminho da Tabela e do Quadro para o Mapa (o botão explícito da ficha). Muda
+// para o Mapa, põe a pessoa (casa, carrinha) em foco e leva o mapa até lá, como a pesquisa do cabeçalho.
+// Tudo o resto (pesquisa, contadores, ligações da ficha, cliques nas vistas) mostra sem mudar de vista:
+// ver vistas/mostrar.ts.
 
-import { useEffect, useRef } from 'react';
 import { type Foco, useLoja } from '../estado/loja';
 import { destinoNoMapa, ZOOM_DESTINO } from '../paineis/fichas';
 import { useVista } from './vista';
@@ -22,19 +23,4 @@ export function verNoMapa(foco: NonNullable<Foco>): void {
   // Espera que a lista abra a secção da pessoa (reage ao foco) antes de a procurar.
   if (foco.tipo === 'pessoa')
     requestAnimationFrame(() => requestAnimationFrame(() => mostrarNaLista(foco.id)));
-}
-
-/**
- * Quem pede para levar o mapa a algum lado (ex.: uma casa no popover dos contadores) quer vê-lo: fora do
- * Mapa, muda para lá (na reunião, para o Mapa da reunião). Usar uma vez (App).
- */
-export function useIrParaMostraMapa(): void {
-  const seq = useLoja((s) => s.irPara?.seq ?? 0);
-  const visto = useRef(seq);
-  useEffect(() => {
-    if (seq === visto.current) return;
-    visto.current = seq;
-    const { vista, mudarVista } = useVista.getState();
-    if (vista !== 'mapa') mudarVista('mapa');
-  }, [seq]);
 }

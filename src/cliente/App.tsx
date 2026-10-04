@@ -2,7 +2,10 @@
 // Histórico e Editar), barra do modo de edição e a vista ativa (vistas/vista.ts, no hash do URL):
 // - Mapa: o mapa ao centro e a lista lateral à direita;
 // - Tabela e Quadro (vistas/): por cima do mapa, que continua montado mas invisível e inerte (mantém a
-//   posição e o zoom, e "ver no mapa" já o encontra com o tamanho certo).
+//   posição e o zoom para o botão "Ver no mapa" da ficha). Cada uma monta a sua ficha (PainelFoco
+//   lugar="vista").
+// Nada muda de vista sozinho: a pesquisa, os contadores e a ficha mostram o que se escolhe na vista ativa
+// (vistas/mostrar.ts); só o "Ver no mapa" da ficha leva ao Mapa.
 // No modo de edição a área de trabalho ganha um contorno âmbar: o que se vê é uma simulação até se
 // carregar em Guardar. O modo reunião troca o cabeçalho pelo da reunião e é só leitura (sem Editar, sem
 // barra de edição nem ficha com botões de mudar).
@@ -25,19 +28,18 @@ import { useTempoReal } from './tempoReal/useTempoReal';
 import { CabecalhoReuniao } from './vistas/CabecalhoReuniao';
 import { BotaoReuniao, Comutador } from './vistas/Comutador';
 import { useModoReuniao } from './vistas/modoReuniao';
-import { useIrParaMostraMapa } from './vistas/navegar';
 import { Quadro } from './vistas/Quadro';
 import { Tabela } from './vistas/Tabela';
-import { useSincronizarVista, useVista, type Vista } from './vistas/vista';
+import { useSincronizarVista, useVista } from './vistas/vista';
 
 /**
  * Telemóvel: marca e botões na 1.ª linha, Mapa | Tabela | Quadro na 2.ª, contadores e pesquisa por baixo.
  * PC: a marca à esquerda, ocupando as duas linhas; em cima Mapa | Tabela | Quadro e, à direita, Reunião,
- * Histórico, Editar e o utilizador; em baixo os contadores e, à direita, a pesquisa (só no Mapa: é a
- * pesquisa que leva o mapa até lá; a Tabela tem a sua). Duas linhas porque, com o comutador e o menu do
- * utilizador, uma só linha deixava de caber abaixo dos 1920 px.
+ * Histórico, Editar e o utilizador; em baixo os contadores e, à direita, a pesquisa (em todas as vistas:
+ * leva a vista ativa até ao que se escolhe, sem mudar de vista). Duas linhas porque, com o comutador e o
+ * menu do utilizador, uma só linha deixava de caber abaixo dos 1920 px.
  */
-function Cabecalho({ vista }: { vista: Vista }) {
+function Cabecalho() {
   return (
     <header className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-4 gap-y-2 border-b border-slate-200 bg-white px-3 py-2 sm:grid-cols-[auto_auto_minmax(0,1fr)] sm:gap-y-1.5">
       <Marca className="col-start-1 row-start-1 sm:row-span-2" />
@@ -49,11 +51,9 @@ function Cabecalho({ vista }: { vista: Vista }) {
       <Comutador className="col-span-full row-start-2 sm:col-span-1 sm:col-start-2 sm:row-start-1" />
       <div className="col-span-full row-start-3 flex flex-wrap items-center gap-x-4 gap-y-2 sm:col-span-2 sm:col-start-2 sm:row-start-2 sm:min-h-[2.125rem]">
         <Contadores />
-        {vista === 'mapa' && (
-          <div className="w-full sm:ml-auto sm:w-64 2xl:w-72">
-            <Pesquisa />
-          </div>
-        )}
+        <div className="w-full sm:ml-auto sm:w-64 2xl:w-72">
+          <Pesquisa />
+        </div>
       </div>
     </header>
   );
@@ -72,10 +72,9 @@ export function App() {
 
   // Quando outra pessoa grava, o estado recarrega sozinho (e aparece um aviso).
   useTempoReal();
-  // Vista no hash do URL (Voltar/Avançar), modo reunião e "ir para" no mapa a partir de outra vista.
+  // Vista no hash do URL (Voltar/Avançar) e modo reunião.
   useSincronizarVista();
   useModoReuniao(reuniao);
-  useIrParaMostraMapa();
 
   // Sem dados nenhuns, o erro ocupa o ecrã. Com dados (ex.: falhou recarregar depois de guardar),
   // fica uma faixa por cima e o mapa continua à vista.
@@ -112,7 +111,7 @@ export function App() {
       data-reuniao={reuniao ? '' : undefined}
       className={`flex flex-col ${paginaCresce ? 'min-h-full md:h-full' : 'h-full'}`}
     >
-      {reuniao ? <CabecalhoReuniao /> : <Cabecalho vista={vista} />}
+      {reuniao ? <CabecalhoReuniao /> : <Cabecalho />}
       {erro && (
         <p role="alert" className="border-b border-red-200 bg-red-50 px-3 py-1.5 text-sm text-red-900">
           Não foi possível atualizar os dados. {textoDoErro(erro)}{' '}
@@ -142,8 +141,9 @@ export function App() {
           >
             <Mapa />
             <Legenda />
-            {/* Na reunião não há ficha: tem botões para mudar pessoas (Editar). */}
-            {!reuniao && <PainelFoco />}
+            {/* Na reunião não há ficha: tem botões para mudar pessoas (Editar). Na Tabela e no Quadro
+                quem a monta é a vista (lugar="vista"): aqui só no Mapa, senão havia duas. */}
+            {noMapa && !reuniao && <PainelFoco />}
           </main>
           {/* Na reunião a lista lateral esconde-se (o mapa fica com a largura toda) sem se desmontar. */}
           <div hidden={reuniao} className="contents">

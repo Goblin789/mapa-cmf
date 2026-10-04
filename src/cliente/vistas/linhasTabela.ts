@@ -1,5 +1,6 @@
 // Vista Tabela: uma linha por pessoa ativa, com ordenação por coluna, pesquisa (indiferente a acentos)
-// e filtros por cliente, casa e carrinha. Funções puras, sem browser (usadas também pelo Excel).
+// e filtros por cliente, casa e carrinha, e o realce do que está em foco (a ficha). Funções puras, sem
+// browser (usadas também pelo Excel).
 
 import { clienteEfetivoId } from '../../dominio/cores';
 import type { Indices } from '../../dominio/indices';
@@ -236,4 +237,111 @@ export function textoAConfirmar(l: Pick<LinhaTabela, 'casaAConfirmar' | 'carrinh
 export function textoContagem(mostradas: number, total: number, comFiltros: boolean): string {
   const unidade = (n: number) => (n === 1 ? 'pessoa' : 'pessoas');
   return comFiltros ? `${mostradas} de ${total} ${unidade(total)}` : `${total} ${unidade(total)}`;
+}
+
+// --- Foco e "mostrar" -----------------------------------------------------------------------------
+
+/** O que está em foco (a ficha aberta): uma pessoa, casa ou carrinha. */
+export type FocoTabela = { tipo: 'pessoa' | 'casa' | 'carrinha'; id: Id } | null;
+
+/**
+ * Realce persistente de uma linha: 'foco' = a pessoa da ficha; 'ligada' = mora na casa (ou vai na
+ * carrinha) da ficha; null = nenhum.
+ */
+export function realceDaLinha(
+  linha: Pick<LinhaTabela, 'pessoa' | 'casa' | 'carrinha'>,
+  foco: FocoTabela,
+): 'foco' | 'ligada' | null {
+  if (!foco) return null;
+  if (foco.tipo === 'pessoa') return foco.id === linha.pessoa.id ? 'foco' : null;
+  const sitio = foco.tipo === 'casa' ? linha.casa : linha.carrinha;
+  return sitio?.id === foco.id ? 'ligada' : null;
+}
+
+/**
+ * As linhas que mostram um elemento (pesquisa, contadores, ligações da ficha): a pessoa, ou quem mora
+ * na casa / vai na carrinha, pela ordem recebida.
+ */
+export function pessoasDoElemento(
+  linhas: readonly Pick<LinhaTabela, 'pessoa' | 'casa' | 'carrinha'>[],
+  elemento: NonNullable<FocoTabela>,
+): Id[] {
+  if (elemento.tipo === 'pessoa') return [elemento.id];
+  return linhas.filter((l) => realceDaLinha(l, elemento) === 'ligada').map((l) => l.pessoa.id);
+}
+
+// --- Seleção pelas caixas --------------------------------------------------------------------------
+
+/**
+ * A seleção depois da caixa "todas as visíveis": marcar junta as visíveis; desmarcar tira só as visíveis.
+ * Quem está selecionado e os filtros escondem (ou foi selecionado noutra vista) fica selecionado.
+ */
+export function selecaoComVisiveis(selecao: ReadonlySet<Id>, visiveis: readonly Id[], marcar: boolean): Id[] {
+  if (marcar) return [...new Set([...selecao, ...visiveis])];
+  const tirar = new Set(visiveis);
+  return [...selecao].filter((id) => !tirar.has(id));
+}
+
+/**
+ * Modo da caixa de uma linha: com Shift, o intervalo desde a âncora (pela ordem visível) se a âncora
+ * estiver à vista; senão (escondida por um filtro, ou posta noutra vista) só junta ou tira esta linha,
+ * em vez de deitar fora a seleção.
+ */
+export function modoDaCaixa(
+  comShift: boolean,
+  ancora: Id | null,
+  ordemVisivel: readonly Id[],
+): 'intervalo' | 'alternar' {
+  return comShift && ancora !== null && ordemVisivel.includes(ancora) ? 'intervalo' : 'alternar';
+}
+
+// --- Manter à vista -------------------------------------------------------------------------------
+
+/** Retângulo no ecrã (o que interessa de um DOMRect). */
+export interface Caixa {
+  top: number;
+  bottom: number;
+  left: number;
+  right: number;
+}
+
+/**
+ * A parte da caixa da tabela onde uma linha se vê: por baixo do cabeçalho fixo e, quando a ficha tapa
+ * o princípio das linhas (no telemóvel fica em baixo, a toda a largura), por cima da ficha. No PC a ficha
+ * fica à direita e não tapa a célula do nome: não conta. Uma ficha escondida tem o retângulo vazio.
+ */
+export function zonaLivreDaTabela(
+  contentor: Caixa,
+  fundoCabecalho: number,
+  ficha: Caixa | null,
+  primeiraCelula: Pick<Caixa, 'left' | 'right'>,
+): { top: number; bottom: number } {
+  const top = Math.max(contentor.top, fundoCabecalho);
+  let bottom = contentor.bottom;
+  const tapa =
+    ficha !== null &&
+    ficha.bottom > ficha.top &&
+    ficha.left < primeiraCelula.right &&
+    ficha.right > primeiraCelula.left &&
+    ficha.top > top &&
+    ficha.top < bottom;
+  if (tapa) bottom = ficha.top;
+  return { top, bottom };
+}
+
+/**
+ * Quanto deslizar (scrollTop) para a linha ficar inteira na zona livre, com uma pequena folga: 0 se já
+ * se vê; se não couber, fica com o topo no topo da zona.
+ */
+export function deslocamentoParaVer(
+  linha: Pick<Caixa, 'top' | 'bottom'>,
+  zona: { top: number; bottom: number },
+  folga = 8,
+): number {
+  if (linha.top >= zona.top && linha.bottom <= zona.bottom) return 0;
+  const altura = linha.bottom - linha.top;
+  const livre = zona.bottom - zona.top;
+  const margem = Math.max(0, Math.min(folga, (livre - altura) / 2));
+  if (linha.top < zona.top || altura > livre) return Math.round(linha.top - zona.top - margem);
+  return Math.round(linha.bottom - zona.bottom + margem);
 }

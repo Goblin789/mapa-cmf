@@ -1,6 +1,8 @@
 // Pesquisa rápida por nome, Nº, matrícula ou casa (combobox ARIA com lista de resultados).
 // ↑ ↓ escolhem, Enter abre, Esc fecha a lista (e depois limpa o texto).
-// "/" e Ctrl+K levam o foco para aqui. Escolher um resultado põe-no em foco e leva o mapa até lá.
+// "/" e Ctrl+K levam o foco para aqui (em todas as vistas). Escolher um resultado põe-no em foco e leva a
+// vista ativa até lá, sem mudar de vista (vistas/mostrar.ts): no Mapa o mapa desloca-se e o nome aparece
+// na lista lateral (como sempre); na Tabela e no Quadro a vista desliza até ele e acende-o.
 
 import { type KeyboardEvent, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { clienteEfetivoId } from '../../dominio/cores';
@@ -8,8 +10,9 @@ import type { Indices } from '../../dominio/indices';
 import { pesquisar, type ResultadoPesquisa } from '../../dominio/pesquisa';
 import type { Id } from '../../dominio/tipos';
 import { useLoja } from '../estado/loja';
+import { mostrarElemento } from '../vistas/mostrar';
+import { useVista } from '../vistas/vista';
 import { FOCO_VISIVEL, Z_POPOVER } from './classes';
-import { destinoNoMapa, ZOOM_DESTINO } from './fichas';
 import { IconeTipo, MarcaCliente } from './pecas';
 import { ehAtalhoPesquisa, ehCampoEditavel, moverAtivo } from './teclado';
 import { comPlural, detalheCarrinha } from './textos';
@@ -45,9 +48,6 @@ function mostrarNasCaixas(pessoaId: Id): void {
 export function Pesquisa() {
   const estado = useLoja((s) => s.estado);
   const indices = useLoja((s) => s.indices);
-  const dormidas = useLoja((s) => s.dormidas);
-  const definirFoco = useLoja((s) => s.definirFoco);
-  const pedirIrPara = useLoja((s) => s.pedirIrPara);
 
   const [texto, setTexto] = useState('');
   const [aberta, setAberta] = useState(false);
@@ -97,13 +97,11 @@ export function Pesquisa() {
     setTexto(r.rotulo);
     setAberta(false);
     setAtivo(-1);
-    definirFoco({ tipo: r.tipo, id: r.id });
-    if (indices && dormidas) {
-      const destino = destinoNoMapa({ tipo: r.tipo, id: r.id }, indices, dormidas);
-      if (destino) pedirIrPara(destino.lat, destino.lng, ZOOM_DESTINO);
-    }
-    // Espera que as caixas laterais mudem de aba (telemóvel) antes de procurar o nome.
-    if (r.tipo === 'pessoa') requestAnimationFrame(() => mostrarNasCaixas(r.id));
+    mostrarElemento({ tipo: r.tipo, id: r.id }, { noMapa: 'ir' });
+    // No Mapa, o nome também aparece na lista lateral. Espera que as caixas laterais mudem de aba
+    // (telemóvel) antes de o procurar.
+    if (r.tipo === 'pessoa' && useVista.getState().vista === 'mapa')
+      requestAnimationFrame(() => mostrarNasCaixas(r.id));
   };
 
   const aoTeclar = (e: KeyboardEvent<HTMLInputElement>) => {
