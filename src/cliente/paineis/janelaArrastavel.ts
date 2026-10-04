@@ -9,6 +9,9 @@
 //   fica preso às bordas, mas o que se guardou não muda: quando volta a haver espaço, volta ao sítio.
 // - Arrastar para baixo encolhe a ficha (desliza por dentro) até ALTURA_MINIMA_JANELA_PX; daí para baixo
 //   já não desce. Assim até uma ficha da altura toda se pode pôr mais abaixo.
+// - Cada vista lembra a sua posição (Mapa, Tabela e Quadro): as disposições são diferentes (na Tabela, a
+//   ficha arrastada para a esquerda tapava a coluna dos nomes, no Quadro não). A chave antiga, partilhada
+//   pela Tabela e pelo Quadro, passa para o Quadro (onde era inofensiva); a Tabela começa na origem.
 // - Pode haver um retângulo a evitar (no mapa, a legenda dos clientes, no canto inferior esquerdo): com a
 //   ficha por cima dele na horizontal e o topo acima dele, a ficha acaba antes dele, como na origem. Só o
 //   tapa quando o próprio utilizador põe o topo da ficha na faixa dele (ou não há espaço para a mínima).
@@ -53,13 +56,24 @@ export const PASSO_GRANDE_PX = 64;
 /** Distância (px) que o ponteiro tem de andar para começar a arrastar (um clique não mexe a ficha). */
 export const LIMIAR_ARRASTO_PX = 4;
 
-/** Onde a ficha aparece (o mesmo que LugarFicha do PainelFoco): cada lugar lembra-se da sua posição. */
-export type LugarJanela = 'mapa' | 'vista';
+/** A vista onde a ficha aparece (VistaFicha do PainelFoco): cada uma lembra-se da sua posição. */
+export type LugarJanela = 'mapa' | 'tabela' | 'quadro';
 
 export const CHAVE_POSICAO: Record<LugarJanela, string> = {
   mapa: 'mapa-cmf:ficha-mapa',
-  vista: 'mapa-cmf:ficha-vista',
+  tabela: 'mapa-cmf:ficha-tabela',
+  quadro: 'mapa-cmf:ficha-quadro',
 };
+
+/**
+ * A chave de antes (04/10/2026), uma só posição para a Tabela e o Quadro. Passa para o Quadro na 1.ª
+ * leitura (e apaga-se); a Tabela não a herda: lá, fora da origem, a ficha não deixa espaço à direita e
+ * tapava a coluna dos nomes.
+ */
+export const CHAVE_POSICAO_ANTIGA = 'mapa-cmf:ficha-vista';
+
+/** O lugar que herda a posição guardada na chave antiga. */
+const HERDA_CHAVE_ANTIGA: LugarJanela = 'quadro';
 
 function limitar(valor: number, minimo: number, maximo: number): number {
   return Math.min(Math.max(valor, minimo), Math.max(minimo, maximo));
@@ -168,13 +182,24 @@ function armazenamentoDoBrowser(): Armazenamento | null {
   }
 }
 
-/** A posição lembrada neste browser para este lugar (null = origem, também sem localStorage). */
+/**
+ * A posição lembrada neste browser para este lugar (null = origem, também sem localStorage). O Quadro, sem
+ * posição própria, herda a da chave antiga (que se apaga logo, para não voltar depois de se repor a ficha).
+ */
 export function carregarPosicao(
   lugar: LugarJanela,
   armazenamento: Armazenamento | null = armazenamentoDoBrowser(),
 ): PosicaoJanela | null {
+  if (!armazenamento) return null;
   try {
-    return lerPosicao(armazenamento?.getItem(CHAVE_POSICAO[lugar]) ?? null);
+    const propria = armazenamento.getItem(CHAVE_POSICAO[lugar]);
+    if (lugar !== HERDA_CHAVE_ANTIGA) return lerPosicao(propria);
+    const antiga = armazenamento.getItem(CHAVE_POSICAO_ANTIGA);
+    if (antiga === null) return lerPosicao(propria);
+    const herdada = propria === null ? lerPosicao(antiga) : null;
+    if (herdada) armazenamento.setItem(CHAVE_POSICAO[lugar], JSON.stringify(herdada));
+    armazenamento.removeItem(CHAVE_POSICAO_ANTIGA);
+    return herdada ?? lerPosicao(propria);
   } catch {
     return null;
   }
@@ -189,6 +214,8 @@ export function guardarPosicao(
   try {
     if (posicao) armazenamento?.setItem(CHAVE_POSICAO[lugar], JSON.stringify(posicao));
     else armazenamento?.removeItem(CHAVE_POSICAO[lugar]);
+    // A antiga já não manda: não pode voltar a ser herdada depois de o Quadro ter a sua.
+    if (lugar === HERDA_CHAVE_ANTIGA) armazenamento?.removeItem(CHAVE_POSICAO_ANTIGA);
   } catch {
     // Sem localStorage (modo privado, quota): fica só para esta visita.
   }

@@ -1,6 +1,6 @@
 // Ganchos da ficha arrastável (PainelFoco no PC; as contas estão em janelaArrastavel.ts).
-// - usePosicaoJanela (no PainelFoco): a posição lembrada de cada lugar ('mapa', 'vista'), que sobrevive a
-//   mudar de pessoa/casa/carrinha (cada ficha é um componente novo) e a recarregar a página.
+// - usePosicaoJanela (no PainelFoco): a posição lembrada de cada vista ('mapa', 'tabela', 'quadro'), que
+//   sobrevive a mudar de pessoa/casa/carrinha (cada ficha é um componente novo) e a recarregar a página.
 // - useJanelaArrastavel (na Moldura da ficha): mede a ficha e a área onde está posta, diz onde a desenhar
 //   e trata o arrastar pelo cabeçalho, as setas do teclado e o voltar à origem.
 // - No mapa, a ficha mudada de sítio continua a acabar por cima da legenda (Evitar; ver colocar()).
@@ -47,10 +47,17 @@ export interface PosicaoLugar {
 }
 
 export function usePosicaoJanela(lugar: LugarJanela, ativa: boolean): PosicaoLugar {
-  const [posicao, setPosicao] = useState(() => carregarPosicao(lugar));
+  const [lembrada, setLembrada] = useState(() => ({ lugar, posicao: carregarPosicao(lugar) }));
+  // A mesma ficha noutra vista (não acontece hoje: cada vista monta a sua): lê a posição dessa vista.
+  let atual = lembrada;
+  if (lembrada.lugar !== lugar) {
+    atual = { lugar, posicao: carregarPosicao(lugar) };
+    setLembrada(atual);
+  }
+  const posicao = atual.posicao;
   const definir = useCallback(
     (p: PosicaoJanela | null) => {
-      setPosicao(p);
+      setLembrada({ lugar, posicao: p });
       guardarPosicao(lugar, p);
     },
     [lugar],

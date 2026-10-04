@@ -373,32 +373,21 @@ export function realceDaLinha(
 export type RealceLinha = 'foco' | 'marcada' | 'ligada' | null;
 
 /**
- * O que um clique numa linha faz (docs/vistas-edicao.md): a linha já mostra tudo, por isso NÃO abre a
- * ficha. Fora da edição realça a linha (outro clique tira o realce); no modo de edição a seleção é o
- * realce (o clique seleciona, como hoje) e não fica nenhuma marcada. Se a ficha de uma pessoa já está
- * aberta (abriu-se no botão do fim da linha), passa para a pessoa da linha clicada: quem a abriu quer vê-la.
- * `foco` undefined = não muda.
+ * A linha realçada depois de um clique numa linha (docs/vistas-edicao.md). A linha já mostra tudo, por
+ * isso o clique NUNCA abre nem muda a ficha (só o ⓘ a seguir ao nome): fora da edição realça a linha
+ * (outro clique na mesma tira o realce); no modo de edição a seleção é o realce (o clique seleciona) e
+ * não fica nenhuma marcada. Na linha da pessoa da ficha (`focoPessoaId`) o clique não alterna: ela fica
+ * marcada, para continuar realçada depois de a ficha fechar (o realce 'foco' tapava a mudança).
  */
-export function cliqueNaLinha(
+export function marcadaDepoisDoClique(
   id: Id,
-  { foco, marcada, modoEdicao }: { foco: FocoTabela; marcada: Id | null; modoEdicao: boolean },
-): { marcada: Id | null; foco?: FocoTabela } {
-  const fichaDePessoa = foco?.tipo === 'pessoa';
-  const novaMarcada = modoEdicao ? null : fichaDePessoa || marcada !== id ? id : null;
-  if (fichaDePessoa && foco.id !== id) return { marcada: novaMarcada, foco: { tipo: 'pessoa', id } };
-  return { marcada: novaMarcada };
-}
-
-/**
- * A linha fica esbatida quando a legenda acende só outro cliente (como os nomes no Quadro), exceto se se
- * tem de ver (selecionada ou em foco).
- */
-export function linhaApagada(
-  linha: Pick<LinhaTabela, 'clienteId'>,
-  clienteDestacado: Id | null,
-  temDeSeVer: boolean,
-): boolean {
-  return clienteDestacado !== null && linha.clienteId !== clienteDestacado && !temDeSeVer;
+  marcada: Id | null,
+  modoEdicao: boolean,
+  focoPessoaId: Id | null = null,
+): Id | null {
+  if (modoEdicao) return null;
+  if (id === focoPessoaId) return id;
+  return marcada === id ? null : id;
 }
 
 /**

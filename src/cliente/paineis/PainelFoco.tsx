@@ -19,6 +19,12 @@
 // lembra-se da posição (janelaArrastavel.ts, useJanelaArrastavel.ts). "Voltar ao sítio" ou um duplo
 // clique no cabeçalho põem-na outra vez na origem. O título e o subtítulo não arrastam (selecionam-se e
 // copiam-se). No mapa, arrastada, continua a acabar por cima da legenda. No telemóvel fica como estava.
+// Cada vista (Mapa, Tabela, Quadro) lembra a sua posição: na Tabela a ficha arrastada para a esquerda tapa
+// a coluna dos nomes, no Quadro não.
+// Na Tabela a ficha da PESSOA é compacta (fichas.ts, fichaPessoaCompacta): a linha já tem o Nº, o cliente,
+// a casa → carrinha → obra e, no modo de edição, as listas e o condutor; a ficha só mostra o que a linha
+// não tem ("Ver no mapa", o nome do mapa, avisos, telefone e carta quando existem) e nunca recolhe. As
+// fichas de casa e carrinha são as completas. A vista sai da loja da vista (ou da prop `vista`).
 
 import {
   createContext,
@@ -36,6 +42,7 @@ import {
 import { clienteEfetivoId } from '../../dominio/cores';
 import type { Dormida } from '../../dominio/dormidas';
 import type { Indices } from '../../dominio/indices';
+import { nomeComMaiusculasNormais } from '../../dominio/nomes';
 import { ocupacaoCarrinha, ocupacaoCasa } from '../../dominio/ocupacao';
 import type { Carrinha, Casa, Id, Pessoa } from '../../dominio/tipos';
 import { IconeVolante } from '../comum/IconeVolante';
@@ -57,9 +64,19 @@ import { type Foco, useLoja } from '../estado/loja';
 import { IconeMapa } from '../vistas/icones';
 import { ATRIBUTO_FICHA, mostrarElemento, seguirPessoaEmFoco } from '../vistas/mostrar';
 import { verNoMapa } from '../vistas/navegar';
+import { useVista } from '../vistas/vista';
 import { alturaMaximaPainelFoco, FOCO_VISIVEL, Z_SOBRE_MAPA } from './classes';
 import { carrinhaConduzida, condutorDaCarrinha, ROTULO_SEM_CONDUTOR } from './condutor';
-import { cadeiaDaPessoa, carrinhasDasPessoas, carrinhasQueDormemEm, casasDasPessoas } from './fichas';
+import {
+  cadeiaDaPessoa,
+  carrinhasDasPessoas,
+  carrinhasQueDormemEm,
+  casasDasPessoas,
+  extrasDaPessoa,
+  fichaCompactaTemCorpo,
+  fichaPessoaCompacta,
+  type VistaFicha,
+} from './fichas';
 import { useAlturaLegenda } from './ganchos';
 import { GrelhaNomes, IconeFechar, MarcaAConfirmar, MarcaCliente, PastilhaLotacao } from './pecas';
 import {
@@ -90,6 +107,9 @@ import {
 export type LugarFicha = 'mapa' | 'vista';
 
 const ContextoLugar = createContext<LugarFicha>('mapa');
+
+/** A vista onde a ficha está (Mapa, Tabela ou Quadro): a posição lembrada e a ficha compacta da pessoa. */
+const ContextoVistaFicha = createContext<VistaFicha>('mapa');
 
 /**
  * Ficha da vista no telemóvel: se está aberta toda ou recolhida. null no mapa e no PC (sempre inteira,
@@ -168,6 +188,7 @@ function Moldura({
   alterado = false,
   resumo,
   acoes,
+  compacta = false,
   children,
 }: {
   tipo: string;
@@ -179,6 +200,9 @@ function Moldura({
   resumo?: ReactNode;
   /** Ficha recolhida: as ações principais (as mesmas que o corpo tem no fim). */
   acoes?: ReactNode;
+  /** Ficha compacta (pessoa na Tabela): já é curta, nunca recolhe (sem "Ver tudo"). */
+  compacta?: boolean;
+  /** null = sem corpo: só o cabeçalho (a ficha compacta sem nada a mostrar). */
   children: ReactNode;
 }) {
   const definirFoco = useLoja((s) => s.definirFoco);
@@ -186,8 +210,10 @@ function Moldura({
   const idCorpo = useId();
   const alturaLegenda = useAlturaLegenda();
   const lugar = useContext(ContextoLugar);
-  const recolher = useContext(ContextoRecolher);
+  const recolherDoLugar = useContext(ContextoRecolher);
+  const recolher = compacta ? null : recolherDoLugar;
   const recolhida = recolher !== null && !recolher.inteira;
+  const temCorpo = recolhida || (children !== null && children !== undefined);
   const altura = lugar === 'vista' ? ALTURA_VISTA_TELEMOVEL[recolhida ? 'recolhida' : 'inteira'] : '';
   const janela = useJanelaArrastavel(
     useContext(ContextoPosicao),
@@ -204,6 +230,7 @@ function Moldura({
       // Na vista, quem desliza até um elemento (vistas/mostrar.ts) deixa-o fora da ficha.
       {...{ [ATRIBUTO_FICHA]: lugar }}
       data-movida={janela.movida ? '' : undefined}
+      data-compacta={compacta ? '' : undefined}
       data-a-arrastar={janela.arrastando ? '' : undefined}
       // Arrastada, manda a posição que se escolheu. Na origem, no mapa, a ficha acaba por cima da legenda
       // (canto inferior esquerdo) em vez de a tapar.
@@ -224,7 +251,7 @@ function Moldura({
     >
       <header
         {...janela.pega}
-        className={`flex items-start gap-2 border-b border-slate-200 px-3 ${recolhida ? 'py-1.5' : 'py-2'} ${
+        className={`flex items-start gap-2 px-3 ${temCorpo ? 'border-b border-slate-200' : ''} ${recolhida ? 'py-1.5' : 'py-2'} ${
           janela.ativa ? CLASSES_CABECALHO_ARRASTAVEL : ''
         }`}
       >
@@ -276,19 +303,22 @@ function Moldura({
           <IconeFechar />
         </button>
       </header>
-      <div id={idCorpo} className="min-h-0 flex-1 overflow-y-auto px-3 py-2">
-        {/* Invólucro sem estilo: a ficha arrastável mede-o para saber a altura do conteúdo todo. */}
-        <div ref={janela.refConteudo}>
-          {recolhida ? (
-            <>
-              {resumo}
-              {acoes && <div className={ACOES_RECOLHIDA}>{acoes}</div>}
-            </>
-          ) : (
-            children
-          )}
+      {/* Sem corpo, a ficha arrastável mede só a <section> (useJanelaArrastavel aceita refConteudo a null). */}
+      {temCorpo && (
+        <div id={idCorpo} className="min-h-0 flex-1 overflow-y-auto px-3 py-2">
+          {/* Invólucro sem estilo: a ficha arrastável mede-o para saber a altura do conteúdo todo. */}
+          <div ref={janela.refConteudo}>
+            {recolhida ? (
+              <>
+                {resumo}
+                {acoes && <div className={ACOES_RECOLHIDA}>{acoes}</div>}
+              </>
+            ) : (
+              children
+            )}
+          </div>
         </div>
-      </div>
+      )}
     </section>
   );
 }
@@ -493,7 +523,8 @@ function Vazio({ children }: { children: ReactNode }) {
 
 function FichaPessoa({ pessoa, indices }: { pessoa: Pessoa; indices: Indices }) {
   const cliente = indices.clientes.get(clienteEfetivoId(pessoa, indices.obras)) ?? null;
-  const nome = nomeCompleto(pessoa);
+  // Como na Tabela: maiúsculas normais (só para mostrar).
+  const nome = nomeComMaiusculasNormais(nomeCompleto(pessoa));
   const hoje = hojeISO();
   const alterada = usePessoaAlterada(pessoa.id);
   const conduz = carrinhaConduzida(pessoa, indices);
@@ -615,6 +646,46 @@ function FichaPessoa({ pessoa, indices }: { pessoa: Pessoa; indices: Indices }) 
         </Linha>
       </dl>
       <AcoesPessoa pessoa={pessoa} />
+    </Moldura>
+  );
+}
+
+/**
+ * A ficha da pessoa na Tabela: só o que a linha não mostra. Sem Nº, cliente nem casa → carrinha → obra
+ * (estão nas colunas) e sem os botões "Mudar…" e de condutor (no modo de edição são as listas e o botão
+ * das células). Fica: o tipo, o nome, "no mapa: …" (se for outro), "Ver no mapa" e ✕ no cabeçalho; o aviso
+ * de quem conduz sem carta; o telefone e a carta, se existirem. Sem nenhum deles, só o cabeçalho.
+ */
+function FichaPessoaCompacta({ pessoa, indices }: { pessoa: Pessoa; indices: Indices }) {
+  const alterada = usePessoaAlterada(pessoa.id);
+  const extras = extrasDaPessoa(pessoa, hojeISO());
+  // (Quem não tem carta tem sempre a linha Carta: "Não tem".)
+  const semCarta = pessoa.temCarta === false && carrinhaConduzida(pessoa, indices) !== null;
+  return (
+    <Moldura
+      tipo="Pessoa"
+      titulo={nomeComMaiusculasNormais(nomeCompleto(pessoa))}
+      subtitulo={extras.nomeNoMapa ? `no mapa: ${extras.nomeNoMapa}` : undefined}
+      alterado={alterada}
+      compacta
+    >
+      {/* Sem nada para mostrar, a ficha fica só com o cabeçalho (a Moldura não põe o corpo). */}
+      {fichaCompactaTemCorpo(extras, semCarta) ? (
+        <>
+          {semCarta && (
+            <p className="mb-1 rounded border border-red-500 bg-red-100 px-2 py-1 text-xs font-medium text-red-900">
+              <span aria-hidden="true">▲ </span>
+              Conduz, mas não tem carta.
+            </p>
+          )}
+          {(extras.telefone || extras.carta) && (
+            <dl>
+              {extras.telefone && <Linha rotulo="Telefone">{extras.telefone}</Linha>}
+              {extras.carta && <Linha rotulo="Carta">{extras.carta}</Linha>}
+            </dl>
+          )}
+        </>
+      ) : null}
     </Moldura>
   );
 }
@@ -854,18 +925,35 @@ function FichaCarrinha({
   );
 }
 
-export function PainelFoco({ lugar = 'mapa' }: { lugar?: LugarFicha }) {
+/**
+ * @param lugar 'mapa' (sobre o mapa, no App) ou 'vista' (a Tabela e o Quadro montam-na por cima da sua área).
+ * @param vista na vista, qual delas é ('tabela' = ficha da pessoa compacta). Por omissão, a vista ativa
+ *   (vistas/vista.ts): cada vista só está montada enquanto é a ativa.
+ */
+export function PainelFoco({
+  lugar = 'mapa',
+  vista,
+}: {
+  lugar?: LugarFicha;
+  vista?: Exclude<VistaFicha, 'mapa'>;
+}) {
+  const vistaAtiva = useVista((s) => s.vista);
+  const vistaFicha: VistaFicha =
+    lugar === 'mapa' ? 'mapa' : (vista ?? (vistaAtiva === 'tabela' ? 'tabela' : 'quadro'));
   const telemovel = useTelemovel();
   const recolher = useRecolher(lugar === 'vista' && telemovel);
   // No telemóvel a ficha fica onde sempre esteve (em baixo na vista, no canto do mapa) e não se arrasta.
-  const posicao = usePosicaoJanela(lugar, !telemovel);
+  // Cada vista lembra a sua posição (na Tabela e no Quadro as disposições são opostas).
+  const posicao = usePosicaoJanela(vistaFicha, !telemovel);
   return (
     <ContextoLugar.Provider value={lugar}>
-      <ContextoRecolher.Provider value={recolher}>
-        <ContextoPosicao.Provider value={posicao}>
-          <Ficha />
-        </ContextoPosicao.Provider>
-      </ContextoRecolher.Provider>
+      <ContextoVistaFicha.Provider value={vistaFicha}>
+        <ContextoRecolher.Provider value={recolher}>
+          <ContextoPosicao.Provider value={posicao}>
+            <Ficha />
+          </ContextoPosicao.Provider>
+        </ContextoRecolher.Provider>
+      </ContextoVistaFicha.Provider>
     </ContextoLugar.Provider>
   );
 }
@@ -908,6 +996,7 @@ function Ficha() {
   const indices = useLoja((s) => s.indices);
   const dormidas = useLoja((s) => s.dormidas);
   const definirFoco = useLoja((s) => s.definirFoco);
+  const compacta = fichaPessoaCompacta(useContext(ContextoVistaFicha));
   const temFoco = foco !== null;
 
   // Esc fecha a ficha, a não ser que outro elemento já o tenha tratado (pesquisa, popovers).
@@ -924,7 +1013,12 @@ function Ficha() {
 
   if (foco.tipo === 'pessoa') {
     const pessoa = indices.pessoas.get(foco.id);
-    return pessoa ? <FichaPessoa key={pessoa.id} pessoa={pessoa} indices={indices} /> : null;
+    if (!pessoa) return null;
+    return compacta ? (
+      <FichaPessoaCompacta key={pessoa.id} pessoa={pessoa} indices={indices} />
+    ) : (
+      <FichaPessoa key={pessoa.id} pessoa={pessoa} indices={indices} />
+    );
   }
   if (foco.tipo === 'casa') {
     const casa = indices.casas.get(foco.id);

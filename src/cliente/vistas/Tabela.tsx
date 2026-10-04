@@ -7,13 +7,14 @@
 // horizontal) e a coluna do nome fica presa à esquerda. A ordem e os filtros mantêm-se ao mudar de vista.
 //
 // Nunca muda de vista (docs/vistas-edicao.md). A linha já mostra tudo da pessoa: clicar nela só a realça
-// (não abre a ficha, que repetia a linha); o botão pequeno a seguir ao nome (ⓘ) abre a ficha da pessoa
-// (PainelFoco, por cima da tabela) para quem precisa dela (ex.: "Ver no mapa"). Com a ficha de uma pessoa
-// aberta, clicar noutra linha passa a ficha para ela. O nome da casa e a matrícula abrem a ficha da casa ou
-// da carrinha. A linha em foco fica realçada, e as da casa ou carrinha em foco levemente. A pesquisa do
-// cabeçalho e as ligações da ficha mostram aqui (useAoMostrar): desliza até às linhas e
-// acende-as, limpando os filtros que as escondam. Com um cliente aceso na legenda do Mapa,
-// as linhas dos outros ficam esbatidas; a barra diz qual está aceso e tem "Todos".
+// e nunca abre nem muda a ficha (que repetia a linha). Só o botão pequeno a seguir ao nome (ⓘ) abre a
+// ficha da pessoa (PainelFoco, por cima da tabela), ou a passa para essa pessoa; o ⓘ da pessoa aberta
+// fecha-a. Na Tabela a ficha da pessoa é a compacta: só o que a linha não tem ("Ver no mapa", avisos,
+// notas, contactos e, no modo de edição, as ações que não estão nas células). O nome da casa e a matrícula
+// abrem a ficha da casa ou da carrinha (completas). A linha em foco fica realçada, e as da casa ou carrinha
+// em foco levemente. A pesquisa do cabeçalho e as ligações da ficha mostram aqui (useAoMostrar): desliza
+// até às linhas e acende-as, limpando os filtros que as escondam. O realce por cliente da legenda do Mapa
+// não conta aqui: a Tabela tem o filtro Cliente.
 // O Excel da barra exporta o que se vê: com filtros, a folha Pessoas só tem as linhas filtradas.
 //
 // No modo de edição mostra a simulação (o rascunho) e edita como o mapa: coluna de caixas de seleção
@@ -82,15 +83,14 @@ import {
   ariaSort,
   COLUNAS_TABELA,
   type ColunaTabela,
-  cliqueNaLinha,
   deslocamentoParaVer,
   FILTROS_INICIAIS,
   type FiltrosTabela,
   filtrarLinhas,
   filtrosTabelaAtivos,
   type LinhaTabela,
-  linhaApagada,
   linhasDaTabela,
+  marcadaDepoisDoClique,
   modoDaCaixa,
   ORDEM_INICIAL,
   type OrdemTabela,
@@ -161,6 +161,11 @@ const LIGACAO = `rounded text-left hover:underline hover:underline-offset-2 ${FO
 
 const AZUL_SELECAO = '#2563eb';
 const AZUL_FOCO = '#1d4ed8';
+/**
+ * Barra da linha em que se clicou: mais clara do que a da pessoa da ficha, para se ver qual das duas é a da
+ * ficha quando ela está aberta noutra pessoa (o clique na linha não muda a ficha).
+ */
+const AZUL_MARCADA = '#60a5fa';
 
 const ROTULO_LISTA: Record<CampoCelula, string> = { casa: 'Casa', carrinha: 'Carrinha', obra: 'Obra' };
 
@@ -428,8 +433,6 @@ interface PropsLinha {
   modoEdicao: boolean;
   selecionada: boolean;
   realce: RealceLinha;
-  /** Outro cliente está aceso na legenda do Mapa: a linha fica esbatida. */
-  apagada: boolean;
   /** Há obras no estado (sem obras e sem obra na pessoa, a célula fica "sem obra", como na ficha). */
   haObras: boolean;
   antes: AntesDaLinha | undefined;
@@ -461,7 +464,6 @@ const LinhaPessoa = memo(function LinhaPessoa({
   modoEdicao,
   selecionada,
   realce,
-  apagada,
   haObras,
   antes,
   obterOrdem,
@@ -474,22 +476,17 @@ const LinhaPessoa = memo(function LinhaPessoa({
     ? `Abrir a ficha ${carrinha.tipo === 'carro' ? 'do carro' : 'da carrinha'} ${formatarMatricula(carrinha.matricula)}`
     : '';
 
-  // O clique na linha realça-a (no modo de edição, seleciona) sem abrir a ficha: a linha já mostra tudo.
-  // O teclado usa o botão da ficha a seguir ao nome e, no modo de edição, a caixa de seleção. Os controlos
-  // das células param o clique. Ao abrir a ficha (ou ao passá-la para esta linha), a linha fica à vista
-  // (no telemóvel a ficha abre em baixo, por cima das linhas).
+  // O clique na linha realça-a (no modo de edição, seleciona) e nunca abre nem muda a ficha: a linha já
+  // mostra tudo (com a ficha de outra pessoa aberta, ela fica como está). O teclado usa o botão da ficha a
+  // seguir ao nome e, no modo de edição, a caixa de seleção. Os controlos das células param o clique.
   const aoClicar = (e: MouseEvent<HTMLTableRowElement>) => {
-    const { foco, definirFoco, selecionar } = useLoja.getState();
+    if (modoEdicao) useLoja.getState().selecionar(id, modoDoClique(e), obterOrdem());
     const { marcada, definirMarcada } = useEstadoTabela.getState();
-    const tr = e.currentTarget;
-    if (modoEdicao) selecionar(id, modoDoClique(e), obterOrdem());
-    const depois = cliqueNaLinha(id, { foco, marcada, modoEdicao });
-    definirMarcada(depois.marcada);
-    if (depois.foco !== undefined) {
-      definirFoco(depois.foco);
-      manterLinhaAVista(tr);
-    }
+    const { foco } = useLoja.getState();
+    definirMarcada(marcadaDepoisDoClique(id, marcada, modoEdicao, foco?.tipo === 'pessoa' ? foco.id : null));
   };
+  // Ao abrir uma ficha (ou ao passá-la para esta linha), a linha fica à vista (no telemóvel a ficha abre
+  // em baixo, por cima das linhas).
   const abrir = (e: MouseEvent<HTMLElement>, foco: ElementoVista) => {
     e.stopPropagation();
     useLoja.getState().definirFoco(foco);
@@ -519,7 +516,7 @@ const LinhaPessoa = memo(function LinhaPessoa({
   const fundoDe = (antesCelula: string | undefined) => (antesCelula ? 'bg-amber-50' : fundo);
 
   // Contorno azul da linha selecionada (sombras por dentro das células: as presas tapariam um contorno da
-  // linha) e a barra à esquerda da linha em foco, na primeira célula presa.
+  // linha) e a barra à esquerda da linha em foco (mais clara na linha só realçada), na primeira célula presa.
   const horizontais = selecionada ? [`inset 0 1px 0 ${AZUL_SELECAO}`, `inset 0 -1px 0 ${AZUL_SELECAO}`] : [];
   const sombra = (lado: string | null): CSSProperties | undefined => {
     const todas = lado ? [lado, ...horizontais] : horizontais;
@@ -527,11 +524,13 @@ const LinhaPessoa = memo(function LinhaPessoa({
   };
   const meio = sombra(null);
   const naPrimeira = sombra(
-    realce === 'foco' || realce === 'marcada'
+    realce === 'foco'
       ? `inset 4px 0 0 ${AZUL_FOCO}`
-      : selecionada
-        ? `inset 2px 0 0 ${AZUL_SELECAO}`
-        : null,
+      : realce === 'marcada'
+        ? `inset 4px 0 0 ${AZUL_MARCADA}`
+        : selecionada
+          ? `inset 2px 0 0 ${AZUL_SELECAO}`
+          : null,
   );
   const naUltima = sombra(selecionada ? `inset -1px 0 0 ${AZUL_SELECAO}` : null);
 
@@ -543,8 +542,7 @@ const LinhaPessoa = memo(function LinhaPessoa({
         // Shift+clique escolhe um intervalo: sem selecionar o texto das linhas pelo meio.
         if (modoEdicao && e.shiftKey && !(e.target as HTMLElement).closest('select')) e.preventDefault();
       }}
-      // Esbatida: o conteúdo das células (não o fundo: as células presas tapam o que desliza por baixo).
-      className={`group cursor-pointer ${apagada ? '[&>td>*]:opacity-25' : ''}`}
+      className="group cursor-pointer"
     >
       {modoEdicao && (
         // biome-ignore lint/a11y/useKeyWithClickEvents: só impede o clique da linha; o teclado usa a caixa.
@@ -803,31 +801,6 @@ function CaixaTodas({ ids }: { ids: readonly Id[] }) {
 }
 
 /**
- * Cliente aceso na legenda do Mapa: diz qual é e "Todos" volta a acender todos. No
- * telemóvel só a marca do cliente e "Todos" (o "Só <cliente>" fica para os leitores de ecrã), para
- * caber na linha de "Só a confirmar" e da contagem.
- */
-function ClienteAceso({ cliente }: { cliente: Cliente }) {
-  return (
-    <p
-      className="order-5 flex min-w-0 shrink-0 items-center gap-1.5 text-sm text-slate-700 sm:order-4"
-      title={`Só ${cliente.nome} aceso (legenda)`}
-    >
-      <MarcaCliente cliente={cliente} />
-      <span className="max-w-[10rem] truncate max-sm:sr-only">Só {cliente.nome}</span>
-      <button
-        type="button"
-        onClick={() => useLoja.getState().definirClienteDestacado(null)}
-        title="Mostrar todos os clientes"
-        className={`rounded px-1 text-slate-600 underline underline-offset-2 hover:text-slate-900 ${FOCO_VISIVEL}`}
-      >
-        Todos
-      </button>
-    </p>
-  );
-}
-
-/**
  * Excel da Tabela: como o das outras vistas (pecas/BotaoExcel), mas com filtros a folha Pessoas só tem as
  * linhas que se veem, pela ordem da Tabela (o ficheiro diz "filtrado"). `filtradas` = null sem filtros.
  */
@@ -885,7 +858,6 @@ export function Tabela() {
   const pendentes = useLoja((s) => s.pendentes);
   const estadoServidor = useLoja((s) => s.estadoServidor);
   const dormidas = useLoja((s) => s.dormidas);
-  const clienteDestacado = useLoja((s) => s.clienteDestacado);
   const ordem = useEstadoTabela((s) => s.ordem);
   const filtros = useEstadoTabela((s) => s.filtros);
   const definirFiltros = useEstadoTabela((s) => s.definirFiltros);
@@ -895,6 +867,10 @@ export function Tabela() {
   // A caixa onde a ficha está posta e se ela foi arrastada para fora do sítio de origem.
   const [areaFicha, setAreaFicha] = useState<HTMLDivElement | null>(null);
   const reserva = reservaDaFicha(Boolean(foco), useFichaMovida(areaFicha, Boolean(foco)));
+  // No telemóvel, a ficha da pessoa (compacta, só o cabeçalho e poucas linhas) tapa bem menos do que a de uma
+  // casa/carrinha: reserva-se 10 rem em vez de 60 % (com 60 %, centrar uma linha deixava-a por baixo do
+  // cabeçalho fixo).
+  const reservaBaixo = foco?.tipo === 'pessoa' ? 'h-40' : 'h-[60vh]';
 
   const linhas = useMemo(() => (estado && indices ? linhasDaTabela(estado, indices) : []), [estado, indices]);
   const visiveis = useMemo(
@@ -989,7 +965,6 @@ export function Tabela() {
   const mudar = (mudanca: Partial<FiltrosTabela>) => definirFiltros({ ...filtros, ...mudanca });
   const contagem = textoContagem(visiveis.length, linhas.length, comFiltros);
   const haObras = estado.obras.length > 0;
-  const clienteAceso = clienteDestacado ? (indices.clientes.get(clienteDestacado) ?? null) : null;
 
   return (
     <section
@@ -1067,7 +1042,6 @@ export function Tabela() {
             Limpar filtros
           </button>
         )}
-        {clienteAceso && <ClienteAceso cliente={clienteAceso} />}
         {/* Com o botão das sugestões, no PC (até 1536 px) a dica e o botão passam para uma 2.ª linha. */}
         {modoEdicao && (
           <div
@@ -1108,7 +1082,7 @@ export function Tabela() {
             no PC, só com a ficha no sítio de origem): as colunas e as últimas linhas continuam a
             alcançar-se, deslizando. */}
         <div
-          className={`relative min-h-0 flex-1 overflow-auto overscroll-contain ${reserva.baixo ? 'max-sm:scroll-pb-[60vh]' : ''} ${reserva.direita ? 'sm:scroll-pr-[23.5rem] sm:pr-[23.5rem]' : ''}`}
+          className={`relative min-h-0 flex-1 overflow-auto overscroll-contain ${reserva.baixo ? (foco?.tipo === 'pessoa' ? 'max-sm:scroll-pb-40' : 'max-sm:scroll-pb-[60vh]') : ''} ${reserva.direita ? 'sm:scroll-pr-[23.5rem] sm:pr-[23.5rem]' : ''}`}
         >
           <table
             className={`w-full border-separate border-spacing-0 text-sm ${modoEdicao ? 'min-w-[76rem]' : 'min-w-[60rem]'}`}
@@ -1142,7 +1116,6 @@ export function Tabela() {
                     modoEdicao={modoEdicao}
                     selecionada={selecionada}
                     realce={realce}
-                    apagada={linhaApagada(l, clienteDestacado, selecionada || realce === 'foco')}
                     haObras={haObras}
                     antes={antes.get(l.pessoa.id)}
                     obterOrdem={obterOrdem}
@@ -1170,9 +1143,10 @@ export function Tabela() {
           </table>
           {/* No telemóvel a ficha tapa a parte de baixo: espaço para as últimas linhas subirem acima dela
               (um espaçador e não padding, que faria a caixa crescer e a página deslizar). */}
-          {foco && <div aria-hidden="true" className="h-[60vh] sm:hidden" />}
+          {foco && <div aria-hidden="true" className={`${reservaBaixo} sm:hidden`} />}
         </div>
-        <PainelFoco lugar="vista" />
+        {/* Na Tabela a ficha da pessoa é a compacta (só o que a linha não tem) e lembra a sua posição. */}
+        <PainelFoco lugar="vista" vista="tabela" />
       </div>
       <ContornoEdicao />
     </section>

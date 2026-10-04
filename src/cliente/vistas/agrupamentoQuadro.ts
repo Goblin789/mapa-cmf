@@ -198,18 +198,74 @@ export const LARGURA_MIN_NOME = 9.5;
 export const LARGURA_MIN_BLOCO = 12.5;
 
 /**
- * Larguras mínimas (em) das colunas para o nome mais comprido caber numa só linha, como nas carrinhas:
- * `nome` para a grelha dos nomes, `bloco` para a dos blocos (o nome mais as margens do bloco: 0,35 em de
- * cada lado, a borda e uma folga para arredondamentos). Nunca abaixo das de sempre (9,5 e 12,5 em).
- * @param nomeEm largura natural do nome mais comprido (em), medida no browser.
+ * Larguras mínimas (em) das colunas para o nome mais comprido e o cabeçalho mais largo caberem numa só
+ * linha: `nome` para a grelha dos nomes, `bloco` para a dos blocos — o maior entre o nome mais as margens
+ * do bloco (0,35 em de cada lado, a borda e uma folga para arredondamentos) e o cabeçalho inteiro (título,
+ * "●" e pastilha, já com as margens e a borda). Nunca abaixo das de sempre (9,5 e 12,5 em).
+ * @param nomeEm largura natural do nome mais comprido (em), medida no browser (0 = não conta: as colunas
+ *   dos nomes ficam as de sempre e os nomes compridos levam reticências).
+ * @param cabecalhoEm largura natural do cabeçalho mais largo (em), medida no browser (0 = não conta).
  */
-export function largurasMinimas(nomeEm: number): { nome: number; bloco: number } {
+export function largurasMinimas(nomeEm: number, cabecalhoEm = 0): { nome: number; bloco: number } {
   const arredondar = (x: number) => Math.ceil(x * 20) / 20;
-  const nome = Number.isFinite(nomeEm) && nomeEm > 0 ? nomeEm : 0;
+  const valido = (x: number) => (Number.isFinite(x) && x > 0 ? x : 0);
+  const nome = valido(nomeEm);
+  const cabecalho = valido(cabecalhoEm);
   return {
     nome: arredondar(Math.max(LARGURA_MIN_NOME, nome + 0.05)),
-    bloco: arredondar(Math.max(LARGURA_MIN_BLOCO, nome + 0.95)),
+    bloco: arredondar(Math.max(LARGURA_MIN_BLOCO, nome + 0.95, cabecalho + 0.05)),
   };
+}
+
+/** Intervalos (em) entre blocos de uma grelha e entre as partes lado a lado (os do Quadro.tsx). */
+export const INTERVALO_BLOCOS = 0.45;
+export const INTERVALO_PARTES = 0.6;
+
+/**
+ * Quantas colunas de blocos dá a cada parte lado a lado (Himeling: Forêt à esquerda, Grotte à direita)
+ * quando não cabem todos numa linha. Cada parte ocupa `colunas × min + (colunas − 1) × INTERVALO_BLOCOS` (a base da
+ * flexbox); escolhe-se, entre as combinações que cabem em `largura`, a que tem menos linhas na parte mais
+ * alta, depois menos linhas ao todo e depois mais colunas. Assim a parte de títulos largos passa à linha
+ * de baixo sem levar a outra atrás (a flexbox encolhia as duas na mesma proporção). Se nem com uma coluna
+ * cada couber, uma coluna cada.
+ * @param largura largura da fila das partes (em);
+ * @param partes a largura mínima de um bloco (em) e o nº de blocos de cada parte.
+ */
+export function colunasLadoALado(largura: number, partes: readonly { min: number; n: number }[]): number[] {
+  const uma = partes.map(() => 1);
+  if (partes.length === 0) return [];
+  const base = (min: number, c: number) => c * (min + INTERVALO_BLOCOS) - INTERVALO_BLOCOS;
+  let melhor: { colunas: number[]; chave: number[] } | null = null;
+  const atual = [...uma];
+  const visitar = (i: number, usada: number) => {
+    if (usada > largura + 1e-6) return;
+    if (i === partes.length) {
+      const linhas = partes.map((p, j) => Math.ceil(Math.max(1, p.n) / (atual[j] as number)));
+      const chave = [
+        Math.max(...linhas),
+        linhas.reduce((a, b) => a + b, 0),
+        -atual.reduce((a, b) => a + b, 0),
+      ];
+      if (!melhor || comparar(chave, melhor.chave) < 0) melhor = { colunas: [...atual], chave };
+      return;
+    }
+    const p = partes[i] as { min: number; n: number };
+    for (let c = 1; c <= Math.max(1, p.n); c++) {
+      atual[i] = c;
+      visitar(i + 1, usada + base(p.min, c) + (i > 0 ? INTERVALO_PARTES : 0));
+    }
+    atual[i] = 1;
+  };
+  visitar(0, 0);
+  return (melhor as { colunas: number[] } | null)?.colunas ?? uma;
+}
+
+function comparar(a: readonly number[], b: readonly number[]): number {
+  for (let k = 0; k < a.length; k++) {
+    const d = (a[k] as number) - (b[k] as number);
+    if (d !== 0) return d;
+  }
+  return 0;
 }
 
 // --- Blocos ---------------------------------------------------------------------------------------
@@ -582,6 +638,43 @@ export function blocosDoQuadro(seccoes: readonly SeccaoQuadro[]): BlocoQuadro[] 
 
 // --- Ajuste ao ecrã ---------------------------------------------------------------------------------
 
+/** Nº de algarismos de um inteiro ≥ 0. */
+function algarismos(n: number): number {
+  return String(Math.max(0, Math.trunc(n))).length;
+}
+
+/**
+ * Algarismos que o nº de ocupados da pastilha pode ter no modo de edição sem se voltar a medir: os de
+ * max(lugares, ocupados + 1), ou seja, até à lotação e mais uma largada (9/10 → 10/10, 9/9 → 10/9). O
+ * useAjuste reserva os que faltam (algarismosAMais); a chave de edição (assinaturaCabecalhos) muda
+ * quando este nº muda (de 8/4 para 9/4), e só aí se volta a medir. Sem lotação, `lugares` = 0.
+ */
+export function algarismosDaPastilha(ocupados: number, lugares: number): number {
+  return algarismos(Math.max(lugares, ocupados + 1));
+}
+
+/** Algarismos a reservar na pastilha (≥ 0): os de algarismosDaPastilha menos os que já tem. */
+export function algarismosAMais(ocupados: number, lugares: number): number {
+  return Math.max(0, algarismosDaPastilha(ocupados, lugares) - algarismos(ocupados));
+}
+
+/**
+ * Assinatura dos cabeçalhos dos blocos normais, para a chave do ajuste no modo de edição: muda só quando
+ * uma pastilha passa a precisar de mais algarismos do que os reservados ou quando um bloco fica (ou
+ * deixa de ficar) recolhido pelo filtro. As outras largadas não voltam a medir.
+ */
+export function assinaturaCabecalhos(seccoes: readonly SeccaoQuadro[]): string {
+  return blocosDoQuadro(seccoes)
+    .filter((b) => !b.largo)
+    .map((b) => {
+      const n = b.lotacao
+        ? algarismosDaPastilha(b.lotacao.ocupados, b.lotacao.lugares)
+        : algarismosDaPastilha(b.pessoas.length, 0);
+      return `${n}${b.recolhido ? 'r' : ''}`;
+    })
+    .join('.');
+}
+
 /**
  * O maior tamanho de letra (px, inteiro) entre `minimo` e `maximo` com que o quadro cabe; null se nem com o
  * mínimo couber. `cabe` mede (no browser: põe a letra e compara a altura do conteúdo com a do ecrã).
@@ -618,9 +711,9 @@ export interface DegrauAjuste {
   minimo: number;
   maximo: number;
   /**
-   * As colunas ficam com a largura de sempre (LARGURA_MIN_BLOCO) e os nomes que não cabem levam
-   * reticências. Sem isto (por omissão), as colunas têm a largura do nome mais comprido (largurasMinimas):
-   * todos os nomes inteiros numa só linha.
+   * As colunas ficam com a largura de sempre (LARGURA_MIN_BLOCO, ou a do cabeçalho mais largo: os títulos
+   * ficam sempre inteiros) e os nomes que não cabem levam reticências. Sem isto (por omissão), as colunas
+   * têm a largura do nome mais comprido (largurasMinimas): todos os nomes inteiros numa só linha.
    */
   nomesCortados?: boolean;
 }
@@ -628,7 +721,7 @@ export interface DegrauAjuste {
 export interface AjusteQuadro {
   letra: number;
   modo: ModoAjuste;
-  /** Colunas da largura de sempre: algum nome comprido pode ficar com reticências. */
+  /** Colunas da largura de sempre (ou do cabeçalho): algum nome comprido pode ficar com reticências. */
   nomesCortados: boolean;
   /** Nem assim coube: o quadro desliza na vertical. */
   desliza: boolean;

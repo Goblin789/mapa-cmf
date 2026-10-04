@@ -7,14 +7,13 @@ import { ROTULO_FORA_DAS_CASAS, ROTULO_SEM_TRANSPORTE } from '../paineis/textos'
 import { estadoVistas } from './estadoTeste';
 import {
   ariaSort,
-  cliqueNaLinha,
   deslocamentoParaVer,
   FILTROS_INICIAIS,
   type FiltrosTabela,
   filtrarLinhas,
   filtrosTabelaAtivos,
-  linhaApagada,
   linhasDaTabela,
+  marcadaDepoisDoClique,
   modoDaCaixa,
   ORDEM_INICIAL,
   opcoesFiltrosTabela,
@@ -101,16 +100,6 @@ describe('nomeMostrado', () => {
     expect(achar('ivo f.')).toEqual(['p-6']);
     expect(achar('ivinho')).toEqual(['p-6']);
     expect(achar('tó')).toEqual(['p-10']);
-  });
-});
-
-describe('linhaApagada', () => {
-  it('esbatida só com outro cliente aceso, e nunca se selecionada ou em foco', () => {
-    const alfa = { clienteId: 'alfa' };
-    expect(linhaApagada(alfa, null, false)).toBe(false);
-    expect(linhaApagada(alfa, 'alfa', false)).toBe(false);
-    expect(linhaApagada(alfa, 'beta', false)).toBe(true);
-    expect(linhaApagada(alfa, 'beta', true)).toBe(false);
   });
 });
 
@@ -406,36 +395,24 @@ describe('realceDaLinha', () => {
   });
 });
 
-describe('cliqueNaLinha', () => {
-  const sem = { foco: null, marcada: null, modoEdicao: false };
-
-  it('não abre a ficha: só realça a linha; outro clique na mesma tira o realce', () => {
-    expect(cliqueNaLinha('p-1', sem)).toEqual({ marcada: 'p-1' });
-    expect(cliqueNaLinha('p-1', { ...sem, marcada: 'p-1' })).toEqual({ marcada: null });
-    expect(cliqueNaLinha('p-2', { ...sem, marcada: 'p-1' })).toEqual({ marcada: 'p-2' });
+describe('marcadaDepoisDoClique', () => {
+  it('só realça a linha (nunca abre nem muda a ficha); outro clique na mesma tira o realce', () => {
+    expect(marcadaDepoisDoClique('p-1', null, false)).toBe('p-1');
+    expect(marcadaDepoisDoClique('p-1', 'p-1', false)).toBeNull();
+    expect(marcadaDepoisDoClique('p-2', 'p-1', false)).toBe('p-2');
   });
 
-  it('com a ficha de uma pessoa aberta, a ficha passa para a linha clicada', () => {
-    const foco = { tipo: 'pessoa', id: 'p-1' } as const;
-    expect(cliqueNaLinha('p-2', { ...sem, foco, marcada: 'p-1' })).toEqual({
-      marcada: 'p-2',
-      foco: { tipo: 'pessoa', id: 'p-2' },
-    });
-    // A da própria ficha: fica (não fecha a ficha nem tira o realce).
-    expect(cliqueNaLinha('p-1', { ...sem, foco, marcada: 'p-1' })).toEqual({ marcada: 'p-1' });
-  });
-
-  it('com a ficha de uma casa ou carrinha aberta, não lhe mexe', () => {
-    expect(cliqueNaLinha('p-1', { ...sem, foco: { tipo: 'casa', id: 'casa-l1' } })).toEqual({
-      marcada: 'p-1',
-    });
+  it('na linha da pessoa da ficha, o clique não tira o realce (fica realçada ao fechar a ficha)', () => {
+    expect(marcadaDepoisDoClique('p-1', 'p-1', false, 'p-1')).toBe('p-1');
+    expect(marcadaDepoisDoClique('p-1', null, false, 'p-1')).toBe('p-1');
+    // As outras linhas alternam como sempre, com a ficha aberta.
+    expect(marcadaDepoisDoClique('p-2', 'p-2', false, 'p-1')).toBeNull();
+    expect(marcadaDepoisDoClique('p-2', 'p-1', false, 'p-1')).toBe('p-2');
   });
 
   it('no modo de edição o realce é a seleção: nenhuma marcada', () => {
-    expect(cliqueNaLinha('p-1', { ...sem, modoEdicao: true, marcada: 'p-2' })).toEqual({ marcada: null });
-    expect(
-      cliqueNaLinha('p-2', { foco: { tipo: 'pessoa', id: 'p-1' }, marcada: null, modoEdicao: true }),
-    ).toEqual({ marcada: null, foco: { tipo: 'pessoa', id: 'p-2' } });
+    expect(marcadaDepoisDoClique('p-1', 'p-2', true)).toBeNull();
+    expect(marcadaDepoisDoClique('p-1', null, true)).toBeNull();
   });
 });
 

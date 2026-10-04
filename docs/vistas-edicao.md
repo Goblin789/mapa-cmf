@@ -66,14 +66,24 @@ desaparece.
   lado. "Ver tudo ⌃" (ou tocar no título) abre-a toda, até 60 % da área e deixando sempre 6 rem da vista;
   "Recolher ⌄" volta a fechá-la. Recolhe quando o foco muda a partir da vista; as ligações e os nomes dentro da
   ficha não a recolhem. Medido a 375×667, a editar: ficam à vista uns 120–135 px de linhas/blocos (antes ~30);
-  a ler, 284 px. No PC e no Mapa a ficha fica igual.
+  a ler, 284 px. No PC e no Mapa a ficha fica igual. A ficha compacta da pessoa na Tabela (abaixo) nunca
+  recolhe.
+  **Ficha da pessoa compacta na Tabela** (acertos de 04/10/2026; `fichaPessoaCompacta`, `FichaPessoaCompacta`,
+  `data-compacta`): só o que a linha não tem — o cabeçalho (Pessoa, nome, "no mapa: …" só quando o nome do
+  mapa é mesmo outro, sem contar acentos e maiúsculas, "Ver no mapa", ✕), o aviso "Conduz, mas não tem carta."
+  e o telefone e a carta **só se existirem**; sem nada disto fica só o cabeçalho (≈54 px, sem linhas "sem
+  dados"). Sem Nº, Cliente nem Casa → Carrinha → Obra e sem os botões Mudar…/condutor (no modo de edição estão
+  nas células). No Mapa e no Quadro a ficha da pessoa é a completa; as fichas de casa e de carrinha são
+  completas em todas as vistas. A vista decide-se no `PainelFoco` (prop `vista`, senão a vista ativa).
   **Ficha arrastável (04/10/2026), no PC (a partir de 640 px), no Mapa, no Quadro e na Tabela**: pega-se pelo
   cabeçalho (a pega de 6 pontos, a linha do tipo ou o espaço vazio; o título e a morada continuam a
   selecionar-se e a copiar-se) e vai para qualquer sítio dentro da área da vista ou do mapa, sempre a 8 px das
   bordas (puxada para baixo encolhe até 12 rem e desliza por dentro). Ao redimensionar fica presa às bordas e
-  volta ao sítio guardado quando há espaço. Cada lugar lembra a sua posição (localStorage `mapa-cmf:ficha-mapa`
-  e `mapa-cmf:ficha-vista`, esta partilhada pela Tabela e pelo Quadro; guarda-se a distância à borda de lado
-  mais perto e ao topo). Volta à origem com o botão "Voltar a pôr a ficha no sítio" (só aparece com ela
+  volta ao sítio guardado quando há espaço. Cada vista lembra a sua posição (localStorage `mapa-cmf:ficha-mapa`,
+  `mapa-cmf:ficha-tabela` e `mapa-cmf:ficha-quadro`; guarda-se a distância à borda de lado mais perto e ao
+  topo): as disposições são opostas (na Tabela, a ficha arrastada para a esquerda tapa os nomes). A chave
+  antiga `mapa-cmf:ficha-vista` (partilhada) passa só para o Quadro na primeira leitura e apaga-se; a Tabela
+  começa na origem. Volta à origem com o botão "Voltar a pôr a ficha no sítio" (só aparece com ela
   mudada), com duplo clique no cabeçalho ou com Início na pega. Teclado: setas na pega (Shift = passos
   maiores) e Alt+setas em todo o cabeçalho; Esc a meio de um arrasto cancela-o sem fechar a ficha. O arrasto
   não toca no motor de arrastar pessoas, na caixa de seleção nem no Leaflet (pointerdown com preventDefault,
@@ -99,7 +109,8 @@ desaparece.
   Paradas/oficina, Carrinhas vazias e A confirmar saíram do cabeçalho principal (todas as vistas) e do da
   reunião; `paineis/Contadores.tsx` foi apagado. Os números continuam calculados (`dominio/contadores.ts`,
   `loja.contadores`): a legenda do Mapa usa `pessoasPorCliente`. A partir de 1024 px o cabeçalho principal é
-  uma só linha (51 px; 76 px a partir de 1680 px, com o logótipo inteiro); a reunião fica numa linha em xl.
+  uma só linha (51 px; 76 px a partir de 1680 px, com o logótipo inteiro); a reunião fica numa linha em xl
+  (com os filtros do Quadro, ver Quadro > Reunião).
 - A legenda da barra do Quadro (`Legenda lugar="barra"`) saiu: o Quadro tem os seus filtros. A `Legenda` é
   só a do Mapa (`data-legenda-mapa`, que a ficha arrastada usa para acabar por cima dela).
 - `NotaEdicao` (com "Ir para o mapa") saiu; cada vista mostra uma dica curta no modo de edição.
@@ -112,22 +123,40 @@ desaparece.
   carrinhas; carrinha sem passageiros e sem casa no Quadro por casas), um aviso curto diz porquê
   (`avisoSemNadaNoQuadro`, `useUiEdicao.avisar`); o agrupamento não muda.
 - **Filtros (04/10/2026)**: Clientes e Obra, vários ao mesmo tempo. No PC as pastilhas dos clientes na barra
-  são o filtro: cada clique liga/desliga esse cliente (sem Shift) e "Todos" (só com escolhas) limpa-os e passa
-  o foco para a 1.ª pastilha; no telemóvel é um `FiltroMultiplo` "Cliente". "Obra" é um `FiltroMultiplo` com
+  são o filtro: cada clique liga/desliga esse cliente (sem Shift) e "Todos" (só aparece com clientes **e**
+  obras escolhidos; só limpa os clientes) passa o foco para a 1.ª pastilha; no telemóvel é um `FiltroMultiplo` "Cliente". "Obra" é um `FiltroMultiplo` com
   as obras por cliente e "Sem obra" (só quando há obras; sem nenhuma, "Obra: sem obras" desativado). Ficam
   **só** as pessoas que passam (OU dentro do filtro, E entre clientes e obras); o cliente que conta é o
   efetivo (o da obra, se tiver). Os blocos continuam todos, com a lotação e os lugares livres reais: os que
   não têm ninguém do filtro ficam recolhidos numa fila por baixo da grelha de cada parte (título e pastilha;
   continuam alvos de largar e abrem a ficha); os outros mostram "+N fora do filtro". A barra diz "N de M
-  pessoas". Na reunião há uma barra fina com os mesmos filtros (só para ver). O filtro fica em memória (o
+  pessoas" e, com algum filtro, "Limpar filtros" (clientes e obras, como na Tabela; o foco passa para a 1.ª
+  pastilha ou para o botão "Cliente"). Quando o filtro não deixa ninguém, aparece por cima dos blocos
+  (que ficam, recolhidos: continuam alvos de largar) "Ninguém corresponde ao filtro. Limpar filtros"
+  (role=status). Na reunião os mesmos filtros (só para ver): a partir de 1280 px no próprio cabeçalho da
+  reunião, ao lado da hora (listas "Cliente" e "Obra" até 1919 px; as pastilhas a partir de 1920 px), com
+  "N de M pessoas" e "Limpar filtros"; abaixo de 1280 px, uma barra fina por cima do Quadro. Medido a 1920:
+  cabeçalho 94 px e sem barra (antes 80 + 46), área do Quadro 954 → 987 px; a 1280, 67 + 37 → 75 px. O filtro fica em memória (o
   mesmo dentro e fora da reunião; não fica guardado ao recarregar). Mostrar alguém que o filtro esconde
   (pesquisa, ligações) limpa-o com o aviso "Filtro do Quadro limpo para mostrar …". No modo de edição, quem o
   filtro esconde sai da seleção (aviso "N pessoa(s) escondida(s) pelo filtro saiu/saíram da seleção"), para
   não ir no arrasto sem se ver (na Tabela a seleção fica). O Quadro já não segue o `clienteDestacado` da
   legenda do Mapa; o Excel do Quadro exporta tudo.
-- **Nomes sempre numa só linha** (casas e carrinhas): o `useAjuste` mede, em cada parte do Quadro, o nome
-  mais comprido (em em) e as colunas dos blocos e dos nomes dessa parte nunca ficam mais estreitas do que ele
-  (lado a lado, cada parte parte da largura de que os seus blocos precisam). Na reunião, se nada couber com
+- **Nomes e títulos sempre numa só linha** (casas e carrinhas): o `useAjuste` mede, em cada parte do Quadro, o
+  nome mais comprido (em em) e as colunas dos blocos e dos nomes dessa parte nunca ficam mais estreitas do que
+  ele (lado a lado, cada parte parte da largura de que os seus blocos precisam). Mede também o cabeçalho de
+  cada bloco (título + ● + pastilha, com as margens) e usa-o no mínimo do bloco (`largurasMinimas`): nenhum
+  bloco fica mais estreito do que o seu título. No modo de edição o mínimo reserva o ●, um algarismo a mais na
+  pastilha (9/10 → 10/10) e a diferença para o ▲, para uma largada não cortar um título; volta a medir quando
+  uma pastilha precisa de mais algarismos do que os reservados ou um bloco recolhe (`assinaturaCabecalhos`).
+  O título só leva reticências (com o nome todo no title) num ecrã estreito demais. Nos blocos largos ("Fora
+  das casas", "Sem transporte") as parcelas por cliente passam à linha de baixo. Na Himeling sem espaço para
+  os 4 + 4 blocos, `colunasLadoALado` escolhe as colunas de cada parte (a Forêt passa um bloco à linha de baixo,
+  a Grotte não); cada parte tem pelo menos a largura de um bloco. Preço: um degrau de letra onde ela estava
+  limitada pela largura (Quadro e reunião a 1920, casas: 15 → 14 px; 1680: Quadro 14 → 13 px e reunião 14 px
+  completo → 13 px livres numa linha; a 1440 o Quadro desliza a 14 px em vez de caber a 12 px com títulos
+  partidos). Medido a 1920/1680/1440/1366/1280, reunião 1920/1366/1280 e telemóvel: 0 títulos e 0 nomes em
+  duas linhas. Na reunião, se nada couber com
   os nomes inteiros, há dois degraus finais com as colunas de sempre, onde um nome comprido ocupa a linha
   toda do bloco (só leva reticências se nem assim couber). No telemóvel, 2 colunas de nomes e os compridos
   ocupam a linha do bloco. No PC os nomes nunca se cortam: o Quadro desliza.
@@ -164,15 +193,21 @@ desaparece.
   Tabela (uma só coluna Nome).
 - **Ler** (04/10/2026: a linha já mostra tudo, a ficha só abre a pedido): clicar numa linha **só a realça**
   (fundo azul claro e barra à esquerda; outro clique tira o realce) e **não abre a ficha**. O botão **ⓘ**, a
-  seguir ao nome (na célula presa à esquerda), abre e fecha a ficha da pessoa (aria-pressed). Com a ficha de
-  uma pessoa aberta, clicar noutra linha passa a ficha para ela; com a de uma casa/carrinha, não lhe mexe.
-  O nome deixou de ser botão (o teclado usa o ⓘ e as caixas). Os valores de Casa e Carrinha são ligações que
-  abrem a ficha da casa/carrinha. Linha em foco ou realçada com o mesmo aspeto; com uma casa/carrinha em
-  foco, as linhas dela levemente. Com a ficha aberta na origem, a caixa da tabela reserva espaço à direita
-  para ela (`reservaDaFicha`); com a ficha arrastada (`data-movida`) não reserva.
-  Com um cliente aceso na legenda do Mapa, o conteúdo das linhas dos outros clientes fica a
-  25 % (nunca a selecionada nem a em foco) e a barra mostra "Só <cliente> · Todos" (no telemóvel só a marca
-  e "Todos").
+  seguir ao nome (na célula presa à esquerda), abre e fecha a ficha da pessoa (aria-pressed). **Clicar numa
+  linha nunca abre nem muda a ficha** (acertos de 04/10/2026; antes, com a ficha de uma pessoa aberta, passava-a
+  para a linha clicada, que era a informação repetida de que o Rafael se queixou): só o ⓘ a abre ou a passa
+  para essa pessoa, e o ⓘ da pessoa aberta fecha-a (`marcadaDepoisDoClique`). A ficha da pessoa na Tabela é a
+  **compacta** (ver Peças partilhadas). Clicar na linha da pessoa da ficha não lhe tira o realce: ao fechar a
+  ficha, ela continua realçada. O nome deixou de ser botão (o teclado usa o ⓘ e as caixas). Os valores de Casa
+  e Carrinha são ligações que abrem a ficha (completa) da casa/carrinha. A linha da pessoa da ficha tem a
+  barra azul-escura (#1d4ed8) e a linha só realçada pelo clique uma barra mais clara (#60a5fa), para se ver
+  qual é a da ficha; com uma casa/carrinha em foco, as linhas dela levemente. Com a ficha aberta na origem, a
+  caixa da tabela reserva espaço à direita para ela (`reservaDaFicha`); com a ficha arrastada (`data-movida`)
+  não reserva. No telemóvel reserva em baixo 10 rem com a ficha (compacta) de uma pessoa e 60 % com a de uma
+  casa/carrinha.
+  O realce por cliente da legenda do Mapa (`clienteDestacado`) **não conta na Tabela** (ela tem o filtro
+  Cliente): nem esbate linhas nem mostra "Só <cliente> · Todos". Nas fichas abertas na Tabela e no Quadro
+  também não esbate os nomes (`NomeChip` só esbate no Mapa).
 - **Editar**: coluna de caixas de seleção (e "todas as visíveis" no cabeçalho); clique na linha = seleção
   como nos nomes (Ctrl/⌘, Shift pela ordem visível), **sem abrir a ficha** (o ⓘ abre-a). Células **Casa, Carrinha, Obra** passam a listas
   (`<select>` nativo: funciona no telemóvel e no teclado) com a lotação da simulação ("Casa 2 · 6/6"), e

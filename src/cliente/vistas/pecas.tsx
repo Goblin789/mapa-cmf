@@ -15,6 +15,7 @@
 
 import { useContext, useState } from 'react';
 import { COR_TEXTO_NOMES, clienteEfetivoId } from '../../dominio/cores';
+import { nomeComMaiusculasNormais } from '../../dominio/nomes';
 import type { NivelLotacao } from '../../dominio/ocupacao';
 import type { Pessoa } from '../../dominio/tipos';
 import { modoDoClique } from '../arrastar/selecao';
@@ -69,7 +70,7 @@ export function NomeVista({
   const cliente = indices.clientes.get(clienteId);
   const aConfirmar = pessoa.casaAConfirmar || pessoa.carrinhaAConfirmar;
   const titulo = [
-    nome ?? nomeCompleto(pessoa),
+    nome ?? nomeComMaiusculasNormais(nomeCompleto(pessoa)),
     condutor ? 'condutor' : null,
     cliente?.nome,
     aConfirmar ? 'a confirmar' : null,

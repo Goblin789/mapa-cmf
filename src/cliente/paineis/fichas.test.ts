@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { dormidasDasCarrinhas } from '../../dominio/dormidas';
 import { indexar } from '../../dominio/indices';
-import { estadoFicticio } from './dadosFicticios';
+import { estadoFicticio, pessoaFicticia } from './dadosFicticios';
 import {
   cadeiaDaPessoa,
   carrinhasDasPessoas,
@@ -9,6 +9,9 @@ import {
   casasDasPessoas,
   coordenadasDoLocal,
   destinoNoMapa,
+  extrasDaPessoa,
+  fichaCompactaTemCorpo,
+  fichaPessoaCompacta,
   resumoDasCasas,
 } from './fichas';
 
@@ -21,6 +24,50 @@ function pessoa(id: string) {
   if (!p) throw new Error(`Falta a pessoa ${id} nos dados fictícios`);
   return p;
 }
+
+describe('ficha compacta da pessoa (Tabela)', () => {
+  it('só na Tabela; no Mapa e no Quadro a ficha é completa', () => {
+    expect(fichaPessoaCompacta('tabela')).toBe(true);
+    expect(fichaPessoaCompacta('quadro')).toBe(false);
+    expect(fichaPessoaCompacta('mapa')).toBe(false);
+  });
+
+  it('sem telefone nem carta conhecidos, nada a mostrar', () => {
+    const p = pessoaFicticia({ id: 'x1', nomeCurto: 'Zé T.', nome: 'Zé', apelidos: 'Teste' });
+    expect(extrasDaPessoa(p, '2026-10-04')).toEqual({ nomeNoMapa: 'Zé T.', telefone: null, carta: null });
+  });
+
+  it('mostra o telefone e a carta quando existem, e não repete o nome do mapa igual ao completo', () => {
+    const p = pessoaFicticia({
+      id: 'x2',
+      nomeCurto: 'Zé Teste',
+      nome: 'Zé',
+      apelidos: 'Teste',
+      telefone: ' +352 600 000 000 ',
+      temCarta: true,
+      cartaValidade: '2026-01-31',
+    });
+    const extras = extrasDaPessoa(p, '2026-10-04');
+    expect(extras.nomeNoMapa).toBeNull();
+    expect(extrasDaPessoa({ ...p, nomeCurto: 'ZE TESTE' }, '2026-10-04').nomeNoMapa).toBeNull();
+    expect(extras.telefone).toBe('+352 600 000 000');
+    expect(extras.carta).toBe('Caducou a 31/01/2026');
+    expect(extrasDaPessoa({ ...p, telefone: '  ', temCarta: false }, '2026-10-04')).toMatchObject({
+      telefone: null,
+      carta: 'Não tem',
+    });
+  });
+
+  it('sem telefone, carta nem aviso, não tem corpo (só o cabeçalho, sem linha "sem dados")', () => {
+    const p = pessoaFicticia({ id: 'x3', nomeCurto: 'Zé T.', nome: 'Zé', apelidos: 'Teste' });
+    const extras = extrasDaPessoa(p, '2026-10-04');
+    expect(fichaCompactaTemCorpo(extras, false)).toBe(false);
+    // Quem conduz sem carta tem o aviso (e a carta "Não tem").
+    expect(fichaCompactaTemCorpo(extras, true)).toBe(true);
+    expect(fichaCompactaTemCorpo({ ...extras, telefone: '+352 600 000 000' }, false)).toBe(true);
+    expect(fichaCompactaTemCorpo({ ...extras, carta: 'Não tem' }, false)).toBe(true);
+  });
+});
 
 describe('cadeiaDaPessoa', () => {
   it('mostra casa, carrinha e obra', () => {

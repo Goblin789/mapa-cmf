@@ -4,7 +4,11 @@ import { indexar } from '../../dominio/indices';
 import { criarLocal, criarObra } from '../../dominio/teste-fabrica';
 import type { Estado } from '../../dominio/tipos';
 import {
+  algarismosAMais,
+  algarismosDaPastilha,
+  assinaturaCabecalhos,
   blocosDoQuadro,
+  colunasLadoALado,
   DEGRAUS_AJUSTE,
   escolherAjuste,
   type FiltroQuadro,
@@ -466,5 +470,96 @@ describe('largurasMinimas (nomes numa só linha)', () => {
     expect(nome).toBeGreaterThanOrEqual(13.3);
     expect(b).toBeGreaterThanOrEqual(13.3 + 0.7);
     expect(b - nome).toBeLessThan(1.1);
+  });
+
+  it('um cabeçalho largo (título comprido e pastilha) alarga o bloco, mas não a coluna dos nomes', () => {
+    const { nome, bloco: b } = largurasMinimas(10, 17.3);
+    expect(b).toBeGreaterThanOrEqual(17.3);
+    expect(b).toBeLessThan(17.5);
+    expect(nome).toBeLessThan(10.2);
+  });
+
+  it('nunca abaixo das de sempre (cabeçalho)', () => {
+    expect(largurasMinimas(0, 3)).toEqual({ nome: LARGURA_MIN_NOME, bloco: LARGURA_MIN_BLOCO });
+  });
+
+  it('o maior dos dois manda; um cabeçalho estreito não muda nada', () => {
+    expect(largurasMinimas(13.3, 5)).toEqual(largurasMinimas(13.3));
+    expect(largurasMinimas(0, 13).bloco).toBeGreaterThanOrEqual(13);
+    expect(largurasMinimas(0, Number.NaN)).toEqual(largurasMinimas(0));
+  });
+});
+
+describe('colunasLadoALado (Himeling: Forêt à esquerda, Grotte à direita)', () => {
+  // Forêt: títulos compridos (17 em por bloco); Grotte: 14 em. 4 blocos cada.
+  const himeling = [
+    { min: 17, n: 4 },
+    { min: 14, n: 4 },
+  ];
+  const precisa = (colunas: number[], partes = himeling) =>
+    colunas.reduce((s, c, i) => s + c * ((partes[i]?.min ?? 0) + 0.45) - 0.45, 0) +
+    0.6 * (colunas.length - 1);
+
+  it('com espaço, todos numa linha', () => {
+    expect(colunasLadoALado(200, himeling)).toEqual([4, 4]);
+  });
+
+  it('sem espaço para os 8, só a parte larga passa um bloco à linha de baixo (a outra fica inteira)', () => {
+    // 4+4 precisa de ~127 em; com 115, 3+4 cabe (~110) e tem a mesma altura máxima que 3+3, mas menos linhas.
+    const colunas = colunasLadoALado(115, himeling);
+    expect(colunas).toEqual([3, 4]);
+    expect(precisa(colunas)).toBeLessThanOrEqual(115);
+  });
+
+  it('prefere 2+2 dos dois lados (2 linhas cada) a 3+1 de um lado e 1 coluna do outro (4 linhas)', () => {
+    const colunas = colunasLadoALado(70, himeling);
+    expect(colunas).toEqual([2, 2]);
+    expect(precisa(colunas)).toBeLessThanOrEqual(70);
+  });
+
+  it('nem uma coluna cada cabe: uma coluna cada', () => {
+    expect(colunasLadoALado(10, himeling)).toEqual([1, 1]);
+  });
+
+  it('sem partes, nada; partes sem blocos contam como um', () => {
+    expect(colunasLadoALado(100, [])).toEqual([]);
+    expect(colunasLadoALado(100, [{ min: 12.5, n: 0 }])).toEqual([1]);
+  });
+});
+
+describe('pastilhas no modo de edição (o título não leva reticências depois de uma largada)', () => {
+  it('reserva até à lotação e mais uma largada', () => {
+    // 9/10 → 10/10: mais um algarismo.
+    expect(algarismosDaPastilha(9, 10)).toBe(2);
+    expect(algarismosAMais(9, 10)).toBe(1);
+    expect(algarismosAMais(5, 12)).toBe(1);
+    // Cheia com 9 lugares: a largada seguinte dá 10/9.
+    expect(algarismosAMais(9, 9)).toBe(1);
+    // Já com os algarismos todos: nada.
+    expect(algarismosAMais(10, 10)).toBe(0);
+    expect(algarismosAMais(3, 4)).toBe(0);
+    expect(algarismosAMais(0, 0)).toBe(0);
+    // 99 → 100.
+    expect(algarismosAMais(99, 40)).toBe(1);
+  });
+
+  it('a assinatura dos cabeçalhos muda só quando a reserva deixa de chegar ou um bloco fica recolhido', () => {
+    const comLotacao = (ocupados: number, lugares: number, recolhido = false) => {
+      const s = structuredClone(casas);
+      const b = bloco(s, 'casa:casa-o1');
+      b.lotacao = { ocupados, lugares, nivel: 'livre' };
+      b.recolhido = recolhido;
+      return assinaturaCabecalhos(s);
+    };
+    // Os blocos largos (fora das casas) não contam.
+    expect(assinaturaCabecalhos(casas).split('.')).toHaveLength(5);
+    // 9/10 → 10/10 → 11/10: a reserva chega, não se volta a medir.
+    expect(comLotacao(9, 10)).toBe(comLotacao(10, 10));
+    expect(comLotacao(10, 10)).toBe(comLotacao(11, 10));
+    // 3/4 → 4/4 → 8/4: igual; 9/4 já pede mais um algarismo (10/4 depois).
+    expect(comLotacao(3, 4)).toBe(comLotacao(8, 4));
+    expect(comLotacao(9, 4)).not.toBe(comLotacao(8, 4));
+    expect(comLotacao(9, 4)).toBe(comLotacao(10, 4));
+    expect(comLotacao(3, 4, true)).not.toBe(comLotacao(3, 4));
   });
 });

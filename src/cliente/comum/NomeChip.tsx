@@ -5,12 +5,15 @@
 // (data-arrastavel-pessoa, ver arrastar/motor.ts) e o clique seleciona: Ctrl/⌘+clique junta ou tira,
 // Shift+clique escolhe o intervalo pela ordem da lista (ContextoOrdemPessoas). Quem tem alterações
 // por guardar leva uma marca discreta.
+// O realce por cliente da legenda (clienteDestacado) só esbate nomes no Mapa: nas fichas abertas na Tabela e
+// no Quadro não conta (essas vistas têm os seus filtros de clientes).
 
 import { useContext } from 'react';
 import { COR_TEXTO_NOMES, clienteEfetivoId } from '../../dominio/cores';
 import type { Pessoa } from '../../dominio/tipos';
 import { modoDoClique } from '../arrastar/selecao';
 import { useLoja } from '../estado/loja';
+import { useVista } from '../vistas/vista';
 import { IconeVolante } from './IconeVolante';
 import { ContextoOrdemPessoas } from './ordemPessoas';
 
@@ -27,6 +30,7 @@ interface Props {
 export function NomeChip({ pessoa, compacto = false, className = '', condutor = false }: Props) {
   const indices = useLoja((s) => s.indices);
   const clienteDestacado = useLoja((s) => s.clienteDestacado);
+  const noMapa = useVista((s) => s.vista === 'mapa');
   const emFoco = useLoja((s) => s.foco?.tipo === 'pessoa' && s.foco.id === pessoa.id);
   const definirFoco = useLoja((s) => s.definirFoco);
   const modoEdicao = useLoja((s) => s.modoEdicao);
@@ -47,8 +51,9 @@ export function NomeChip({ pessoa, compacto = false, className = '', condutor = 
   const clienteId = clienteEfetivoId(pessoa, indices.obras);
   const cliente = indices.clientes.get(clienteId);
   const fundo = cliente?.cor ?? '#ffffff';
-  // Um nome selecionado nunca fica apagado pela legenda: tem de se ver o que se vai arrastar.
-  const apagado = clienteDestacado !== null && clienteDestacado !== clienteId && !selecionado;
+  // Um nome selecionado nunca fica apagado pela legenda: tem de se ver o que se vai arrastar. Fora do Mapa a
+  // legenda não conta.
+  const apagado = noMapa && clienteDestacado !== null && clienteDestacado !== clienteId && !selecionado;
   const aConfirmar = pessoa.casaAConfirmar || pessoa.carrinhaAConfirmar;
   const titulo = [
     `${pessoa.nome} ${pessoa.apelidos}`,

@@ -18,7 +18,7 @@ Pedidos ditados pelo Rafael (saiu e não pôde responder; decidido com bom senso
   tudo); no modo de edição o clique seleciona como antes (clique, Ctrl/⌘, Shift, caixas), sem ficha. Um botão
   pequeno ⓘ a seguir ao nome abre/fecha a ficha da pessoa (para "Ver no mapa", Mudar onde dorme, etc.). Fica a
   seguir ao nome, e não no fim da linha, porque no fim ficava fora do ecrã no modo de edição a 1366 px. Com a
-  ficha de uma pessoa aberta, clicar noutra linha passa a ficha para ela. As ligações Casa e Carrinha
+  ficha de uma pessoa aberta, clicar noutra linha passa a ficha para ela (mudado nos acertos abaixo). As ligações Casa e Carrinha
   continuam a abrir as fichas da casa e da carrinha. A ficha em si não mudou: como só abre a pedido, já não
   repete a linha a cada clique.
 - **C. Filtros múltiplos na Tabela**: Cliente, Casa, Carrinha e **Obra** (novo), cada um com várias escolhas
@@ -38,10 +38,40 @@ Pedidos ditados pelo Rafael (saiu e não pôde responder; decidido com bom senso
   cada parte do Quadro; nunca há quebra de linha. Medido sem reticências nem nomes partidos a 1920, 1366,
   reunião 1920 e telemóvel. No PC, onde antes os nomes partiam, o Quadro fica um pouco mais comprido (desliza).
 - **F. Ficha arrastável** (Mapa, Quadro e Tabela, no PC a partir de 640 px): pega-se pelo cabeçalho e
-  arrasta-se para qualquer sítio dentro da área; nunca sai do ecrã; a posição fica lembrada (uma para o Mapa,
-  outra para a Tabela e o Quadro); botão "Voltar a pôr a ficha no sítio" e duplo clique no cabeçalho voltam à
+  arrasta-se para qualquer sítio dentro da área; nunca sai do ecrã; a posição fica lembrada (uma por vista,
+  ver os acertos abaixo); botão "Voltar a pôr a ficha no sítio" e duplo clique no cabeçalho voltam à
   origem; setas na pega e Alt+setas no cabeçalho. No telemóvel fica como estava.
+- **Acertos depois da revisão** (mesmo dia; desenho em `docs/vistas-edicao.md`):
+  - *Títulos do Quadro numa só linha*: com os nomes numa linha, os títulos das casas partiam ("Casa 2 Rue de
+    la / Forêt"). Agora cada bloco tem pelo menos a largura do seu cabeçalho (título + ● + pastilha; no modo de
+    edição reserva também o ●, um algarismo a mais e o ▲, para uma largada não cortar um título) e, na
+    Himeling, as colunas repartem-se por parte (a Forêt passa um bloco à linha de baixo). Preço: um degrau de
+    letra onde ela estava limitada pela largura (1920: 15 → 14 px no Quadro e na reunião por casas; 1680:
+    Quadro 14 → 13 px e reunião por casas 14 px completo → 13 px livres numa linha; a 1440 o Quadro passa a
+    deslizar a 14 px). Títulos inteiros eram o pedido; os nomes continuam sempre inteiros. Medido: 0 títulos e
+    0 nomes em duas linhas a 1920, 1680, 1440, 1366, 1280, reunião 1920/1366/1280 e telemóvel.
+  - *Tabela*: clicar numa linha já não muda a ficha (antes passava-a para essa pessoa: era a informação
+    repetida de que o Rafael se queixou). Só o ⓘ abre, muda ou fecha a ficha da pessoa, que na Tabela é
+    **compacta**: só o que a linha não tem ("Ver no mapa", aviso de quem conduz sem carta, telefone e carta se
+    existirem), sem Nº, Cliente nem Casa → Carrinha → Obra e sem botões de mudar (estão nas células). As fichas
+    de casa e carrinha ficam completas; no Mapa e no Quadro a ficha da pessoa fica completa.
+  - *Legenda do Mapa fora do Mapa*: a Tabela deixou de esbater linhas pelo cliente aceso na legenda e já não
+    mostra "Só <cliente> · Todos" (usa o filtro Cliente); os nomes das fichas abertas na Tabela e no Quadro
+    também deixaram de esbater. No Mapa a legenda fica igual.
+  - *Quadro*: "Limpar filtros" (clientes e obras) sempre que há filtro; o "Todos" das pastilhas só aparece com
+    obras escolhidas (só limpa clientes); sem ninguém, "Ninguém corresponde ao filtro. Limpar filtros".
+    *Reunião*: a partir de 1280 px os filtros vão para o cabeçalho da reunião (listas até 1919 px, pastilhas a
+    partir de 1920 px); a 1920 o Quadro ganha 33 px (954 → 987 px).
+  - *Ficha arrastável*: cada vista guarda a sua posição (Mapa, Tabela, Quadro). A posição antiga, partilhada
+    pela Tabela e pelo Quadro, passa só para o Quadro; a Tabela começa na origem (aí não tapa os nomes).
+- **Utilizadores**: o Rafael atribuiu o **Miguel Cardoso** (cardoso@cmf-lux.lu) à aplicação "Mapa CMF" no Entra;
+  passa a ser o 4.º utilizador (juntar a `UTILIZADORES_PERMITIDOS` quando se publicar). *UPN por confirmar*
+  (o login compara com o UPN, que pode não ser o e-mail).
 - *Por confirmar com o Rafael*:
+  - se a legenda do Mapa deve aceitar vários clientes ao mesmo tempo, como as pastilhas do Quadro (hoje acende
+    só um);
+  - se as listas compactas "Cliente"/"Obra" no cabeçalho da reunião entre 1280 e 1919 px lhe servem (a 1920,
+    na TV, são as pastilhas);
   - se quer os números dos contadores noutro sítio (ex.: na lista lateral ou no Histórico), ou se não fazem
     falta;
   - se o ⓘ a seguir ao nome é fácil de encontrar para abrir a ficha na Tabela;
@@ -87,8 +117,8 @@ fizeste nas casas". Desenho em `docs/vistas-edicao.md`.
   "Só <cliente> · Todos".
 - **Quadro**: mostrar uma casa sem moradores e sem carrinhas a dormir lá (Quadro por carrinhas), ou uma
   carrinha sem passageiros e sem casa (Quadro por casas), dá um aviso curto; o agrupamento não muda.
-- *Por responder*: o título da ficha da pessoa deve usar também as maiúsculas normais? Mudava também a ficha
-  no Mapa.
+- O título da ficha da pessoa (em todas as vistas, também no Mapa) e a dica dos nomes no Quadro usam também as
+  maiúsculas normais, para o mesmo nome não aparecer de duas maneiras.
 
 ## 04/10/2026 — Tabela e Quadro editam como o mapa
 

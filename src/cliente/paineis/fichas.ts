@@ -3,9 +3,57 @@
 import type { ConfiancaDormida, Dormida } from '../../dominio/dormidas';
 import type { Indices } from '../../dominio/indices';
 import { type OcupacaoCasa, ocupacaoCasa } from '../../dominio/ocupacao';
+import { normalizarTexto } from '../../dominio/pesquisa';
 import type { Carrinha, Casa, Id, Pessoa } from '../../dominio/tipos';
 import type { Foco } from '../estado/loja';
-import { ROTULO_FORA_DAS_CASAS, ROTULO_SEM_OBRA, ROTULO_SEM_TRANSPORTE } from './textos';
+import {
+  nomeCompleto,
+  ROTULO_FORA_DAS_CASAS,
+  ROTULO_SEM_OBRA,
+  ROTULO_SEM_TRANSPORTE,
+  textoCarta,
+  textoTelefone,
+} from './textos';
+
+/** A vista onde a ficha está aberta (PainelFoco): o Mapa, a Tabela ou o Quadro. */
+export type VistaFicha = 'mapa' | 'tabela' | 'quadro';
+
+/**
+ * Na Tabela a ficha da pessoa é compacta: a linha já mostra o Nº, o cliente e a casa → carrinha → obra (e,
+ * no modo de edição, as listas e o botão do condutor), por isso a ficha só tem o que a linha não tem. No
+ * Mapa e no Quadro é a ficha completa. As fichas de casa e carrinha são sempre completas.
+ */
+export function fichaPessoaCompacta(vista: VistaFicha): boolean {
+  return vista === 'tabela';
+}
+
+/** O que a ficha compacta da pessoa mostra: só o que existe (null = não há dados; não se mostra). */
+export interface ExtrasPessoa {
+  /**
+   * "no mapa: Zé T.", quando o nome do mapa não é o nome completo (sem contar acentos nem maiúsculas: "Ze
+   * Teste" ao lado de "Zé Teste" era repetir a linha).
+   */
+  nomeNoMapa: string | null;
+  telefone: string | null;
+  /** O texto da carta, quando se sabe se tem ("Não tem", "Tem, válida até …", "Caducou a …"). */
+  carta: string | null;
+}
+
+export function extrasDaPessoa(p: Pessoa, hoje: string): ExtrasPessoa {
+  return {
+    nomeNoMapa: normalizarTexto(p.nomeCurto) !== normalizarTexto(nomeCompleto(p)) ? p.nomeCurto : null,
+    telefone: p.telefone?.trim() ? textoTelefone(p) : null,
+    carta: p.temCarta === null ? null : textoCarta(p, hoje),
+  };
+}
+
+/**
+ * A ficha compacta só tem corpo quando há o que mostrar (o aviso de quem conduz sem carta, o telefone ou a
+ * carta). Sem nada, fica só o cabeçalho: uma linha "sem dados" igual em todas as pessoas era repetir.
+ */
+export function fichaCompactaTemCorpo(extras: ExtrasPessoa, conduzSemCarta: boolean): boolean {
+  return conduzSemCarta || extras.telefone !== null || extras.carta !== null;
+}
 
 export interface ElementoCadeia {
   tipo: 'casa' | 'carrinha' | 'obra';

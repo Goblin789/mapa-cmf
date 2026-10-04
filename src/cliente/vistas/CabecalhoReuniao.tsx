@@ -1,7 +1,8 @@
 // Cabeçalho do modo reunião, pensado para uma TV 1920×1080 vista de longe: a marca, o dia e a hora,
 // "Atualizado às HH:MM", Quadro | Mapa (e Casas | Carrinhas no Quadro) e "Sair da reunião".
 // Sem Editar nem Histórico: a reunião é só para ver. Sem os contadores (Livres nas casas, Sem transporte…):
-// saíram a pedido do Rafael (04/10/2026) e o Quadro/Mapa da TV fica com esse espaço.
+// saíram a pedido do Rafael (04/10/2026) e o Quadro/Mapa da TV fica com esse espaço. No Quadro, a partir de
+// xl, os filtros dos clientes e das obras ficam aqui, a seguir à hora (FiltrosReuniao, em Quadro.tsx).
 
 import { useEffect, useState } from 'react';
 import { Marca } from '../comum/Marca';
@@ -11,6 +12,7 @@ import { AlternadorAgrupamento, ComutadorReuniao } from './Comutador';
 import { dataPorExtenso, horaLuxemburgo, textoAtualizado } from './horas';
 import { IconeEcraInteiro, IconeSairEcra } from './icones';
 import { haEcraInteiro, pedirEcraInteiro, sairDaReuniao } from './modoReuniao';
+import { FiltrosReuniao } from './Quadro';
 import { useVista } from './vista';
 
 /** A hora atual, renovada no início de cada minuto. */
@@ -67,6 +69,9 @@ export function CabecalhoReuniao() {
             {atualizado}
           </p>
         )}
+        {/* No Quadro, a partir de xl, os filtros (clientes e obras) vêm para aqui, a seguir à hora (passam
+            à linha de baixo se não couberem): o Quadro da TV fica com a altura da barra que tinham. */}
+        {vista === 'quadro' && <FiltrosReuniao className="hidden self-center xl:flex" />}
       </div>
       <div className="col-span-full flex flex-wrap items-center gap-2 xl:col-span-1 xl:justify-end">
         <ComutadorReuniao />

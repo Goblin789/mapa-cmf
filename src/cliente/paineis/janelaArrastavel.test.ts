@@ -4,6 +4,7 @@ import {
   type Armazenamento,
   ancorar,
   CHAVE_POSICAO,
+  CHAVE_POSICAO_ANTIGA,
   cantoArrastado,
   cantoComTecla,
   cantoDaPosicao,
@@ -160,11 +161,55 @@ describe('memória', () => {
 
   it('guarda e lê por lugar; null esquece', () => {
     const a = memoria();
-    guardarPosicao('vista', { borda: 'direita', distancia: 12, topo: 40 }, a);
-    expect(carregarPosicao('vista', a)).toEqual({ borda: 'direita', distancia: 12, topo: 40 });
+    guardarPosicao('quadro', { borda: 'direita', distancia: 12, topo: 40 }, a);
+    expect(carregarPosicao('quadro', a)).toEqual({ borda: 'direita', distancia: 12, topo: 40 });
     expect(carregarPosicao('mapa', a)).toBeNull();
-    guardarPosicao('vista', null, a);
-    expect(a.dados.has(CHAVE_POSICAO.vista)).toBe(false);
+    guardarPosicao('quadro', null, a);
+    expect(a.dados.has(CHAVE_POSICAO.quadro)).toBe(false);
+  });
+
+  it('a Tabela e o Quadro lembram posições diferentes', () => {
+    const a = memoria();
+    guardarPosicao('quadro', { borda: 'esquerda', distancia: 8, topo: 8 }, a);
+    expect(carregarPosicao('tabela', a)).toBeNull();
+    guardarPosicao('tabela', { borda: 'direita', distancia: 30, topo: 100 }, a);
+    expect(carregarPosicao('quadro', a)).toEqual({ borda: 'esquerda', distancia: 8, topo: 8 });
+    expect(carregarPosicao('tabela', a)).toEqual({ borda: 'direita', distancia: 30, topo: 100 });
+    expect(new Set(Object.values(CHAVE_POSICAO)).size).toBe(3);
+  });
+
+  describe('a chave antiga (uma só posição para a Tabela e o Quadro)', () => {
+    const antiga = { borda: 'esquerda', distancia: 8, topo: 8 } as const;
+
+    it('passa para o Quadro e apaga-se; a Tabela não a herda', () => {
+      const a = memoria();
+      a.setItem(CHAVE_POSICAO_ANTIGA, JSON.stringify(antiga));
+      expect(carregarPosicao('tabela', a)).toBeNull();
+      expect(carregarPosicao('quadro', a)).toEqual(antiga);
+      expect(a.dados.has(CHAVE_POSICAO_ANTIGA)).toBe(false);
+      expect(carregarPosicao('quadro', a)).toEqual(antiga);
+      expect(carregarPosicao('tabela', a)).toBeNull();
+    });
+
+    it('repor a ficha do Quadro não a faz voltar', () => {
+      const a = memoria();
+      a.setItem(CHAVE_POSICAO_ANTIGA, JSON.stringify(antiga));
+      guardarPosicao('quadro', null, a);
+      expect(carregarPosicao('quadro', a)).toBeNull();
+    });
+
+    it('não pisa uma posição própria do Quadro, e estragada só se apaga', () => {
+      const a = memoria();
+      const propria = { borda: 'direita', distancia: 20, topo: 50 } as const;
+      a.setItem(CHAVE_POSICAO.quadro, JSON.stringify(propria));
+      a.setItem(CHAVE_POSICAO_ANTIGA, JSON.stringify(antiga));
+      expect(carregarPosicao('quadro', a)).toEqual(propria);
+      expect(a.dados.has(CHAVE_POSICAO_ANTIGA)).toBe(false);
+      const b = memoria();
+      b.setItem(CHAVE_POSICAO_ANTIGA, '{');
+      expect(carregarPosicao('quadro', b)).toBeNull();
+      expect(b.dados.size).toBe(0);
+    });
   });
 
   it('o que vier estragado conta como na origem', () => {
