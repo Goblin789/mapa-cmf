@@ -2,6 +2,40 @@
 
 Registo das decisões do Rafael e das escolhas por omissão. Mais recentes primeiro.
 
+## 04/10/2026 — Obras no Quadro, aviso do contrato, "sempre cheia" e "Ver no mapa" na Tabela
+
+Pedidos do Rafael (desenho em `docs/vistas-edicao.md`):
+- **Quadro: Casas | Carrinhas | Obras** ("devia ter obras também, não devia ser uma aba como está, em que
+  obras está separado"): "Obras" passa a ser a 3.ª opção do alternador do Quadro (também na reunião), ao lado
+  de Casas e Carrinhas. Por obras: uma secção por cliente, um bloco por obra (com quem lá trabalha; arrastar
+  para um bloco muda a obra) e "Sem obra" no fim. O filtro "Obra" à parte **saiu do Quadro** (era a "aba
+  separada" de que ele falava; na barra e no cabeçalho da reunião fica só o filtro dos clientes); a Tabela
+  continua com o filtro "Obra". Hoje ainda não há obras: o Quadro por obras mostra só "Sem obra" com toda a
+  gente e uma nota.
+- **"Ver no mapa" na Tabela**: no PC o botão a seguir ao nome diz "Ver no mapa" (ícone e texto); no telemóvel
+  só o ícone, para a coluna presa do nome não crescer.
+- **Aviso do contrato só na ficha da casa** ("no mapa não é preciso mostrar"): o aviso (acima do máximo /
+  acima do tolerado) aparece só na ficha da casa (`PainelFoco`, ao carregar na casa), em qualquer vista. Saiu
+  dos cartões do Mapa (e do title deles), do ▲ das pastilhas de resumo do Mapa, da lista lateral e do rodapé
+  dos blocos do Quadro (também na reunião). A Tabela não o mostrava. Fica o aviso no diálogo Guardar ("Casa X
+  passa o máximo do contrato…"), que é na hora de decidir e não "no mapa". O domínio (`ocupacao.ts`) não mudou.
+- **"Sempre cheia" em lado nenhum**: saiu a etiqueta do rodapé dos blocos do Quadro, a "conta sempre como
+  cheia" da lista lateral e do title dos cartões do Mapa. O comportamento fica igual (Walferdange e
+  Schifflange contam como cheias: lugares = moradores, sem "livre"); os dados e o domínio não mudaram.
+- **Tabela: "Ver no mapa" em vez do ⓘ** ("a janela que abre é inútil"): o botão a seguir ao nome passa a ser
+  "Ver no mapa" (ícone do mapa, "Ver <nome> no mapa"), que muda para o Mapa e lá põe a pessoa em foco. Ficou
+  no mesmo sítio, a seguir ao nome (onde o olho procura a pessoa; a célula está presa à esquerda, por isso
+  vê-se em qualquer largura e no modo de edição). A ficha compacta da pessoa foi apagada e **na Tabela não há
+  ficha da pessoa**: uma pessoa em foco (pesquisa do cabeçalho, nome na ficha de uma casa) só realça a linha;
+  um clique numa linha tira-lhe o foco (fica só a linha marcada). Clicar numa linha continua só a realçá-la
+  (seleciona, no modo de edição). As ligações Casa e Carrinha continuam a abrir as fichas da casa e da
+  carrinha (a da casa é onde está o aviso do contrato). No Mapa e no Quadro a ficha da pessoa fica igual.
+- "Sempre cheia" também saiu do Histórico: o campo `sempreCheia`, quando a sincronização dos dados iniciais o
+  muda, aparece como "lugares iguais aos moradores" (`NOME_CAMPO` em `importacao/sincronizar.ts`; o relatório
+  da sincronização usa o mesmo nome).
+- Apagado o `resumoDasCasas` (`paineis/fichas.ts`, sem uso desde que saíram os contadores): calculava as casas
+  acima do contrato fora da ficha da casa.
+
 ## 04/10/2026 — pedidos do Rafael (cabeçalho, Tabela, filtros, Quadro, ficha arrastável)
 
 Pedidos ditados pelo Rafael (saiu e não pôde responder; decidido com bom senso). Desenho em
@@ -13,7 +47,7 @@ Pedidos ditados pelo Rafael (saiu e não pôde responder; decidido com bom senso
   telemóvel no Mapa: 264 → 137 px). `paineis/Contadores.tsx` foi apagado; os números continuam calculados
   (`dominio/contadores.ts`), porque a legenda do Mapa usa o nº de pessoas por cliente. Ficaram sem uso, mas não
   se apagaram (podem voltar a servir se o Rafael quiser os números noutro sítio): `divisaoPorCliente`
-  (`paineis/agrupar.ts`), `resumoDasCasas` (`paineis/fichas.ts`) e `contadoresServidor` (loja).
+  (`paineis/agrupar.ts`), `resumoDasCasas` (`paineis/fichas.ts`; apagado depois, ver acima) e `contadoresServidor` (loja).
 - **B. Tabela sem informação repetida**: clicar numa linha só a realça e **não abre a ficha** (a linha já tem
   tudo); no modo de edição o clique seleciona como antes (clique, Ctrl/⌘, Shift, caixas), sem ficha. Um botão
   pequeno ⓘ a seguir ao nome abre/fecha a ficha da pessoa (para "Ver no mapa", Mudar onde dorme, etc.). Fica a

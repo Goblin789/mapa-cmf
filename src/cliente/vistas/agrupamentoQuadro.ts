@@ -1,7 +1,8 @@
-// Vista Quadro: as casas (ou as carrinhas) em blocos, como as folhas do Michael — um bloco por casa ou
-// carrinha, com a lotação no cabeçalho e os nomes por baixo. Funções puras: agrupar e ordenar.
+// Vista Quadro: as casas, as carrinhas ou as obras em blocos, como as folhas do Michael — um bloco por casa,
+// carrinha ou obra, com a lotação (ou o nº de pessoas) no cabeçalho e os nomes por baixo. Funções puras:
+// agrupar e ordenar.
 //
-// Agrupamento (o mesmo para casas e carrinhas):
+// Agrupamento das casas e das carrinhas:
 // - por país (França, Luxemburgo…), pela ordem das casas (a do Michael: Himeling primeiro);
 // - locais vizinhos (a menos de 500 m, como no mapa: as duas ruas de Himeling) formam uma zona com as
 //   partes lado a lado, a de oeste à esquerda (Himeling: Forêt à esquerda, Grotte à direita);
@@ -11,6 +12,9 @@
 //   e, nas carrinhas, as que ainda não têm onde dormir.
 // Uma carrinha conta onde dorme (definido ou, sem isso, a sugestão: a casa da maioria dos passageiros).
 // Casas e carrinhas desenham os lugares livres até à lotação, com o mesmo aspeto.
+// Obras (pedido do Rafael, 04/10/2026: "Obras" ao lado de Casas e Carrinhas): uma secção por cliente (pela
+// ordem dos clientes), um bloco por obra (pelo nome; sem lotação, a pastilha é o nº de pessoas) e, no fim,
+// "Sem obra" (bloco largo, nomes por cliente). Quem tem uma obra que não se conhece conta como sem obra.
 //
 // Filtro do Quadro (clientes e obras, vários de cada; ver FiltroQuadro): ficam SÓ as pessoas que passam.
 // Os blocos continuam todos lá, com a lotação real (não filtrada: é para lá que se larga no modo de
@@ -20,15 +24,10 @@ import { clienteEfetivoId } from '../../dominio/cores';
 import type { Dormida } from '../../dominio/dormidas';
 import type { Indices } from '../../dominio/indices';
 import { formatarMatricula } from '../../dominio/matricula';
-import {
-  type AvisoContrato,
-  type NivelLotacao,
-  ocupacaoCarrinha,
-  ocupacaoCasa,
-} from '../../dominio/ocupacao';
+import { type NivelLotacao, ocupacaoCarrinha, ocupacaoCasa } from '../../dominio/ocupacao';
 import type { Carrinha, Casa, Cliente, Estado, Id, Local, Obra, Pais, Pessoa } from '../../dominio/tipos';
 import { GRUPO_ESPECIAIS, type OpcaoFiltro, passaFiltro } from '../comum/escolhaMultipla';
-import { condutorPrimeiro, ordenarPorClienteENome } from '../lista/seccoes';
+import { condutorPrimeiro, ordenarPorClienteENome, ROTULO_SEM_OBRA_SECCAO } from '../lista/seccoes';
 import { DISTANCIA_VIZINHOS_M, distanciaMetros } from '../mapa/layout/disposicao';
 import { nomeJunto } from '../mapa/layout/textos';
 import { agruparPorCliente } from '../paineis/agrupar';
@@ -75,30 +74,27 @@ export interface ParcelaClienteQuadro {
 }
 
 export interface BlocoQuadro {
-  /** "casa:<id>", "carrinha:<id>", "fora", "sem-transporte". */
+  /** "casa:<id>", "carrinha:<id>", "obra:<id>", "fora", "sem-transporte", "sem-obra" (= chaveAlvo). */
   chave: string;
-  tipo: 'casa' | 'carrinha' | 'fora' | 'sem-transporte';
+  tipo: 'casa' | 'carrinha' | 'obra' | 'fora' | 'sem-transporte' | 'sem-obra';
   id: Id | null;
   /** Nome da casa, matrícula formatada ("CF 5001") ou o rótulo do grupo. */
   titulo: string;
-  /** Carrinha: "Ford Transit Custom" (num carro, "Carro · Volvo V40"). */
+  /** Carrinha: "Ford Transit Custom" (num carro, "Carro · Volvo V40"). Obra: o nome do local. */
   detalhe: string | null;
   /** Nas casas pelo cliente e pelo nome (as cores juntas, como no Excel); nas carrinhas o condutor primeiro. */
   pessoas: Pessoa[];
-  /** Null nos grupos sem lugares (fora das casas, sem transporte). */
+  /** Null nas obras e nos grupos sem lugares (fora das casas, sem transporte, sem obra). */
   lotacao: LotacaoBloco | null;
   /**
-   * Lugares livres a desenhar ("livre"), até à lotação: nas casas (numa sempre cheia, nenhum) e nas
-   * carrinhas. Com gente a mais, nenhum (a pastilha já está a vermelho). 0 nos blocos largos.
+   * Lugares livres a desenhar ("livre"), até à lotação: nas casas (nas que contam como cheias, nenhum)
+   * e nas carrinhas. Com gente a mais, nenhum (a pastilha já está a vermelho). 0 nos blocos largos.
    */
   vazios: number;
   ligacoes: LigacaoQuadro[];
-  /** Aviso do contrato da casa (acima do máximo ou do tolerado); null quando não há. */
-  aviso: { tipo: AvisoContrato; usados: number; maximo: number; tolerado: number | null } | null;
-  sempreCheia: boolean;
   /** Carrinha com passageiros e ninguém a conduzir. */
   semCondutor: boolean;
-  /** Bloco largo (fora das casas, sem transporte): ocupa a linha toda, com a divisão por cliente. */
+  /** Bloco largo (fora das casas, sem transporte, sem obra): ocupa a linha toda, com a divisão por cliente. */
   largo: boolean;
   porCliente: ParcelaClienteQuadro[];
   /** Pessoas do bloco que o filtro esconde (0 sem filtro). */
@@ -124,10 +120,13 @@ export interface FaixaQuadro {
 
 export interface SeccaoQuadro {
   chave: string;
-  /** "França", "Luxemburgo", "Onde dorme: por definir"; null nos blocos largos (já têm título). */
+  /**
+   * "França", "Luxemburgo", "Onde dorme: por definir", o nome do cliente (obras); null nos blocos largos
+   * (já têm título).
+   */
   titulo: string | null;
   faixas: FaixaQuadro[];
-  /** Blocos (casas ou carrinhas) e pessoas na secção. */
+  /** Blocos (casas, carrinhas ou obras) e pessoas na secção. */
   nBlocos: number;
   nPessoas: number;
 }
@@ -315,11 +314,6 @@ function blocoCasa(
       rotulo: formatarMatricula(carrinha.matricula),
       sugerida: confianca === 'sugerida',
     })),
-    aviso:
-      (oc.aviso === 'acima_maximo' || oc.aviso === 'acima_tolerado') && casa.maxContrato !== null
-        ? { tipo: oc.aviso, usados: oc.usados, maximo: casa.maxContrato, tolerado: casa.tolerado }
-        : null,
-    sempreCheia: casa.sempreCheia,
     semCondutor: false,
     largo: false,
     porCliente: [],
@@ -362,16 +356,21 @@ function blocoCarrinha(
     lotacao: { ocupados: oc.ocupados, lugares: oc.lugares, nivel: oc.nivel },
     vazios: oc.livres,
     ligacoes: [ligacaoDaCarrinha(dormidas.get(carrinha.id), ind)],
-    aviso: null,
-    sempreCheia: false,
     semCondutor: semCondutor(carrinha, ind),
     largo: false,
     porCliente: [],
   };
 }
 
+/** Título de cada bloco largo. */
+const TITULO_LARGO: Record<'fora' | 'sem-transporte' | 'sem-obra', string> = {
+  fora: ROTULO_FORA_DAS_CASAS,
+  'sem-transporte': ROTULO_SEM_TRANSPORTE,
+  'sem-obra': ROTULO_SEM_OBRA_SECCAO,
+};
+
 function blocoLargo(
-  tipo: 'fora' | 'sem-transporte',
+  tipo: 'fora' | 'sem-transporte' | 'sem-obra',
   pessoas: Pessoa[],
   ind: Indices,
   filtro: FiltroQuadro | undefined,
@@ -382,7 +381,7 @@ function blocoLargo(
     chave: tipo,
     tipo,
     id: null,
-    titulo: tipo === 'fora' ? ROTULO_FORA_DAS_CASAS : ROTULO_SEM_TRANSPORTE,
+    titulo: TITULO_LARGO[tipo],
     detalhe: null,
     pessoas: ordenadas,
     escondidas: f.escondidas,
@@ -390,11 +389,29 @@ function blocoLargo(
     lotacao: null,
     vazios: 0,
     ligacoes: [],
-    aviso: null,
-    sempreCheia: false,
     semCondutor: false,
     largo: true,
     porCliente: parcelas(ordenadas, ind),
+  };
+}
+
+function blocoObra(obra: Obra, ind: Indices, filtro: FiltroQuadro | undefined): BlocoQuadro {
+  const f = filtrar(ordenarPorClienteENome(ind.trabalhadores.get(obra.id) ?? [], ind), ind, filtro);
+  return {
+    chave: `obra:${obra.id}`,
+    tipo: 'obra',
+    id: obra.id,
+    titulo: obra.nome,
+    detalhe: ind.locais.get(obra.localId)?.nome ?? null,
+    pessoas: f.pessoas,
+    escondidas: f.escondidas,
+    recolhido: f.recolhido,
+    lotacao: null,
+    vazios: 0,
+    ligacoes: [],
+    semCondutor: false,
+    largo: false,
+    porCliente: [],
   };
 }
 
@@ -616,7 +633,34 @@ function seccoesCarrinhas(
 }
 
 /**
- * As secções do Quadro, por casas ou por carrinhas. Com `filtro`, os blocos só têm as pessoas que passam
+ * Obras: uma secção por cliente (pela ordem dos clientes; obras de um cliente que não se conhece no fim),
+ * as obras pelo nome e, no fim, "Sem obra" (quem não tem obra ou tem uma que não se conhece).
+ */
+function seccoesObras(estado: Estado, ind: Indices, filtro: FiltroQuadro | undefined): SeccaoQuadro[] {
+  const ordemCliente = (id: Id) => ind.clientes.get(id)?.ordem ?? Number.POSITIVE_INFINITY;
+  const obras = [...estado.obras].sort(
+    (a, b) => ordemCliente(a.clienteId) - ordemCliente(b.clienteId) || a.nome.localeCompare(b.nome, 'pt'),
+  );
+  const porCliente = new Map<Id, Obra[]>();
+  for (const obra of obras) {
+    const lista = porCliente.get(obra.clienteId);
+    if (lista) lista.push(obra);
+    else porCliente.set(obra.clienteId, [obra]);
+  }
+  const seccoes = [...porCliente].map(([clienteId, obrasDoCliente]) =>
+    seccaoSolta(
+      `cliente:${clienteId}`,
+      ind.clientes.get(clienteId)?.nome ?? 'Cliente desconhecido',
+      obrasDoCliente.map((o) => blocoObra(o, ind, filtro)),
+    ),
+  );
+  const semObra = estado.pessoas.filter((p) => p.ativa && obraDoFiltro(p, ind.obras) === SEM_OBRA);
+  seccoes.push(seccaoLarga(blocoLargo('sem-obra', semObra, ind, filtro)));
+  return seccoes;
+}
+
+/**
+ * As secções do Quadro, por casas, por carrinhas ou por obras. Com `filtro`, os blocos só têm as pessoas que passam
  * (a lotação continua a real) e as secções contam só essas.
  */
 export function montarQuadro(
@@ -626,9 +670,14 @@ export function montarQuadro(
   dormidas: Map<Id, Dormida>,
   filtro?: FiltroQuadro,
 ): SeccaoQuadro[] {
-  return agrupamento === 'casas'
-    ? seccoesCasas(estado, ind, dormidas, filtro)
-    : seccoesCarrinhas(estado, ind, dormidas, filtro);
+  switch (agrupamento) {
+    case 'casas':
+      return seccoesCasas(estado, ind, dormidas, filtro);
+    case 'carrinhas':
+      return seccoesCarrinhas(estado, ind, dormidas, filtro);
+    case 'obras':
+      return seccoesObras(estado, ind, filtro);
+  }
 }
 
 /** Todos os blocos do quadro, pela ordem em que aparecem (para os testes e para contar). */

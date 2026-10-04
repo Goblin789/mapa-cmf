@@ -1,9 +1,9 @@
-// Comutadores das vistas: Mapa | Tabela | Quadro (cabeçalho), Quadro | Mapa (reunião), Casas | Carrinhas
-// (Quadro) e o botão "Reunião". Botões segmentados com aria-pressed num <fieldset> com legenda, como o
+// Comutadores das vistas: Mapa | Tabela | Quadro (cabeçalho), Quadro | Mapa (reunião), Casas | Carrinhas |
+// Obras (Quadro) e o botão "Reunião". Botões segmentados com aria-pressed num <fieldset> com legenda, como o
 // "Ver por" da lista lateral. Cada opção tem ícone e texto.
 
 import type { ComponentType } from 'react';
-import { IconeCarrinha, IconeCasa } from '../lista/icones';
+import { IconeCarrinha, IconeCasa, IconeObra } from '../lista/icones';
 import { FOCO_VISIVEL } from '../paineis/classes';
 import { IconeMapa, IconeQuadro, IconeReuniao, IconeTabela } from './icones';
 import { pedirReuniao } from './modoReuniao';
@@ -23,6 +23,7 @@ function Segmentado<T extends string>({
   aoMudar,
   className = '',
   classeBotao = '',
+  classeIcone = '',
 }: {
   /** Nome do grupo para os leitores de ecrã ("Vista", "Quadro por"). */
   rotulo: string;
@@ -32,6 +33,8 @@ function Segmentado<T extends string>({
   className?: string;
   /** Classes extra de cada botão (ex.: tamanho do texto). */
   classeBotao?: string;
+  /** Classes extra de cada ícone (ex.: esconder onde falta espaço). */
+  classeIcone?: string;
 }) {
   return (
     <fieldset className={`flex min-w-0 rounded-md bg-slate-100 p-0.5 ${className}`}>
@@ -54,7 +57,7 @@ function Segmentado<T extends string>({
               classeBotao,
             ].join(' ')}
           >
-            <Icone className="size-4" />
+            <Icone className={`size-4 shrink-0 ${classeIcone}`} />
             {texto}
           </button>
         );
@@ -113,9 +116,15 @@ const OPCOES_AGRUPAMENTO: readonly Opcao<Agrupamento>[] = [
     titulo: 'Uma coluna por carrinha, com quem lá vai (o condutor primeiro)',
     Icone: IconeCarrinha,
   },
+  // Ao lado das casas e das carrinhas, e não num filtro à parte (pedido do Rafael, 04/10/2026).
+  { id: 'obras', rotulo: 'Obras', titulo: 'Uma coluna por obra, com quem lá trabalha', Icone: IconeObra },
 ];
 
-/** Casas | Carrinhas, no Quadro. */
+/**
+ * Casas | Carrinhas | Obras, no Quadro. Só o texto onde as três opções com ícone não cabiam: no telemóvel
+ * (a barra do Quadro passava a três linhas) e no cabeçalho da reunião de 1280 a 1919 px (os
+ * filtros, ao lado da hora, passavam a mais uma linha).
+ */
 export function AlternadorAgrupamento({ grande = false }: { grande?: boolean }) {
   const agrupamento = useVista((s) => s.agrupamento);
   const definirAgrupamento = useVista((s) => s.definirAgrupamento);
@@ -126,6 +135,7 @@ export function AlternadorAgrupamento({ grande = false }: { grande?: boolean }) 
       valor={agrupamento}
       aoMudar={definirAgrupamento}
       classeBotao={grande ? 'h-8 text-base' : 'h-7 text-sm'}
+      classeIcone={grande ? 'xl:max-[120rem]:hidden' : 'max-sm:hidden'}
     />
   );
 }

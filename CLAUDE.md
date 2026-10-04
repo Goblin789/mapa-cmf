@@ -67,12 +67,14 @@ M1 (login, tempo real, cópias, vistas, publicação): desenho e variáveis em `
 - **Publicar** só fora da janela da reunião (terça 17:45 – quarta 12:00) e só com `npm run publicar`.
 
 ## Estado atual
-M1 construído e ensaiado localmente (ainda não publicado): mapa com cartões ao estilo pedido pelo Rafael,
+M1 publicado em https://mapa.cmf-lux.lu (Render; ver `docs/publicar.md`): mapa com cartões ao estilo pedido pelo Rafael,
 camadas, lista lateral, **modo de edição** (rascunho, arrastar, Mover para…, Guardar/Cancelar, histórico),
 **login Microsoft** (aplicação "Mapa CMF" no Entra), **tempo real**, **vistas Tabela e Quadro**, **Excel**,
 **modo reunião** e **cópias de segurança**.
 - A Tabela e o Quadro editam como o mapa (ficha, pesquisa, seleção, arrastar, células) e nada muda de vista
-  sozinho: só o "Ver no mapa" da ficha leva ao Mapa (`docs/vistas-edicao.md`, `vistas/mostrar.ts`).
+  sozinho: só o "Ver no mapa" da ficha e o botão "Ver no mapa" de cada linha da Tabela levam ao Mapa (na
+  Tabela não há ficha da pessoa). O Quadro agrupa por Casas | Carrinhas | Obras e filtra só por clientes
+  (`docs/vistas-edicao.md`, `vistas/mostrar.ts`).
 - `POST /api/lotes` grava tudo ou nada (409 se alguém mudou as mesmas pessoas ou carrinhas); operações
   `mover`, `condutor` e `dormida`. Autor = e-mail (UPN) de quem tem sessão; 'local' no modo local.
   O histórico mostra o nome (`autorNome`).

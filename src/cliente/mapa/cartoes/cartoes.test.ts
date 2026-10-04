@@ -1,6 +1,6 @@
 // Cartões do mapa desenhados para texto (react-dom/server), com o estado FICTÍCIO dos testes do layout:
-// o condutor em primeiro com o volante, o tooltip da carrinha compacta, as casas sempre cheias e o botão de
-// fechar de um bloco com vizinho.
+// o condutor em primeiro com o volante, o tooltip da carrinha compacta, as casas sempre cheias, o aviso do
+// contrato (que não aparece no mapa) e o botão de fechar de um bloco com vizinho.
 
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -157,7 +157,8 @@ describe('casa que conta sempre como cheia', () => {
     const html = desenhar();
     expect(html).not.toContain('lugar-vazio');
     expect(html).toContain('1/1');
-    expect(html).toContain('conta sempre como cheia');
+    // Sem etiqueta "sempre cheia" (nem no title): só o comportamento.
+    expect(html).not.toMatch(/cheia/i);
   });
 
   it('uma casa normal mostra os lugares vazios', () => {
@@ -167,6 +168,19 @@ describe('casa que conta sempre como cheia', () => {
     );
     expect(html.match(/lugar-vazio/g)).toHaveLength(2);
     expect(html).toContain('1/3');
+  });
+});
+
+describe('aviso do contrato', () => {
+  it('não aparece no cartão da casa (nem no title): só na ficha da casa', () => {
+    // C1: contrato 3, com 5 moradores.
+    comEstado((e) => e);
+    const html = renderToStaticMarkup(
+      createElement(CartaoCasa, { casaId: 'C1', geometria: geometriaCasa(5), x: 0, y: 0, destaque: null }),
+    );
+    expect(html).toContain('5/4');
+    // (O ▲ da pastilha é o da gente a mais, da lotação: fica.)
+    expect(html).not.toMatch(/contrato|toler/i);
   });
 });
 

@@ -350,13 +350,13 @@ export function textoContagem(mostradas: number, total: number, comFiltros: bool
 
 // --- Foco e "mostrar" -----------------------------------------------------------------------------
 
-/** O que está em foco (a ficha aberta): uma pessoa, casa ou carrinha. */
+/** O que está em foco: uma pessoa (na Tabela, sem ficha: só o realce da linha), casa ou carrinha. */
 export type FocoTabela = { tipo: 'pessoa' | 'casa' | 'carrinha'; id: Id } | null;
 
 /**
- * Realce persistente de uma linha: 'foco' = a pessoa da ficha; 'marcada' = a linha em que se clicou
- * (clicar numa linha realça-a sem abrir a ficha); 'ligada' = mora na casa (ou vai na carrinha) da ficha;
- * null = nenhum.
+ * Realce persistente de uma linha: 'foco' = a pessoa em foco (pesquisa, nome na ficha de uma casa);
+ * 'marcada' = a linha em que se clicou (clicar numa linha só a realça); 'ligada' = mora na casa (ou vai
+ * na carrinha) da ficha; null = nenhum.
  */
 export function realceDaLinha(
   linha: Pick<LinhaTabela, 'pessoa' | 'casa' | 'carrinha'>,
@@ -374,10 +374,10 @@ export type RealceLinha = 'foco' | 'marcada' | 'ligada' | null;
 
 /**
  * A linha realçada depois de um clique numa linha (docs/vistas-edicao.md). A linha já mostra tudo, por
- * isso o clique NUNCA abre nem muda a ficha (só o ⓘ a seguir ao nome): fora da edição realça a linha
- * (outro clique na mesma tira o realce); no modo de edição a seleção é o realce (o clique seleciona) e
- * não fica nenhuma marcada. Na linha da pessoa da ficha (`focoPessoaId`) o clique não alterna: ela fica
- * marcada, para continuar realçada depois de a ficha fechar (o realce 'foco' tapava a mudança).
+ * isso o clique NUNCA abre ficha (na Tabela não há ficha da pessoa): fora da edição realça a linha (outro
+ * clique na mesma tira o realce); no modo de edição a seleção é o realce (o clique seleciona) e não fica
+ * nenhuma marcada. Na linha da pessoa em foco (`focoPessoaId`) o clique não alterna: ela fica marcada,
+ * para continuar realçada quando o clique lhe tira o foco (o realce 'foco' tapava a mudança).
  */
 export function marcadaDepoisDoClique(
   id: Id,

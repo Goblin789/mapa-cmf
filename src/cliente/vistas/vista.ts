@@ -5,7 +5,7 @@
 // dentro da reunião não (substitui a entrada atual). O botão "Reunião" acrescenta uma entrada marcada
 // (MARCA_REUNIAO no history.state); sair da reunião volta atrás nessa entrada, para não ficarem duas
 // entradas iguais seguidas. Entrando pelo endereço (#reuniao), sair substitui a entrada.
-// O agrupamento do Quadro (por casas ou por carrinhas) fica lembrado no browser (localStorage).
+// O agrupamento do Quadro (por casas, por carrinhas ou por obras) fica lembrado no browser (localStorage).
 
 import { useEffect } from 'react';
 import { create } from 'zustand';
@@ -18,14 +18,14 @@ export const VISTAS: readonly { id: Vista; rotulo: string; titulo: string }[] = 
   {
     id: 'quadro',
     rotulo: 'Quadro',
-    titulo: 'Quadro: casas e carrinhas em colunas, como as folhas do Michael',
+    titulo: 'Quadro: casas, carrinhas ou obras em colunas, como as folhas do Michael',
   },
 ];
 
 /** Na reunião só há o Quadro (por omissão) e o Mapa. */
 export const VISTAS_REUNIAO: readonly Vista[] = ['quadro', 'mapa'];
 
-export type Agrupamento = 'casas' | 'carrinhas';
+export type Agrupamento = 'casas' | 'carrinhas' | 'obras';
 
 export interface EstadoVista {
   vista: Vista;
@@ -76,7 +76,7 @@ export function hashDe(e: EstadoVista): string {
 const CHAVE_AGRUPAMENTO = 'mapa-cmf:quadro';
 
 export function lerAgrupamento(texto: string | null): Agrupamento {
-  return texto === 'carrinhas' ? 'carrinhas' : 'casas';
+  return texto === 'carrinhas' || texto === 'obras' ? texto : 'casas';
 }
 
 function carregarAgrupamento(): Agrupamento {

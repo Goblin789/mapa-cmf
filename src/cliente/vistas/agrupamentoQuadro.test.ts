@@ -82,16 +82,16 @@ describe('Quadro por casas', () => {
     expect(l2.vazios).toBe(2);
   });
 
-  it('a sugestão de onde dorme aparece marcada como sugerida; o aviso de contrato também vem', () => {
+  it('a sugestão de onde dorme aparece marcada como sugerida; o aviso de contrato não vem (só na ficha)', () => {
     const aldeia = bloco(casas, 'casa:casa-a');
     expect(aldeia.ligacoes).toEqual([{ tipo: 'carrinha', id: 'XX1002', rotulo: 'XX 1002', sugerida: true }]);
-    expect(aldeia.aviso).toEqual({ tipo: 'acima_maximo', usados: 2, maximo: 1, tolerado: 2 });
+    expect(aldeia).not.toHaveProperty('aviso');
     expect(aldeia.lotacao?.nivel).toBe('cheio');
   });
 
-  it('uma casa que conta sempre como cheia não tem lugares livres', () => {
+  it('uma casa que conta sempre como cheia não tem lugares livres (e não o diz: sem etiqueta)', () => {
     const monte = bloco(casas, 'casa:casa-m');
-    expect(monte.sempreCheia).toBe(true);
+    expect(monte).not.toHaveProperty('sempreCheia');
     expect(monte.lotacao).toEqual({ ocupados: 1, lugares: 1, nivel: 'cheio' });
     expect(monte.vazios).toBe(0);
   });
@@ -456,6 +456,82 @@ describe('filtro do Quadro (clientes e obras, vários de cada)', () => {
     ]);
     // Sem obras nenhumas: sem opções (o botão fica "Obra: sem obras", desativado).
     expect(opcoesObrasQuadro(estado, ind)).toEqual([]);
+  });
+});
+
+describe('Quadro por obras (ao lado de Casas e Carrinhas)', () => {
+  // Rui C. (alfa) na obra A; Ana B. (alfa) numa obra da Beta; uma obra de um cliente que não se conhece.
+  const comObras: Estado = {
+    ...estadoVistas(),
+    obras: [
+      criarObra({ id: 'obra-b', nome: 'Obra Fictícia B', clienteId: 'beta', localId: 'monte' }),
+      criarObra({ id: 'obra-x', nome: 'Obra Perdida', clienteId: 'cliente-que-saiu', localId: 'nenhum' }),
+      criarObra({ id: 'obra-a2', nome: 'Obra Fictícia A2', clienteId: 'alfa', localId: 'aldeia' }),
+      criarObra({ id: 'obra-a', nome: 'Obra Fictícia A', clienteId: 'alfa', localId: 'aldeia' }),
+    ],
+    pessoas: estadoVistas().pessoas.map((p) =>
+      p.id === 'p-2'
+        ? { ...p, obraId: 'obra-b' }
+        : p.id === 'p-3'
+          ? { ...p, obraId: 'obra-a' }
+          : p.id === 'p-4'
+            ? { ...p, obraId: 'obra-apagada' }
+            : p,
+    ),
+  };
+  const indO = indexar(comObras);
+  const obras = montarQuadro('obras', comObras, indO, dormidasDasCarrinhas(comObras, indO));
+
+  it('uma secção por cliente (pela ordem dos clientes), as obras pelo nome e no fim "Sem obra"', () => {
+    expect(obras.map((s) => s.titulo)).toEqual([
+      'Alfa Obras',
+      'Beta Construções',
+      'Cliente desconhecido',
+      null,
+    ]);
+    expect(obras.map((s) => s.nBlocos)).toEqual([2, 1, 1, 0]);
+    expect(obras.map((s) => s.nPessoas)).toEqual([1, 1, 0, 6]);
+    expect(obras[0]?.faixas.flatMap((f) => f.partes.flatMap((p) => p.blocos.map((b) => b.titulo)))).toEqual([
+      'Obra Fictícia A',
+      'Obra Fictícia A2',
+    ]);
+  });
+
+  it('o bloco da obra: o alvo de largar, o local por baixo, sem lotação nem livres', () => {
+    const a = bloco(obras, 'obra:obra-a');
+    expect(a.tipo).toBe('obra');
+    expect(a.id).toBe('obra-a');
+    expect(a.detalhe).toBe('Aldeia');
+    expect(a.lotacao).toBeNull();
+    expect(a.vazios).toBe(0);
+    expect(a.largo).toBe(false);
+    expect(nomes(a)).toEqual(['Rui C.']);
+    // Obra sem local conhecido: sem detalhe.
+    expect(bloco(obras, 'obra:obra-x').detalhe).toBeNull();
+  });
+
+  it('"Sem obra": bloco largo com quem não tem obra ou tem uma que não se conhece, por cliente', () => {
+    const sem = bloco(obras, 'sem-obra');
+    expect(sem.largo).toBe(true);
+    expect(sem.titulo).toBe('Sem obra');
+    expect(nomes(sem)).toContain('Eva D.');
+    expect(nomes(sem)).not.toContain('Velho I.');
+    expect(sem.pessoas).toHaveLength(6);
+    expect(sem.porCliente.reduce((n, p) => n + p.n, 0)).toBe(6);
+  });
+
+  it('o filtro das obras recolhe as outras obras (continuam lá, para largar)', () => {
+    const f: FiltroQuadro = { clientes: new Set(), obras: new Set(['obra-b']) };
+    const s = montarQuadro('obras', comObras, indO, dormidasDasCarrinhas(comObras, indO), f);
+    expect(nomes(bloco(s, 'obra:obra-b'))).toEqual(['Ana B.']);
+    expect(bloco(s, 'obra:obra-a').recolhido).toBe(true);
+    expect(bloco(s, 'sem-obra').recolhido).toBe(true);
+  });
+
+  it('sem obras nenhumas: só "Sem obra", com toda a gente ativa', () => {
+    const s = montarQuadro('obras', estado, ind, dormidas);
+    expect(s).toHaveLength(1);
+    expect(bloco(s, 'sem-obra').pessoas).toHaveLength(8);
   });
 });
 

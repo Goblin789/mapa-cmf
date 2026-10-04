@@ -175,11 +175,11 @@ de um nome:
   desenho de um nome (fundo branco ou escuro, fora da faixa de claridade dos nomes) e que os níveis se
   distinguem entre si, também com daltonismo simulado.
 
-Os avisos de contrato ("8 para contrato de 4 (tolerado 6)") continuam etiquetas de texto com fundo claro
+Os avisos de contrato (desde 04/10/2026 só na ficha da casa) continuam etiquetas de texto com fundo claro
 e contorno (âmbar ou vermelho): são frases com sinal de aviso, não se confundem com nomes. Atenção: o
 fundo amber-100 do aviso fica perto da menta da Galère com daltonismo (ΔE00 6,7 com deuteranopia, 3,3 com
-protanopia). O que os separa é a forma — frase que começa por "!" ou "!!", texto castanho ou vermelho,
-contorno colorido, sem sigla — e o sítio (por baixo do nome da casa, nunca entre os nomes).
+protanopia). O que os separa é a forma — frase que começa por "▲", texto castanho ou vermelho, contorno
+colorido, sem sigla — e o sítio (no resumo e no corpo da ficha da casa, nunca entre os nomes).
 
 ## Sigla nos nomes
 

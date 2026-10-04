@@ -11,7 +11,7 @@ import { type NivelLotacao, ocupacaoCarrinha, ocupacaoCasa } from '../../dominio
 import { chaveAlvo } from '../../dominio/operacoes';
 import type { Pessoa } from '../../dominio/tipos';
 import { IconeVolante } from '../comum/IconeVolante';
-import { ESTILO_AVISO_CONTRATO, ESTILO_NIVEL } from '../comum/lotacao';
+import { ESTILO_NIVEL } from '../comum/lotacao';
 import { Matricula } from '../comum/Matricula';
 import { NomeChip } from '../comum/NomeChip';
 import { ContextoOrdemPessoas } from '../comum/ordemPessoas';
@@ -169,12 +169,10 @@ export function SeccaoLista({ seccao: s, soCabecalho, recolhida, aoAlternar, com
 
   const ocCasa = casa ? ocupacaoCasa(casa, s.total) : null;
   const ocCarrinha = carrinha ? ocupacaoCarrinha(carrinha, s.total) : null;
-  const aviso = ocCasa ? ESTILO_AVISO_CONTRATO[ocCasa.aviso] : null;
   const dormidaCarrinha = carrinha ? dormidas?.get(carrinha.id) : undefined;
   const dormida = carrinha && dormidas ? textoDormida(dormidaCarrinha, indices) : null;
   const dormidaSugerida = dormidaCarrinha?.confianca === 'sugerida';
   const faltaCondutor = carrinha ? semCondutor(carrinha, indices) : false;
-  const sempreCheia = casa?.sempreCheia === true;
 
   // Destino no mapa (pino): a casa, onde dorme a carrinha, o local da obra.
   const destino = casa
@@ -293,21 +291,8 @@ export function SeccaoLista({ seccao: s, soCabecalho, recolhida, aoAlternar, com
         )}
       </div>
 
-      {(aviso || dormida || soCabecalho || faltaCondutor || sempreCheia) && (
+      {(dormida || soCabecalho || faltaCondutor) && (
         <p className="-mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 px-2 pb-1.5 pl-[1.625rem] text-[11px] text-slate-600">
-          {aviso && ocCasa && casa && (
-            <span
-              className={`inline-flex items-center rounded border px-1 leading-4 font-medium ${aviso.classe}`}
-              title={`${aviso.rotulo}${casa.notaContrato ? `. ${casa.notaContrato}` : ''}`}
-            >
-              <span aria-hidden="true">{ocCasa.aviso === 'acima_tolerado' ? '!!' : '!'}&nbsp;</span>
-              {ocCasa.usados} para contrato de {casa.maxContrato}
-              {casa.tolerado !== null && casa.tolerado !== casa.maxContrato
-                ? ` (tolerado ${casa.tolerado})`
-                : ''}
-              <span className="sr-only">: {aviso.rotulo.toLowerCase()}</span>
-            </span>
-          )}
           {dormida && carrinha && (
             <span className="inline-flex min-w-0 flex-wrap items-center gap-x-1 gap-y-0.5">
               <IconeDormir className="size-3 text-slate-400" />
@@ -350,14 +335,6 @@ export function SeccaoLista({ seccao: s, soCabecalho, recolhida, aoAlternar, com
             >
               <IconeVolante tamanho={11} className="text-slate-400" />
               {ROTULO_SEM_CONDUTOR}
-            </span>
-          )}
-          {sempreCheia && (
-            <span
-              className="text-slate-500 italic"
-              title="Não tem lugares livres: os lugares são os moradores"
-            >
-              conta sempre como cheia
             </span>
           )}
           {soCabecalho && <span className="text-slate-500 italic">Ninguém com estes filtros.</span>}

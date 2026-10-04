@@ -453,6 +453,16 @@ describe('textos', () => {
         depois: 'null',
       }),
     ).toBeNull();
+    // Sem a etiqueta "sempre cheia" (o Rafael não a quer em lado nenhum, nem no Histórico).
+    expect(
+      descreverAlteracaoDosDados(estado, {
+        entidade: 'casa',
+        entidadeId: 'casa-um',
+        campo: 'sempreCheia',
+        antes: 'false',
+        depois: 'true',
+      }),
+    ).toBe('Casa Um — lugares iguais aos moradores: não → sim');
     expect(
       descreverAlteracaoDosDados(estado, {
         entidade: 'pessoa',

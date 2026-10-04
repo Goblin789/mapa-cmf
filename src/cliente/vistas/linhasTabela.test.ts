@@ -372,12 +372,12 @@ describe('realceDaLinha', () => {
     expect(realceDaLinha(ze, null)).toBeNull();
   });
 
-  it('a pessoa da ficha: foco; as outras: nenhum', () => {
+  it('a pessoa em foco: foco; as outras: nenhum', () => {
     expect(realceDaLinha(ze, { tipo: 'pessoa', id: 'p-1' })).toBe('foco');
     expect(realceDaLinha(oscar, { tipo: 'pessoa', id: 'p-1' })).toBeNull();
   });
 
-  it('a linha em que se clicou: marcada (a da ficha ganha; a marcada ganha à ligada)', () => {
+  it('a linha em que se clicou: marcada (a em foco ganha; a marcada ganha à ligada)', () => {
     expect(realceDaLinha(ze, null, 'p-1')).toBe('marcada');
     expect(realceDaLinha(oscar, null, 'p-1')).toBeNull();
     expect(realceDaLinha(ze, { tipo: 'pessoa', id: 'p-1' }, 'p-1')).toBe('foco');
@@ -396,16 +396,16 @@ describe('realceDaLinha', () => {
 });
 
 describe('marcadaDepoisDoClique', () => {
-  it('só realça a linha (nunca abre nem muda a ficha); outro clique na mesma tira o realce', () => {
+  it('só realça a linha (nunca abre ficha); outro clique na mesma tira o realce', () => {
     expect(marcadaDepoisDoClique('p-1', null, false)).toBe('p-1');
     expect(marcadaDepoisDoClique('p-1', 'p-1', false)).toBeNull();
     expect(marcadaDepoisDoClique('p-2', 'p-1', false)).toBe('p-2');
   });
 
-  it('na linha da pessoa da ficha, o clique não tira o realce (fica realçada ao fechar a ficha)', () => {
+  it('na linha da pessoa em foco, o clique não tira o realce (fica realçada quando perde o foco)', () => {
     expect(marcadaDepoisDoClique('p-1', 'p-1', false, 'p-1')).toBe('p-1');
     expect(marcadaDepoisDoClique('p-1', null, false, 'p-1')).toBe('p-1');
-    // As outras linhas alternam como sempre, com a ficha aberta.
+    // As outras linhas alternam como sempre.
     expect(marcadaDepoisDoClique('p-2', 'p-2', false, 'p-1')).toBeNull();
     expect(marcadaDepoisDoClique('p-2', 'p-1', false, 'p-1')).toBe('p-2');
   });

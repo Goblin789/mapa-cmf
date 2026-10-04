@@ -1,5 +1,5 @@
 // Cabeçalho do modo reunião, pensado para uma TV 1920×1080 vista de longe: a marca, o dia e a hora,
-// "Atualizado às HH:MM", Quadro | Mapa (e Casas | Carrinhas no Quadro) e "Sair da reunião".
+// "Atualizado às HH:MM", Quadro | Mapa (e Casas | Carrinhas | Obras no Quadro) e "Sair da reunião".
 // Sem Editar nem Histórico: a reunião é só para ver. Sem os contadores (Livres nas casas, Sem transporte…):
 // saíram a pedido do Rafael (04/10/2026) e o Quadro/Mapa da TV fica com esse espaço. No Quadro, a partir de
 // xl, os filtros dos clientes e das obras ficam aqui, a seguir à hora (FiltrosReuniao, em Quadro.tsx).
