@@ -3,12 +3,15 @@
 // volante) e, em baixo, a ligação: numa casa as carrinhas que lá dormem, numa carrinha onde dorme.
 // Agrupamento e ordem em agrupamentoQuadro.ts (país, zonas de vizinhos lado a lado, "fora/sem" no fim).
 //
+// Casas e carrinhas mostram os lugares livres ("livre", tracejados) até à lotação.
+//
 // O Quadro faz o mesmo que o mapa sem nunca mudar de vista (docs/vistas-edicao.md):
 // - Ler: clicar num nome abre a ficha da pessoa; clicar no título de uma casa ou carrinha abre a dela (a
 //   mesma ficha do mapa, PainelFoco lugar="vista", por cima dos blocos). O que está em foco tem um anel; uma
 //   casa em foco no Quadro por carrinhas (ou uma carrinha no Quadro por casas) realça os nomes de quem lá
 //   mora (ou vai). Os pedidos de mostrar (pesquisa, contadores, ligações da ficha e do rodapé: mostrar.ts)
-//   deslizam até ao bloco ou aos nomes e acendem-nos (realceQuadro.ts). A legenda dos clientes vai na barra.
+//   deslizam até ao bloco ou aos nomes e acendem-nos (realceQuadro.ts); sem nada a que chegar, um aviso
+//   curto diz porquê. A legenda dos clientes vai na barra.
 // - Editar (modo de edição, como no mapa e na lista lateral): os nomes selecionam-se (clique, Ctrl/⌘+clique,
 //   Shift+clique) e arrastam-se (motor de arrastar/, toque longo no telemóvel) para outro bloco: cada bloco
 //   é um alvo (data-alvo = a chave do bloco) e o fantasma mostra a previsão. Shift+arrastar no fundo desenha
@@ -24,10 +27,11 @@
 // compridos partem em duas linhas (nunca ficam cortados: na TV não há rato para ver o title), e a
 // medição conta com isso.
 // - Reunião (TV 1920×1080 vista de longe): sem a marca e o modelo das carrinhas; letra de 14 a 30 px.
-//   Se nem a 14 couber, passa a compacto (sem os lugares livres desenhados nem o que a pastilha ou o
-//   título da secção já dizem) e tenta de 13 a 30; se nem assim, fica a 13 e desliza. Antes letra
-//   legível que tudo minúsculo.
-// - PC: de 12 a 16 px e, se não couber, fica a 14 px e desliza na vertical. No modo de edição a letra só
+//   Se nem a 14 couber, os lugares livres de cada bloco juntam-se numa só linha ("4 livres") e sai o que
+//   a pastilha ou o título da secção já dizem, de 13 a 30; se nem assim, compacto (sem os livres), de 13
+//   a 30; se nem assim, fica a 13 e desliza. Antes letra legível que tudo minúsculo.
+// - PC: de 12 a 16 px; se não couber, com os livres numa linha; se nem assim, fica a 14 px, completo, e
+//   desliza na vertical (os degraus em agrupamentoQuadro.ts, DEGRAUS_AJUSTE). No modo de edição a letra só
 //   se volta a escolher quando muda o agrupamento, o número de blocos ou o espaço (cada largada não faz
 //   saltar o Quadro todo); se deixar de caber, desliza.
 // - Telemóvel: uma coluna, 14 px, desliza.
@@ -66,10 +70,12 @@ import { comPlural } from '../paineis/textos';
 import {
   type BlocoQuadro,
   blocosDoQuadro,
-  type DegrauAjuste,
+  DEGRAUS_AJUSTE,
   escolherAjuste,
   type FaixaQuadro,
+  LETRA_NORMAL,
   type LigacaoQuadro,
+  type ModoAjuste,
   montarQuadro,
   type SeccaoQuadro,
 } from './agrupamentoQuadro';
@@ -83,28 +89,14 @@ import {
   useAoMostrar,
 } from './mostrar';
 import { BotaoExcel, NomeVista, PastilhaVista } from './pecas';
-import { blocoTemAlteracoes, chavesNoQuadro, pessoasDoFocoSemBloco } from './realceQuadro';
+import {
+  avisoSemNadaNoQuadro,
+  blocoTemAlteracoes,
+  chavesNoQuadro,
+  pessoasDoFocoSemBloco,
+} from './realceQuadro';
 import { type Agrupamento, useVista } from './vista';
 
-/** Letra (px) no telemóvel e quando não cabe no PC. */
-const LETRA_NORMAL = 14;
-/** Os degraus do ajuste (ver escolherAjuste) e o que fica se nenhum couber. */
-const AJUSTES: Record<
-  'reuniao' | 'normal',
-  { degraus: DegrauAjuste[]; senaoCouber: { letra: number; compacto: boolean } }
-> = {
-  reuniao: {
-    degraus: [
-      { compacto: false, minimo: 14, maximo: 30 },
-      { compacto: true, minimo: 13, maximo: 30 },
-    ],
-    senaoCouber: { letra: 13, compacto: true },
-  },
-  normal: {
-    degraus: [{ compacto: false, minimo: 12, maximo: 16 }],
-    senaoCouber: { letra: LETRA_NORMAL, compacto: false },
-  },
-};
 /** O mesmo ponto de quebra que o `sm:` do Tailwind: abaixo disto, uma coluna. */
 const CONSULTA_VARIAS_COLUNAS = '(min-width: 40rem)';
 
@@ -126,11 +118,16 @@ const NOMES_LARGO = 'flex flex-wrap gap-[0.18em]';
 /** Textos secundários (rodapé, títulos das ruas): nunca abaixo de 0,85 da letra do quadro. */
 const TEXTO_SECUNDARIO = 'text-[0.85em]';
 /**
- * No modo compacto (`data-compacto` no interior do quadro, ver useAjuste) escondem-se os lugares livres
- * desenhados e o "Ninguém." dos blocos com pastilha (ela já diz quantos há). É CSS para a medição não ter
- * de esperar pelo React.
+ * Fora do modo completo (`data-compacto` no interior do quadro, ver useAjuste e ModoAjuste) escondem-se os
+ * lugares livres um a um, o "Ninguém." dos blocos com pastilha (ela já diz quantos há) e o "por definir"
+ * do rodapé. Nos livres numa linha (`data-livres-linha`) aparece, em vez deles, uma linha por bloco. É CSS
+ * para a medição não ter de esperar pelo React.
  */
 const SO_COMPLETO = 'group-data-[compacto]:hidden';
+const SO_LIVRES_NUMA_LINHA = 'hidden group-data-[livres-linha]:block';
+/** Um lugar livre (ou a linha que os junta): tracejado, igual nas casas e nas carrinhas. */
+const LIVRE =
+  'flex rounded-[0.25em] border border-dashed border-slate-300 px-[0.4em] leading-[1.35] text-slate-400 italic';
 /** Realce do bloco quando se arrasta um nome por cima (o motor põe data-alvo-estado="por-cima"). */
 const POR_CIMA =
   'data-[alvo-estado=por-cima]:border-blue-500 data-[alvo-estado=por-cima]:bg-blue-50 data-[alvo-estado=por-cima]:ring-2 data-[alvo-estado=por-cima]:ring-blue-500 data-[alvo-estado=por-cima]:outline-none';
@@ -146,7 +143,7 @@ const NINGUEM: ReadonlySet<Id> = new Set();
 
 interface Ajuste {
   letra: number;
-  compacto: boolean;
+  modo: ModoAjuste;
 }
 
 /**
@@ -158,8 +155,13 @@ function alturaMatricula(letra: number): number {
   return Math.max(16, Math.floor(letra * 1.5));
 }
 
+/** Atributos `data-` do interior do quadro em cada modo (para SO_COMPLETO e SO_LIVRES_NUMA_LINHA). */
+function atributosDoModo(modo: ModoAjuste): { compacto: boolean; livresLinha: boolean } {
+  return { compacto: modo !== 'completo', livresLinha: modo === 'livres-numa-linha' };
+}
+
 /**
- * Escolhe a letra do quadro (e se é compacto) para caber no contentor. Volta a medir quando o contentor
+ * Escolhe a letra do quadro (e o modo, ver ModoAjuste) para caber no contentor. Volta a medir quando o contentor
  * muda de tamanho, quando as letras da marca acabam de carregar, quando muda o que se mostra (`chave`) e
  * depois de cada mudança de letra (a matrícula tem altura em px: só fica certa depois de desenhada).
  */
@@ -169,7 +171,7 @@ function useAjuste(
   reuniao: boolean,
   chave: unknown,
 ): Ajuste {
-  const [ajuste, setAjuste] = useState<Ajuste>({ letra: LETRA_NORMAL, compacto: false });
+  const [ajuste, setAjuste] = useState<Ajuste>({ letra: LETRA_NORMAL, modo: 'completo' });
   // biome-ignore lint/correctness/useExhaustiveDependencies: `chave` e o ajuste atual só servem para voltar a medir.
   useLayoutEffect(() => {
     const cont = contentor.current;
@@ -177,34 +179,36 @@ function useAjuste(
     if (!cont || !inter) return;
     let ativo = true;
     let pedido = 0;
-    const aplicar = ({ letra, compacto }: Ajuste) => {
+    const aplicar = ({ letra, modo }: Ajuste) => {
       inter.style.fontSize = `${letra}px`;
-      if (compacto) inter.dataset.compacto = '';
-      else delete inter.dataset.compacto;
+      for (const [nome, sim] of Object.entries(atributosDoModo(modo))) {
+        if (sim) inter.dataset[nome] = '';
+        else delete inter.dataset[nome];
+      }
     };
     const guardar = (novo: Ajuste) =>
-      setAjuste((a) => (a.letra === novo.letra && a.compacto === novo.compacto ? a : novo));
+      setAjuste((a) => (a.letra === novo.letra && a.modo === novo.modo ? a : novo));
     const ajustar = () => {
       if (!ativo) return;
       if (!window.matchMedia(CONSULTA_VARIAS_COLUNAS).matches) {
-        const fixo = { letra: LETRA_NORMAL, compacto: false };
+        const fixo: Ajuste = { letra: LETRA_NORMAL, modo: 'completo' };
         aplicar(fixo);
         guardar(fixo);
         return;
       }
-      const { degraus, senaoCouber } = reuniao ? AJUSTES.reuniao : AJUSTES.normal;
+      const { degraus, senaoCouber } = reuniao ? DEGRAUS_AJUSTE.reuniao : DEGRAUS_AJUSTE.normal;
       // Sem barra de deslizar durante a medição (tirava largura e mudava as colunas).
       const overflow = cont.style.overflowY;
       cont.style.overflowY = 'hidden';
       // 2 px de folga para arredondamentos.
       const disponivel = cont.clientHeight - 2;
-      const escolha = escolherAjuste(degraus, senaoCouber, (letra, compacto) => {
-        aplicar({ letra, compacto });
+      const escolha = escolherAjuste(degraus, senaoCouber, (letra, modo) => {
+        aplicar({ letra, modo });
         return inter.offsetHeight <= disponivel;
       });
       aplicar(escolha);
       cont.style.overflowY = overflow;
-      guardar({ letra: escolha.letra, compacto: escolha.compacto });
+      guardar({ letra: escolha.letra, modo: escolha.modo });
     };
     ajustar();
     const observador = new ResizeObserver(() => {
@@ -438,6 +442,15 @@ function PorCliente({ bloco }: { bloco: BlocoQuadro }) {
   );
 }
 
+/** Os lugares livres de um bloco numa só linha ("4 livres"), no modo livres-numa-linha. */
+function LivresNumaLinha({ vazios }: { vazios: number }) {
+  return (
+    <li aria-hidden="true" data-livre="" className={`min-w-0 ${SO_LIVRES_NUMA_LINHA}`}>
+      <span className={LIVRE}>{comPlural(vazios, 'livre', 'livres')}</span>
+    </li>
+  );
+}
+
 function BlocoVista({ bloco, letra }: { bloco: BlocoQuadro; letra: number }) {
   const indices = useLoja((s) => s.indices);
   const reuniao = useVista((s) => s.reuniao);
@@ -529,14 +542,19 @@ function BlocoVista({ bloco, letra }: { bloco: BlocoQuadro; letra: number }) {
             ))}
             {Array.from({ length: vazios }, (_, i) => (
               // biome-ignore lint/suspicious/noArrayIndexKey: os lugares livres não têm identidade própria.
-              <li key={`livre-${i}`} aria-hidden="true" className={`min-w-0 ${SO_COMPLETO}`}>
-                <span className="flex rounded-[0.25em] border border-dashed border-slate-300 px-[0.4em] leading-[1.35] text-slate-400 italic">
-                  livre
-                </span>
+              <li key={`livre-${i}`} aria-hidden="true" data-livre="" className={`min-w-0 ${SO_COMPLETO}`}>
+                <span className={LIVRE}>livre</span>
               </li>
             ))}
+            {pessoas.length > 0 && vazios > 0 && <LivresNumaLinha vazios={vazios} />}
           </ul>
         </ContextoOrdemPessoas.Provider>
+      )}
+      {/* Bloco vazio: a lista de cima esconde-se fora do completo; os livres numa linha vêm à parte. */}
+      {pessoas.length === 0 && vazios > 0 && (
+        <ul className={`${SO_LIVRES_NUMA_LINHA} px-[0.35em] pt-[0.1em] pb-[0.35em]`}>
+          <LivresNumaLinha vazios={vazios} />
+        </ul>
       )}
       <Rodape bloco={bloco} interativo={interativo} />
     </article>
@@ -649,7 +667,7 @@ export function Quadro({ reuniao = false }: { reuniao?: boolean }) {
   const nBlocos = useMemo(() => blocosDoQuadro(seccoes).filter((b) => !b.largo).length, [seccoes]);
   // No modo de edição o rascunho muda o estado a cada largada: a letra só se volta a escolher quando muda o
   // agrupamento ou o número de blocos (ou o espaço, pelo ResizeObserver); se deixar de caber, desliza.
-  const { letra, compacto } = useAjuste(
+  const { letra, modo } = useAjuste(
     contentor,
     interior,
     reuniao,
@@ -694,13 +712,19 @@ export function Quadro({ reuniao = false }: { reuniao?: boolean }) {
   // Pesquisa, contadores, ligações: desliza até ao elemento e acende-o, sem mudar de vista (também na
   // reunião). Depois de desenhar: o foco acabou de mudar (anéis, espaço da ficha no telemóvel).
   // Procura-se só dentro do Quadro (o mapa escondido também tem data-alvo e data-pessoa-id).
+  // Sem nada a que chegar (ex.: casa sem moradores e sem carrinhas a dormir lá, no Quadro por carrinhas),
+  // um aviso curto diz porquê; o agrupamento não muda.
   useAoMostrar((elemento) => {
     const { indices: ind, dormidas: dorm } = useLoja.getState();
     if (!ind || !dorm) return;
-    revelarDepoisDeDesenhar(
-      () => raiz.current,
-      chavesNoQuadro(elemento, useVista.getState().agrupamento, ind, dorm),
-    );
+    const agrup = useVista.getState().agrupamento;
+    const chaves = chavesNoQuadro(elemento, agrup, ind, dorm);
+    if (chaves.length === 0) {
+      const aviso = avisoSemNadaNoQuadro(elemento, agrup, ind, dorm);
+      if (aviso) useUiEdicao.getState().avisar(aviso);
+      return;
+    }
+    revelarDepoisDeDesenhar(() => raiz.current, chaves);
   });
 
   if (!estado || !indices || !dormidas) return null;
@@ -729,7 +753,11 @@ export function Quadro({ reuniao = false }: { reuniao?: boolean }) {
           {editar && (
             <div className="flex w-full flex-wrap items-center gap-x-3 gap-y-1">
               <p className="min-w-0 flex-1 basis-56 text-xs leading-snug text-slate-600">
-                Arrasta os nomes para outra casa ou carrinha (no telemóvel, toque longo).
+                {/* No telemóvel numa linha só: os blocos e a ficha precisam da altura. */}
+                <span className="sm:hidden">Toque longo num nome para o arrastar.</span>
+                <span className="max-sm:hidden">
+                  Arrasta os nomes para outra casa ou carrinha (no telemóvel, toque longo).
+                </span>
                 <span className="hidden md:inline"> Shift+arrastar no fundo seleciona vários.</span>
               </p>
               {nSugestoes > 0 && (
@@ -758,7 +786,8 @@ export function Quadro({ reuniao = false }: { reuniao?: boolean }) {
           <div
             ref={interior}
             className="group flex flex-col gap-[0.7em] p-[0.6em] text-slate-900"
-            data-compacto={compacto ? '' : undefined}
+            data-compacto={atributosDoModo(modo).compacto ? '' : undefined}
+            data-livres-linha={atributosDoModo(modo).livresLinha ? '' : undefined}
             style={{ fontSize: `${letra}px` }}
           >
             <ContextoRealceFoco.Provider value={realceFoco}>

@@ -1,5 +1,6 @@
 // Vista Tabela: uma linha por pessoa ativa — Nome, Nº, Cliente, Obra, Casa, Carrinha, Condutor e o que
-// está por confirmar. Ordena-se clicando no cabeçalho (aria-sort); o campo da barra filtra (indiferente a
+// está por confirmar. O nome é o completo com maiúsculas normais (dominio/nomes.ts), numa só etiqueta da
+// cor do cliente e sem a sigla (a coluna Cliente já a mostra). Ordena-se clicando no cabeçalho (aria-sort); o campo da barra filtra (indiferente a
 // acentos), com filtros por cliente, casa e carrinha. O cabeçalho fica fixo; no telemóvel a tabela desliza
 // dentro do seu contentor (a página nunca desliza na horizontal) e a coluna do nome fica presa à esquerda.
 // A ordem e os filtros mantêm-se ao mudar de vista.
@@ -8,12 +9,15 @@
 // cima da tabela); o nome da casa e a matrícula abrem a ficha da casa ou da carrinha. A linha em foco fica
 // realçada, e as da casa ou carrinha em foco levemente. A pesquisa do cabeçalho, os contadores e as
 // ligações da ficha mostram aqui (useAoMostrar): desliza até às linhas e acende-as, limpando os filtros
-// que as escondam.
+// que as escondam. Com um cliente aceso na legenda (no Mapa ou no Quadro), as linhas dos outros ficam
+// esbatidas, como os nomes no Quadro; a barra diz qual está aceso e tem "Todos".
 //
 // No modo de edição mostra a simulação (o rascunho) e edita como o mapa: coluna de caixas de seleção
 // (e "todas as visíveis"), clique na linha = seleção como nos nomes (Ctrl/⌘, Shift pela ordem visível),
 // Casa, Carrinha e Obra em listas (cada escolha é um passo do rascunho), o condutor num botão, células
-// alteradas a âmbar com "antes: …". Várias de uma vez: selecionar e "Mover para…" da barra âmbar.
+// alteradas a âmbar com "antes: …". Várias de uma vez: selecionar e "Mover para…" da barra âmbar. Ao lado
+// das listas Casa e Carrinha, um botão abre a ficha da casa/carrinha; na barra, "Confirmar todas as
+// sugestões (N)" (onde dormem as carrinhas), como no Quadro por carrinhas e na lista lateral.
 
 import {
   type CSSProperties,
@@ -30,7 +34,7 @@ import {
   useState,
 } from 'react';
 import { create } from 'zustand';
-import type { Id } from '../../dominio/tipos';
+import type { Cliente, Id } from '../../dominio/tipos';
 import { modoDoClique } from '../arrastar/selecao';
 import { IconeVolante } from '../comum/IconeVolante';
 import { formatarMatricula, Matricula } from '../comum/Matricula';
@@ -41,10 +45,12 @@ import {
   moverComAviso,
   refazerComAviso,
 } from '../edicao/acoes';
+import { BOTAO_MINI } from '../edicao/classes';
 import { ContornoEdicao } from '../edicao/Edicao';
+import { operacoesConfirmarSugestoes } from '../edicao/ondeDorme';
 import { haDialogoAberto, useUiEdicao } from '../edicao/ui';
 import { useLoja } from '../estado/loja';
-import { IconeLupa } from '../lista/icones';
+import { IconeCarrinhaLado, IconeCarroLado, IconeCasa, IconeDormir, IconeLupa } from '../lista/icones';
 import { clientesPorOrdem } from '../paineis/agrupar';
 import { FOCO_VISIVEL } from '../paineis/classes';
 import { PainelFoco } from '../paineis/PainelFoco';
@@ -77,6 +83,7 @@ import {
   filtrarLinhas,
   filtrosTabelaAtivos,
   type LinhaTabela,
+  linhaApagada,
   linhasDaTabela,
   modoDaCaixa,
   ORDEM_INICIAL,
@@ -253,7 +260,7 @@ function escolherNaCelula(lista: HTMLSelectElement, linha: LinhaTabela, campo: C
   depoisDeDesenhar(() => {
     const tr = raiz.querySelector<HTMLTableRowElement>(seletorElementos([chave]));
     if (!tr) {
-      const texto = `${linha.nome} já não aparece com estes filtros.`;
+      const texto = `${linha.nomeMostrado} já não aparece com estes filtros.`;
       useUiEdicao.getState().avisar(aviso ? `${aviso} ${texto}` : texto);
     } else if (tr.sectionRowIndex !== antes) revelarElementos(raiz, [chave]);
   });
@@ -323,7 +330,7 @@ function ListaCelula({ campo, linha }: { campo: CampoCelula; linha: LinhaTabela 
 
   return (
     <select
-      aria-label={`${ROTULO_LISTA[campo]} de ${linha.nomeCompleto}`}
+      aria-label={`${ROTULO_LISTA[campo]} de ${linha.nomeMostrado}`}
       title={provisoria !== null ? 'Enter grava a escolha; Esc anula' : undefined}
       value={mostrado}
       onPointerDown={() => {
@@ -359,6 +366,32 @@ function ListaCelula({ campo, linha }: { campo: CampoCelula; linha: LinhaTabela 
   );
 }
 
+/** Botão pequeno ao lado das listas Casa e Carrinha (modo de edição): abre a ficha da casa/carrinha. */
+function BotaoFicha({
+  titulo,
+  aoClicar,
+  children,
+}: {
+  titulo: string;
+  aoClicar: (e: MouseEvent<HTMLButtonElement>) => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      title={titulo}
+      aria-label={titulo}
+      onClick={aoClicar}
+      className={`inline-flex size-7 shrink-0 items-center justify-center rounded border border-slate-300 bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900 ${FOCO_VISIVEL}`}
+    >
+      {children}
+    </button>
+  );
+}
+
+/** O lugar do BotaoFicha quando não há casa/carrinha: as marcas "●" ficam alinhadas. */
+const SEM_BOTAO_FICHA = <span aria-hidden="true" className="w-7 shrink-0" />;
+
 type RealceLinha = 'foco' | 'ligada' | null;
 
 interface PropsLinha {
@@ -366,6 +399,8 @@ interface PropsLinha {
   modoEdicao: boolean;
   selecionada: boolean;
   realce: RealceLinha;
+  /** Outro cliente está aceso na legenda: a linha fica esbatida (como os nomes no Quadro). */
+  apagada: boolean;
   /** Há obras no estado (sem obras e sem obra na pessoa, a célula fica "sem obra", como na ficha). */
   haObras: boolean;
   antes: AntesDaLinha | undefined;
@@ -397,13 +432,18 @@ const LinhaPessoa = memo(function LinhaPessoa({
   modoEdicao,
   selecionada,
   realce,
+  apagada,
   haObras,
   antes,
   obterOrdem,
 }: PropsLinha) {
   const id = l.pessoa.id;
+  const casa = l.casa;
   const carrinha = l.carrinha;
   const conduz = l.condutor;
+  const tituloCarrinha = carrinha
+    ? `Abrir a ficha ${carrinha.tipo === 'carro' ? 'do carro' : 'da carrinha'} ${formatarMatricula(carrinha.matricula)}`
+    : '';
 
   // O teclado usa o botão do nome; o clique serve a linha toda. Os controlos das células param o clique.
   // Ao abrir a ficha, a linha fica à vista (no telemóvel a ficha abre em baixo, por cima das linhas).
@@ -456,7 +496,8 @@ const LinhaPessoa = memo(function LinhaPessoa({
         // Shift+clique escolhe um intervalo: sem selecionar o texto das linhas pelo meio.
         if (modoEdicao && e.shiftKey && !(e.target as HTMLElement).closest('select')) e.preventDefault();
       }}
-      className="group cursor-pointer"
+      // Esbatida: o conteúdo das células (não o fundo: as células presas tapam o que desliza por baixo).
+      className={`group cursor-pointer ${apagada ? '[&>td>*]:opacity-25' : ''}`}
     >
       {modoEdicao && (
         // biome-ignore lint/a11y/useKeyWithClickEvents: só impede o clique da linha; o teclado usa a caixa.
@@ -466,7 +507,7 @@ const LinhaPessoa = memo(function LinhaPessoa({
           onClick={(e) => e.stopPropagation()}
         >
           <label className="flex min-h-8 w-full cursor-pointer items-center justify-center">
-            <span className="sr-only">Selecionar {l.nomeCompleto}</span>
+            <span className="sr-only">Selecionar {l.nomeMostrado}</span>
             <input
               type="checkbox"
               checked={selecionada}
@@ -490,21 +531,20 @@ const LinhaPessoa = memo(function LinhaPessoa({
         <button
           type="button"
           title="Abrir a ficha"
-          aria-label={`Abrir a ficha de ${l.nomeCompleto}`}
-          className={`flex max-w-[22rem] min-w-0 items-center gap-2 rounded text-left ${FOCO_VISIVEL}`}
+          aria-label={`Abrir a ficha de ${l.nomeMostrado}`}
+          className={`flex min-w-0 items-center rounded text-left ${FOCO_VISIVEL}`}
         >
           <NomeVista
             pessoa={l.pessoa}
             condutor={l.condutor}
-            className="w-[9rem] shrink-0 text-[13px] sm:w-[11.5rem]"
+            nome={l.nomeMostrado}
+            semSigla
+            className={`${modoEdicao ? 'w-[9rem]' : 'w-[12rem]'} shrink-0 text-[13px] sm:w-[16rem] 2xl:w-[18.5rem]`}
           />
-          {l.nomeCompleto !== l.nome && (
-            <span className="hidden min-w-0 truncate text-xs text-slate-500 lg:inline">{l.nomeCompleto}</span>
-          )}
         </button>
       </td>
       <td className={`${CELULA} text-xs whitespace-nowrap text-slate-700 tabular-nums ${fundo}`} style={meio}>
-        {l.numero ?? <Vazio>—</Vazio>}
+        {l.numero !== null ? <span>{l.numero}</span> : <Vazio>—</Vazio>}
       </td>
       <td className={`${CELULA} whitespace-nowrap ${fundo}`} style={meio}>
         <span className="inline-flex items-center gap-1.5">
@@ -518,24 +558,36 @@ const LinhaPessoa = memo(function LinhaPessoa({
             <ListaCelula campo="obra" linha={l} />
             <MarcaAntes antes={antes?.obra} />
           </span>
+        ) : l.obra ? (
+          <span>{l.obra.nome}</span>
         ) : (
-          (l.obra?.nome ?? <Vazio>sem obra</Vazio>)
+          <Vazio>sem obra</Vazio>
         )}
       </td>
       <td className={`${CELULA} whitespace-nowrap ${fundoDe(antes?.casa)}`} style={meio} title={antes?.casa}>
         {modoEdicao ? (
           <span className="flex items-center gap-1">
             <ListaCelula campo="casa" linha={l} />
+            {casa ? (
+              <BotaoFicha
+                titulo={`Abrir a ficha de ${casa.nome}`}
+                aoClicar={(e) => abrir(e, { tipo: 'casa', id: casa.id })}
+              >
+                <IconeCasa className="size-4" />
+              </BotaoFicha>
+            ) : (
+              SEM_BOTAO_FICHA
+            )}
             <MarcaAntes antes={antes?.casa} />
           </span>
-        ) : l.casa ? (
+        ) : casa ? (
           <button
             type="button"
-            onClick={(e) => l.casa && abrir(e, { tipo: 'casa', id: l.casa.id })}
-            title={`Abrir a ficha de ${l.casa.nome}`}
+            onClick={(e) => abrir(e, { tipo: 'casa', id: casa.id })}
+            title={`Abrir a ficha de ${casa.nome}`}
             className={LIGACAO}
           >
-            {l.casa.nome}
+            {casa.nome}
           </button>
         ) : (
           <Vazio>{ROTULO_FORA_DAS_CASAS}</Vazio>
@@ -549,13 +601,27 @@ const LinhaPessoa = memo(function LinhaPessoa({
         {modoEdicao ? (
           <span className="flex items-center gap-1">
             <ListaCelula campo="carrinha" linha={l} />
+            {carrinha ? (
+              <BotaoFicha
+                titulo={tituloCarrinha}
+                aoClicar={(e) => abrir(e, { tipo: 'carrinha', id: carrinha.id })}
+              >
+                {carrinha.tipo === 'carro' ? (
+                  <IconeCarroLado className="size-4" />
+                ) : (
+                  <IconeCarrinhaLado className="size-4" />
+                )}
+              </BotaoFicha>
+            ) : (
+              SEM_BOTAO_FICHA
+            )}
             <MarcaAntes antes={antes?.carrinha} />
           </span>
         ) : carrinha ? (
           <button
             type="button"
             onClick={(e) => abrir(e, { tipo: 'carrinha', id: carrinha.id })}
-            title={`Abrir a ficha ${carrinha.tipo === 'carro' ? 'do carro' : 'da carrinha'} ${formatarMatricula(carrinha.matricula)}`}
+            title={tituloCarrinha}
             className={`${LIGACAO} inline-flex`}
           >
             <Matricula matricula={carrinha.matricula} altura={18} />
@@ -574,8 +640,8 @@ const LinhaPessoa = memo(function LinhaPessoa({
             <button
               type="button"
               aria-pressed={conduz}
-              aria-label={rotuloBotaoCondutor(l.nome, carrinha, conduz)}
-              title={rotuloBotaoCondutor(l.nome, carrinha, conduz)}
+              aria-label={rotuloBotaoCondutor(l.nomeMostrado, carrinha, conduz)}
+              title={rotuloBotaoCondutor(l.nomeMostrado, carrinha, conduz)}
               onClick={(e) => {
                 e.stopPropagation();
                 definirCondutorComAviso(carrinha.id, conduz ? null : id);
@@ -680,6 +746,31 @@ function CaixaTodas({ ids }: { ids: readonly Id[] }) {
   );
 }
 
+/**
+ * Cliente aceso na legenda (no Mapa ou no Quadro): diz qual é e "Todos" volta a acender todos. No
+ * telemóvel só a marca do cliente e "Todos" (o "Só <cliente>" fica para os leitores de ecrã), para
+ * caber na linha de "Só a confirmar" e da contagem.
+ */
+function ClienteAceso({ cliente }: { cliente: Cliente }) {
+  return (
+    <p
+      className="order-5 flex min-w-0 shrink-0 items-center gap-1.5 text-sm text-slate-700 sm:order-4"
+      title={`Só ${cliente.nome} aceso (legenda)`}
+    >
+      <MarcaCliente cliente={cliente} />
+      <span className="max-w-[10rem] truncate max-sm:sr-only">Só {cliente.nome}</span>
+      <button
+        type="button"
+        onClick={() => useLoja.getState().definirClienteDestacado(null)}
+        title="Mostrar todos os clientes"
+        className={`rounded px-1 text-slate-600 underline underline-offset-2 hover:text-slate-900 ${FOCO_VISIVEL}`}
+      >
+        Todos
+      </button>
+    </p>
+  );
+}
+
 export function Tabela() {
   const estado = useLoja((s) => s.estado);
   const indices = useLoja((s) => s.indices);
@@ -688,6 +779,8 @@ export function Tabela() {
   const foco = useLoja((s) => s.foco);
   const pendentes = useLoja((s) => s.pendentes);
   const estadoServidor = useLoja((s) => s.estadoServidor);
+  const dormidas = useLoja((s) => s.dormidas);
+  const clienteDestacado = useLoja((s) => s.clienteDestacado);
   const ordem = useEstadoTabela((s) => s.ordem);
   const filtros = useEstadoTabela((s) => s.filtros);
   const definirFiltros = useEstadoTabela((s) => s.definirFiltros);
@@ -726,6 +819,12 @@ export function Tabela() {
     [modoEdicao, pendentes, estadoServidor, estado],
   );
 
+  // "Confirmar todas as sugestões (N)" (onde dormem as carrinhas), no modo de edição.
+  const nSugestoes = useMemo(
+    () => (modoEdicao && estado && dormidas ? operacoesConfirmarSugestoes(estado, dormidas).length : 0),
+    [modoEdicao, estado, dormidas],
+  );
+
   // Pesquisa do cabeçalho, contadores e ligações da ficha: desliza até às linhas e acende-as. Se os
   // filtros as escondem todas, limpam-se (com aviso) e mostra-se depois de desenhar.
   useAoMostrar((elemento) => {
@@ -744,7 +843,8 @@ export function Tabela() {
   });
 
   function nomeDoElemento(elemento: ElementoVista): string {
-    if (elemento.tipo === 'pessoa') return linhas.find((l) => l.pessoa.id === elemento.id)?.nome ?? '';
+    if (elemento.tipo === 'pessoa')
+      return linhas.find((l) => l.pessoa.id === elemento.id)?.nomeMostrado ?? '';
     if (elemento.tipo === 'casa') return indices?.casas.get(elemento.id)?.nome ?? '';
     const carrinha = indices?.carrinhas.get(elemento.id);
     return carrinha ? formatarMatricula(carrinha.matricula) : '';
@@ -760,6 +860,7 @@ export function Tabela() {
   );
   const contagem = textoContagem(visiveis.length, linhas.length, comFiltros);
   const haObras = estado.obras.length > 0;
+  const clienteAceso = clienteDestacado ? (indices.clientes.get(clienteDestacado) ?? null) : null;
 
   return (
     <section
@@ -835,10 +936,29 @@ export function Tabela() {
             Limpar filtros
           </button>
         )}
+        {clienteAceso && <ClienteAceso cliente={clienteAceso} />}
+        {/* Com o botão das sugestões, no PC (até 1536 px) a dica e o botão passam para uma 2.ª linha. */}
         {modoEdicao && (
-          <p className="order-7 w-full text-[11px] leading-tight text-amber-900 sm:order-5 sm:w-auto sm:max-w-[15rem] sm:text-xs 2xl:max-w-none">
-            Muda nas células ou seleciona linhas e usa Mover para…
-          </p>
+          <div
+            className={`order-7 flex w-full min-w-0 items-center gap-2 ${nSugestoes > 0 ? 'sm:order-8 2xl:order-5 2xl:w-auto' : 'sm:order-5 sm:w-auto'}`}
+          >
+            <p
+              className={`min-w-0 text-[11px] leading-tight text-amber-900 sm:text-xs ${nSugestoes > 0 ? 'flex-1 sm:flex-none' : 'flex-1 sm:max-w-[15rem] 2xl:max-w-none'}`}
+            >
+              Muda nas células ou seleciona linhas e usa Mover para…
+            </p>
+            {nSugestoes > 0 && (
+              <button
+                type="button"
+                onClick={() => useUiEdicao.getState().abrirDialogo({ tipo: 'confirmar-sugestoes' })}
+                title="Cada carrinha passa a dormir na casa onde moram mais passageiros (pede confirmação)"
+                className={BOTAO_MINI}
+              >
+                <IconeDormir className="size-3.5 text-slate-500" />
+                Confirmar <span className="max-sm:hidden">todas as</span> sugestões ({nSugestoes})
+              </button>
+            )}
+          </div>
         )}
         <p
           role="status"
@@ -859,7 +979,7 @@ export function Tabela() {
           className={`relative min-h-0 flex-1 overflow-auto overscroll-contain ${foco ? 'max-sm:scroll-pb-[60vh] sm:scroll-pr-[23.5rem] sm:pr-[23.5rem]' : ''}`}
         >
           <table
-            className={`w-full border-separate border-spacing-0 text-sm ${modoEdicao ? 'min-w-[72rem]' : 'min-w-[60rem]'}`}
+            className={`w-full border-separate border-spacing-0 text-sm ${modoEdicao ? 'min-w-[76rem]' : 'min-w-[60rem]'}`}
           >
             <caption className="sr-only">
               Pessoas ({contagem}). Clicar numa linha abre a ficha da pessoa
@@ -880,18 +1000,23 @@ export function Tabela() {
               </tr>
             </thead>
             <tbody>
-              {visiveis.map((l) => (
-                <LinhaPessoa
-                  key={l.pessoa.id}
-                  linha={l}
-                  modoEdicao={modoEdicao}
-                  selecionada={modoEdicao && selecao.has(l.pessoa.id)}
-                  realce={realceDaLinha(l, foco)}
-                  haObras={haObras}
-                  antes={antes.get(l.pessoa.id)}
-                  obterOrdem={obterOrdem}
-                />
-              ))}
+              {visiveis.map((l) => {
+                const selecionada = modoEdicao && selecao.has(l.pessoa.id);
+                const realce = realceDaLinha(l, foco);
+                return (
+                  <LinhaPessoa
+                    key={l.pessoa.id}
+                    linha={l}
+                    modoEdicao={modoEdicao}
+                    selecionada={selecionada}
+                    realce={realce}
+                    apagada={linhaApagada(l, clienteDestacado, selecionada || realce === 'foco')}
+                    haObras={haObras}
+                    antes={antes.get(l.pessoa.id)}
+                    obterOrdem={obterOrdem}
+                  />
+                );
+              })}
               {visiveis.length === 0 && (
                 <tr>
                   <td

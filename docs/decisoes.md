@@ -2,6 +2,45 @@
 
 Registo das decisões do Rafael e das escolhas por omissão. Mais recentes primeiro.
 
+## 04/10/2026 — nomes completos na Tabela e lugares livres nas carrinhas
+
+Pedidos do Rafael: "na tabela apareça só o nome completo, não os nomes repetidos (…) não precisa de repetir a
+abreviação do cliente" e "no quadro em carros quero que apareçam os espaços vazios dos carros também, tal como
+fizeste nas casas". Desenho em `docs/vistas-edicao.md`.
+- **Tabela**: a coluna Nome tem **uma só etiqueta** (fundo da cor do cliente, volante, "?", ponto âmbar) com o
+  **nome completo** e **sem a sigla** (a coluna Cliente está ao lado). Sem nome completo, o nome curto. A Tabela
+  ordena pelo nome mostrado; o filtro encontra também pelo nome curto e pelos nomes alternativos. A folha
+  **Pessoas** do Excel segue a Tabela (uma só coluna Nome); as folhas Casas e Carrinhas continuam com o nome
+  curto, como as do Michael.
+- **Maiúsculas normais** (só para mostrar, nunca se grava; `dominio/nomes.ts`): uma palavra toda em maiúsculas
+  passa a ter só a inicial maiúscula, também depois de hífen, apóstrofo, ponto ou parênteses ("ANA-RITA" →
+  "Ana-Rita"; "J.P." fica "J.P."); as palavras já com minúsculas ficam como estão ("McDONALD"). A partir da
+  2.ª palavra, **da/de/do/das/dos/e** e o **d'** ficam sempre em minúsculas, também quando vêm só com a
+  inicial maiúscula ("Maria Da Luz" → "Maria da Luz", "D'Almeida" → "d'Almeida"), para as partículas
+  aparecerem todas da mesma maneira. *Por confirmar com o Rafael* (vai além de "as palavras mistas ficam como
+  estão").
+- **Quadro**: as carrinhas mostram os lugares livres ("livre", tracejados) como as casas, até aos lugares; com
+  gente a mais não há livres (a pastilha fica vermelha). No modo de edição também servem para largar.
+- **Ajuste ao ecrã** com três degraus: completo (um "livre" por lugar), **livres numa linha** (os livres de
+  cada bloco numa só linha tracejada, "4 livres", sem "Ninguém." nem "por definir") e compacto (sem livres).
+  *Por confirmar com o Rafael*:
+  - Reunião a 1920×1080: com os dados atuais o completo não cabe a 14 px; o Quadro por carrinhas fica com os
+    livres numa linha a 13 px (antes ficava compacto a 14 px, sem livres). Se preferir 14 px sem livres,
+    troca-se a ordem dos degraus em `DEGRAUS_AJUSTE.reuniao` (`vistas/agrupamentoQuadro.ts`).
+  - PC (fora da reunião): **sempre um "livre" por lugar**, como nas casas (era o pedido); se não couber, o
+    Quadro desliza. O degrau "livres numa linha" ficou só para a reunião.
+  - Reunião a 1366×768: nada cabe; fica compacto a 13 px, a deslizar, sem livres (como antes nas casas).
+- **Telemóvel**: na Tabela e no Quadro a ficha abre **recolhida** (título, "Ver no mapa", ✕, uma linha de
+  resumo e, a editar, as ações principais); "Ver tudo" abre-a toda (até 60 %, deixando sempre 6 rem da vista).
+  No PC e no Mapa fica igual.
+- **Tabela a editar**: um botão ao lado das listas Casa e Carrinha abre a ficha; a barra tem "Confirmar todas
+  as sugestões (N)". Com um cliente aceso na legenda, as linhas dos outros ficam esbatidas e a barra mostra
+  "Só <cliente> · Todos".
+- **Quadro**: mostrar uma casa sem moradores e sem carrinhas a dormir lá (Quadro por carrinhas), ou uma
+  carrinha sem passageiros e sem casa (Quadro por casas), dá um aviso curto; o agrupamento não muda.
+- *Por responder*: o título da ficha da pessoa deve usar também as maiúsculas normais? Mudava também a ficha
+  no Mapa.
+
 ## 04/10/2026 — Tabela e Quadro editam como o mapa
 
 Pedido do Rafael: clicar ou editar na Tabela ou no Quadro **nunca** leva para o Mapa; a Tabela e o Quadro têm

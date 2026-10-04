@@ -41,7 +41,6 @@ describe('folha Pessoas', () => {
     const [cabecalho] = folha.linhas;
     expect(valores(cabecalho)).toEqual([
       'Nome',
-      'Nome completo',
       'Nº',
       'Cliente',
       'Obra',
@@ -56,29 +55,45 @@ describe('folha Pessoas', () => {
   it('uma linha por pessoa ativa, pelo nome', () => {
     expect(folha.linhas).toHaveLength(9);
     expect(folha.linhas.slice(1).map((l) => valor(l[0] ?? null))).toEqual([
-      'Ana B.',
-      'Eva D.',
-      'Inês H.',
-      'Ivo F.',
-      'Luís E.',
-      'Óscar G.',
-      'Rui C.',
-      'Zé A.',
+      'Ana Barros',
+      'Eva Dias',
+      'Inês Henriques',
+      'Ivo Fonseca',
+      'José Amaral',
+      'Luís Esteves',
+      'Óscar Gomes',
+      'Rui Costa',
     ]);
+  });
+
+  it('o nome completo com maiúsculas normais (sem ele, o curto)', () => {
+    // Fictício, à maneira da lista de pessoal.
+    const outro = {
+      ...estado,
+      pessoas: estado.pessoas.map((p) =>
+        p.id === 'p-6'
+          ? { ...p, nome: 'IVO', apelidos: 'DOS SANTOS FONSECA' }
+          : p.id === 'p-8'
+            ? { ...p, nome: '', apelidos: '' }
+            : p,
+      ),
+    };
+    const nomes = folhaPessoas(outro, indexar(outro)).linhas.map((l) => valor(l[0] ?? null));
+    expect(nomes).toContain('Ivo dos Santos Fonseca');
+    expect(nomes).toContain('Inês H.');
   });
 
   it('o nome com o fundo da cor do cliente e o texto quase-preto de todos os nomes', () => {
     const ana = folha.linhas[1];
     expect(obj(ana?.[0]).backgroundColor).toBe(COR_ALFA);
     expect(obj(ana?.[0]).textColor).toBe(COR_TEXTO_NOMES);
-    const ze = folha.linhas.find((l) => valor(l[0] ?? null) === 'Zé A.');
+    const ze = folha.linhas.find((l) => valor(l[0] ?? null) === 'José Amaral');
     expect(obj(ze?.[0]).backgroundColor).toBe(COR_BETA);
   });
 
   it('matrícula formatada, condutor e o que está por confirmar', () => {
-    const ze = folha.linhas.find((l) => valor(l[0] ?? null) === 'Zé A.');
+    const ze = folha.linhas.find((l) => valor(l[0] ?? null) === 'José Amaral');
     expect(valores(ze)).toEqual([
-      'Zé A.',
       'José Amaral',
       '900-001',
       'Beta Construções',
@@ -88,8 +103,8 @@ describe('folha Pessoas', () => {
       'Sim',
       null,
     ]);
-    const oscar = folha.linhas.find((l) => valor(l[0] ?? null) === 'Óscar G.');
-    expect(valores(oscar).slice(5)).toEqual(['Fora das casas CMF', 'sem transporte', null, 'carrinha']);
+    const oscar = folha.linhas.find((l) => valor(l[0] ?? null) === 'Óscar Gomes');
+    expect(valores(oscar).slice(4)).toEqual(['Fora das casas CMF', 'sem transporte', null, 'carrinha']);
   });
 });
 

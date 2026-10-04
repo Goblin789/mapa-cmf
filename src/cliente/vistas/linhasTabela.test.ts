@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { indexar } from '../../dominio/indices';
+import type { Pessoa } from '../../dominio/tipos';
 import { estadoVistas } from './estadoTeste';
 import {
   ariaSort,
@@ -8,6 +9,7 @@ import {
   type FiltrosTabela,
   filtrarLinhas,
   filtrosTabelaAtivos,
+  linhaApagada,
   linhasDaTabela,
   modoDaCaixa,
   ORDEM_INICIAL,
@@ -50,17 +52,73 @@ describe('linhasDaTabela', () => {
   });
 });
 
+describe('nomeMostrado', () => {
+  // Nomes fictícios, à maneira da lista de pessoal (apelidos em maiúsculas).
+  const comMaiusculas = {
+    ...estado,
+    pessoas: [
+      ...estado.pessoas.map((p) =>
+        p.id === 'p-6'
+          ? { ...p, nome: 'IVO Manuel', apelidos: 'DA FONSECA', nomesAlternativos: ['Ivinho'] }
+          : p,
+      ),
+      {
+        ...estado.pessoas[0],
+        id: 'p-10',
+        nomeCurto: 'Tó Z.',
+        nome: '',
+        apelidos: '',
+        numero: null,
+      } as Pessoa,
+    ],
+  };
+  const ls = linhasDaTabela(comMaiusculas, indexar(comMaiusculas));
+  const ivo = ls.find((l) => l.pessoa.id === 'p-6');
+
+  it('o nome completo com maiúsculas normais; sem nome completo, o nome curto', () => {
+    expect(ivo?.nomeMostrado).toBe('Ivo Manuel da Fonseca');
+    expect(ivo?.nomeCompleto).toBe('IVO Manuel DA FONSECA');
+    expect(ls.find((l) => l.pessoa.id === 'p-10')?.nomeMostrado).toBe('Tó Z.');
+    expect(ls.find((l) => l.pessoa.id === 'p-1')?.nomeMostrado).toBe('José Amaral');
+  });
+
+  it('ordena pelo nome mostrado', () => {
+    const ordem = ordenarLinhas(ls, ORDEM_INICIAL).map((l) => l.nomeMostrado);
+    expect(ordem.slice(3, 6)).toEqual(['Ivo Manuel da Fonseca', 'José Amaral', 'Luís Esteves']);
+    expect(ordem.at(-1)).toBe('Tó Z.');
+  });
+
+  it('a pesquisa encontra pelo nome mostrado, pelo curto e pelos alternativos', () => {
+    const achar = (texto: string) =>
+      filtrarLinhas(ls, { ...FILTROS_INICIAIS, texto }).map((l) => l.pessoa.id);
+    expect(achar('manuel da fonseca')).toEqual(['p-6']);
+    expect(achar('ivo f.')).toEqual(['p-6']);
+    expect(achar('ivinho')).toEqual(['p-6']);
+    expect(achar('tó')).toEqual(['p-10']);
+  });
+});
+
+describe('linhaApagada', () => {
+  it('esbatida só com outro cliente aceso, e nunca se selecionada ou em foco', () => {
+    const alfa = { clienteId: 'alfa' };
+    expect(linhaApagada(alfa, null, false)).toBe(false);
+    expect(linhaApagada(alfa, 'alfa', false)).toBe(false);
+    expect(linhaApagada(alfa, 'beta', false)).toBe(true);
+    expect(linhaApagada(alfa, 'beta', true)).toBe(false);
+  });
+});
+
 describe('ordenarLinhas', () => {
-  it('por omissão, pelo nome (indiferente a acentos e maiúsculas)', () => {
+  it('por omissão, pelo nome mostrado (o completo; indiferente a acentos e maiúsculas)', () => {
     expect(nomes(ordenarLinhas(linhas, ORDEM_INICIAL))).toEqual([
       'Ana B.',
       'Eva D.',
       'Inês H.',
       'Ivo F.',
+      'Zé A.', // José Amaral
       'Luís E.',
       'Óscar G.',
       'Rui C.',
-      'Zé A.',
     ]);
   });
 
@@ -98,9 +156,9 @@ describe('ordenarLinhas', () => {
 
   it('pelo condutor e pelo "a confirmar": esses primeiro', () => {
     expect(nomes(ordenarLinhas(linhas, { coluna: 'condutor', direcao: 'asc' }).slice(0, 3))).toEqual([
+      'Zé A.',
       'Luís E.',
       'Rui C.',
-      'Zé A.',
     ]);
     expect(nomes(ordenarLinhas(linhas, { coluna: 'aConfirmar', direcao: 'asc' }).slice(0, 2))).toEqual([
       'Eva D.',

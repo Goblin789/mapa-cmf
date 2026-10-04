@@ -5,6 +5,7 @@
 import { clienteEfetivoId } from '../../dominio/cores';
 import type { Indices } from '../../dominio/indices';
 import { formatarMatricula } from '../../dominio/matricula';
+import { nomeComMaiusculasNormais } from '../../dominio/nomes';
 import { compactar, normalizarTexto } from '../../dominio/pesquisa';
 import type { Carrinha, Casa, Cliente, Estado, Id, Obra, Pessoa } from '../../dominio/tipos';
 import { carrinhaConduzida } from '../paineis/condutor';
@@ -14,7 +15,13 @@ export interface LinhaTabela {
   pessoa: Pessoa;
   /** Nome curto (o do mapa). */
   nome: string;
+  /** Nome e apelidos como estão guardados (sem eles, o nome curto). */
   nomeCompleto: string;
+  /**
+   * O nome que a Tabela e o Excel mostram (e pelo qual ordenam): o completo com maiúsculas normais
+   * ("Cipriano da Silva"); sem nome completo, o nome curto.
+   */
+  nomeMostrado: string;
   numero: string | null;
   /** O cliente que dá a cor: o da obra, ou o da pessoa enquanto não tem obra. */
   clienteId: Id;
@@ -43,6 +50,7 @@ export function linhasDaTabela(estado: Estado, ind: Indices): LinhaTabela[] {
       const casa = p.casaId ? (ind.casas.get(p.casaId) ?? null) : null;
       const carrinha = p.carrinhaId ? (ind.carrinhas.get(p.carrinhaId) ?? null) : null;
       const completo = nomeCompleto(p);
+      const temCompleto = `${p.nome}${p.apelidos}`.trim() !== '';
       const matriculas = carrinha
         ? [carrinha.matricula, formatarMatricula(carrinha.matricula), ...carrinha.matriculasAlternativas]
         : [];
@@ -50,6 +58,7 @@ export function linhasDaTabela(estado: Estado, ind: Indices): LinhaTabela[] {
         pessoa: p,
         nome: p.nomeCurto,
         nomeCompleto: completo,
+        nomeMostrado: temCompleto ? nomeComMaiusculasNormais(completo) : p.nomeCurto,
         numero: p.numero,
         clienteId,
         cliente,
@@ -121,7 +130,7 @@ const comparador = new Intl.Collator('pt', { sensitivity: 'base', numeric: true 
 function valor(l: LinhaTabela, coluna: ColunaTabela): string | number | null {
   switch (coluna) {
     case 'nome':
-      return l.nome;
+      return l.nomeMostrado;
     case 'numero':
       return l.numero;
     case 'cliente':
@@ -146,7 +155,10 @@ function comparar(a: string | number, b: string | number): number {
   return comparador.compare(String(a), String(b));
 }
 
-/** Ordena pela coluna; os vazios ficam no fim e os empates vão pelo nome. Não muda a lista recebida. */
+/**
+ * Ordena pela coluna; os vazios ficam no fim e os empates vão pelo nome (o mostrado). Não muda a lista
+ * recebida.
+ */
 export function ordenarLinhas(linhas: readonly LinhaTabela[], ordem: OrdemTabela): LinhaTabela[] {
   const sinal = ordem.direcao === 'asc' ? 1 : -1;
   return [...linhas].sort((a, b) => {
@@ -158,7 +170,7 @@ export function ordenarLinhas(linhas: readonly LinhaTabela[], ordem: OrdemTabela
       const c = comparar(va, vb);
       if (c !== 0) return c * sinal;
     }
-    return comparador.compare(a.nome, b.nome) || a.pessoa.id.localeCompare(b.pessoa.id);
+    return comparador.compare(a.nomeMostrado, b.nomeMostrado) || a.pessoa.id.localeCompare(b.pessoa.id);
   });
 }
 
@@ -256,6 +268,18 @@ export function realceDaLinha(
   if (foco.tipo === 'pessoa') return foco.id === linha.pessoa.id ? 'foco' : null;
   const sitio = foco.tipo === 'casa' ? linha.casa : linha.carrinha;
   return sitio?.id === foco.id ? 'ligada' : null;
+}
+
+/**
+ * A linha fica esbatida quando a legenda acende só outro cliente (como os nomes no Quadro), exceto se se
+ * tem de ver (selecionada ou em foco).
+ */
+export function linhaApagada(
+  linha: Pick<LinhaTabela, 'clienteId'>,
+  clienteDestacado: Id | null,
+  temDeSeVer: boolean,
+): boolean {
+  return clienteDestacado !== null && linha.clienteId !== clienteDestacado && !temDeSeVer;
 }
 
 /**

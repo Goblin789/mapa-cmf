@@ -3,13 +3,16 @@
 //
 // Uma casa no Quadro por carrinhas não tem bloco (nem uma carrinha no Quadro por casas): acendem-se os
 // nomes de quem lá mora (ou de quem lá vai), que é o que interessa ver. Sem ninguém, acende-se a ligação
-// que o rodapé mostra: a casa onde a carrinha dorme, ou as carrinhas que dormem na casa.
+// que o rodapé mostra: a casa onde a carrinha dorme, ou as carrinhas que dormem na casa. Se nem isso
+// houver, a vista não tem nada para acender e diz porquê num aviso curto (avisoSemNadaNoQuadro).
 
 import type { Dormida } from '../../dominio/dormidas';
 import type { Indices } from '../../dominio/indices';
+import { formatarMatricula } from '../../dominio/matricula';
 import type { Operacao } from '../../dominio/operacoes';
 import type { Id } from '../../dominio/tipos';
 import { sitioTemAlteracoes } from '../edicao/resumo';
+import { ROTULO_TIPO_VEICULO } from '../paineis/textos';
 import type { BlocoQuadro } from './agrupamentoQuadro';
 import { chaveElemento, type ElementoVista } from './mostrar';
 import type { Agrupamento } from './vista';
@@ -55,6 +58,32 @@ export function chavesNoQuadro(
       return casaId !== null && ind.casas.has(casaId) ? [chaveElemento({ tipo: 'casa', id: casaId })] : [];
     }
   }
+}
+
+/**
+ * Aviso curto quando se pede para mostrar uma casa (no Quadro por carrinhas) ou uma carrinha (no Quadro
+ * por casas) e não há nada no Quadro a que chegar (chavesNoQuadro vazio): sem isto, a ficha abria e a
+ * vista ficava parada, sem sinal nenhum. null quando há o que acender, num elemento que tem bloco neste
+ * agrupamento (está sempre lá), numa pessoa ou num elemento que não existe. O agrupamento não muda.
+ */
+export function avisoSemNadaNoQuadro(
+  elemento: ElementoVista,
+  agrupamento: Agrupamento,
+  ind: Indices,
+  dormidas: ReadonlyMap<Id, Dormida>,
+): string | null {
+  if (chavesNoQuadro(elemento, agrupamento, ind, dormidas).length > 0) return null;
+  if (elemento.tipo === 'casa' && agrupamento === 'carrinhas') {
+    const casa = ind.casas.get(elemento.id);
+    return casa ? `${casa.nome}: ninguém mora lá e nenhuma carrinha dorme lá.` : null;
+  }
+  if (elemento.tipo === 'carrinha' && agrupamento === 'casas') {
+    const carrinha = ind.carrinhas.get(elemento.id);
+    if (!carrinha) return null;
+    const nela = carrinha.tipo === 'carro' ? 'nele' : 'nela';
+    return `${ROTULO_TIPO_VEICULO[carrinha.tipo]} ${formatarMatricula(carrinha.matricula)}: ninguém vai ${nela} e não dorme em nenhuma casa.`;
+  }
+  return null;
 }
 
 /**

@@ -10,6 +10,8 @@
 // ContextoOrdemPessoas) e põe-na em foco. Com `arrastavel` (só no modo de edição) leva o
 // data-arrastavel-pessoa do motor de arrastar (arrastar/motor.ts). Com `seguirLegenda` apaga-se quando a
 // legenda acende só outro cliente. Sem `interativo` (reunião) é só um nome.
+// A Tabela mostra o nome completo (`nome`) e sem a sigla (`semSigla`: a coluna Cliente já a tem); por
+// omissão é o nome curto com a sigla (Quadro, reunião).
 
 import { useContext, useState } from 'react';
 import { COR_TEXTO_NOMES, clienteEfetivoId } from '../../dominio/cores';
@@ -34,6 +36,8 @@ export function NomeVista({
   interativo = false,
   arrastavel = false,
   seguirLegenda = false,
+  nome,
+  semSigla = false,
 }: {
   pessoa: Pessoa;
   /** Conduz a carrinha onde vai: leva o volante antes do nome. */
@@ -50,6 +54,10 @@ export function NomeVista({
   arrastavel?: boolean;
   /** Apaga-se quando a legenda acende só outro cliente. */
   seguirLegenda?: boolean;
+  /** O nome a mostrar (e no início do title); por omissão o nome curto (e o completo no title). */
+  nome?: string;
+  /** Sem a sigla do cliente (a Tabela tem a coluna Cliente ao lado). */
+  semSigla?: boolean;
 }) {
   const indices = useLoja((s) => s.indices);
   const modoEdicao = useLoja((s) => s.modoEdicao);
@@ -73,7 +81,7 @@ export function NomeVista({
   // Um nome selecionado nunca fica apagado pela legenda: tem de se ver o que se vai mover.
   const apagado = clienteDestacado !== null && clienteDestacado !== clienteId && !selecionado;
   const titulo = [
-    nomeCompleto(pessoa),
+    nome ?? nomeCompleto(pessoa),
     condutor ? 'condutor' : null,
     cliente?.nome,
     aConfirmar ? 'a confirmar' : null,
@@ -86,7 +94,9 @@ export function NomeVista({
   const conteudo = (
     <>
       {condutor && <IconeVolante tamanho={12} rotulo="condutor" className="size-[0.95em]" />}
-      <span className={`min-w-0 flex-1 ${quebrar ? 'break-words' : 'truncate'}`}>{pessoa.nomeCurto}</span>
+      <span className={`min-w-0 flex-1 ${quebrar ? 'break-words' : 'truncate'}`}>
+        {nome ?? pessoa.nomeCurto}
+      </span>
       {aConfirmar && (
         <>
           <span
@@ -98,7 +108,9 @@ export function NomeVista({
           <span className="sr-only">, a confirmar</span>
         </>
       )}
-      {cliente && <span className="shrink-0 text-[0.85em] font-semibold opacity-90">{cliente.sigla}</span>}
+      {cliente && !semSigla && (
+        <span className="shrink-0 text-[0.85em] font-semibold opacity-90">{cliente.sigla}</span>
+      )}
       {alterado && (
         <>
           <span

@@ -4,7 +4,12 @@ import { indexar } from '../../dominio/indices';
 import type { Operacao } from '../../dominio/operacoes';
 import type { Estado } from '../../dominio/tipos';
 import { estadoVistas } from './estadoTeste';
-import { blocoTemAlteracoes, chavesNoQuadro, pessoasDoFocoSemBloco } from './realceQuadro';
+import {
+  avisoSemNadaNoQuadro,
+  blocoTemAlteracoes,
+  chavesNoQuadro,
+  pessoasDoFocoSemBloco,
+} from './realceQuadro';
 
 const ind = indexar(estadoVistas());
 const dorm = dormidasDasCarrinhas(estadoVistas(), ind);
@@ -77,6 +82,44 @@ describe('chavesNoQuadro', () => {
         dormidasDasCarrinhas(semNinguem, ind3),
       ),
     ).toEqual([]);
+  });
+});
+
+describe('avisoSemNadaNoQuadro', () => {
+  it('casa sem moradores e sem carrinhas a dormir lá, no Quadro por carrinhas: diz porquê', () => {
+    expect(avisoSemNadaNoQuadro({ tipo: 'casa', id: 'casa-l2' }, 'carrinhas', ind, dorm)).toBe(
+      'Casa L2: ninguém mora lá e nenhuma carrinha dorme lá.',
+    );
+    // No Quadro por casas tem o seu bloco: nada a dizer.
+    expect(avisoSemNadaNoQuadro({ tipo: 'casa', id: 'casa-l2' }, 'casas', ind, dorm)).toBeNull();
+  });
+
+  it('carrinha sem passageiros e sem casa onde dormir, no Quadro por casas: diz porquê', () => {
+    expect(avisoSemNadaNoQuadro({ tipo: 'carrinha', id: 'XX1004' }, 'casas', ind, dorm)).toBe(
+      'Carrinha XX 1004: ninguém vai nela e não dorme em nenhuma casa.',
+    );
+    expect(avisoSemNadaNoQuadro({ tipo: 'carrinha', id: 'XX1004' }, 'carrinhas', ind, dorm)).toBeNull();
+    // Um carro: "nele".
+    const estado: Estado = {
+      ...estadoVistas(),
+      carrinhas: estadoVistas().carrinhas.map((c) => (c.id === 'XX1004' ? { ...c, tipo: 'carro' } : c)),
+    };
+    const ind2 = indexar(estado);
+    expect(
+      avisoSemNadaNoQuadro(
+        { tipo: 'carrinha', id: 'XX1004' },
+        'casas',
+        ind2,
+        dormidasDasCarrinhas(estado, ind2),
+      ),
+    ).toBe('Carro XX 1004: ninguém vai nele e não dorme em nenhuma casa.');
+  });
+
+  it('nada quando há o que acender, numa pessoa ou num elemento que não existe', () => {
+    expect(avisoSemNadaNoQuadro({ tipo: 'casa', id: 'casa-l1' }, 'carrinhas', ind, dorm)).toBeNull();
+    expect(avisoSemNadaNoQuadro({ tipo: 'carrinha', id: 'XX1002' }, 'casas', ind, dorm)).toBeNull();
+    expect(avisoSemNadaNoQuadro({ tipo: 'pessoa', id: 'p-9' }, 'casas', ind, dorm)).toBeNull();
+    expect(avisoSemNadaNoQuadro({ tipo: 'casa', id: 'nao-existe' }, 'carrinhas', ind, dorm)).toBeNull();
   });
 });
 

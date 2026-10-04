@@ -10,6 +10,7 @@
 // - no fim, "Fora das casas CMF" ou "Sem transporte da empresa" (bloco largo, nomes por cliente)
 //   e, nas carrinhas, as que ainda não têm onde dormir.
 // Uma carrinha conta onde dorme (definido ou, sem isso, a sugestão: a casa da maioria dos passageiros).
+// Casas e carrinhas desenham os lugares livres até à lotação, com o mesmo aspeto.
 
 import type { Dormida } from '../../dominio/dormidas';
 import type { Indices } from '../../dominio/indices';
@@ -80,7 +81,10 @@ export interface BlocoQuadro {
   pessoas: Pessoa[];
   /** Null nos grupos sem lugares (fora das casas, sem transporte). */
   lotacao: LotacaoBloco | null;
-  /** Lugares livres a desenhar (só nas casas: nas carrinhas a pastilha chega). */
+  /**
+   * Lugares livres a desenhar ("livre"), até à lotação: nas casas (numa sempre cheia, nenhum) e nas
+   * carrinhas. Com gente a mais, nenhum (a pastilha já está a vermelho). 0 nos blocos largos.
+   */
   vazios: number;
   ligacoes: LigacaoQuadro[];
   /** Aviso do contrato da casa (acima do máximo ou do tolerado); null quando não há. */
@@ -183,7 +187,7 @@ function blocoCarrinha(carrinha: Carrinha, ind: Indices, dormidas: Map<Id, Dormi
         : marcaModelo,
     pessoas: condutorPrimeiro(ordenarPorClienteENome(passageiros, ind), carrinha),
     lotacao: { ocupados: oc.ocupados, lugares: oc.lugares, nivel: oc.nivel },
-    vazios: 0,
+    vazios: oc.livres,
     ligacoes: [ligacaoDaCarrinha(dormidas.get(carrinha.id), ind)],
     aviso: null,
     sempreCheia: false,
@@ -458,20 +462,58 @@ export function maiorLetraQueCabe(
   return lo;
 }
 
-/** Um degrau do ajuste: com ou sem os pormenores que se podem dispensar, e os limites da letra. */
+/**
+ * O que o quadro mostra, do mais para o menos:
+ * - 'completo': tudo, um "livre" (tracejado) por lugar livre;
+ * - 'livres-numa-linha': os lugares livres de cada bloco juntos numa só linha tracejada ("4 livres") e
+ *   sem o que a pastilha ou o título da secção já dizem ("Ninguém.", "por definir" no rodapé);
+ * - 'compacto': como o anterior, mas sem os lugares livres (a pastilha diz quantos há).
+ */
+export type ModoAjuste = 'completo' | 'livres-numa-linha' | 'compacto';
+
+/** Um degrau do ajuste: o que se mostra e os limites da letra. */
 export interface DegrauAjuste {
-  compacto: boolean;
+  modo: ModoAjuste;
   minimo: number;
   maximo: number;
 }
 
 export interface AjusteQuadro {
   letra: number;
-  /** Sem os pormenores dispensáveis (na reunião: os lugares livres desenhados). */
-  compacto: boolean;
+  modo: ModoAjuste;
   /** Nem assim coube: o quadro desliza na vertical. */
   desliza: boolean;
 }
+
+/** Letra (px) no telemóvel e quando o quadro não cabe no PC. */
+export const LETRA_NORMAL = 14;
+
+/**
+ * Os degraus do ajuste (ver escolherAjuste) e o que fica se nenhum couber.
+ * - Reunião (TV vista de longe): completo de 14 a 30 px; senão os livres numa linha, que podem ir até
+ *   13 px (com eles as carrinhas mostram os lugares livres também na reunião: a 1920×1080, com os dados
+ *   de outubro de 2026, o completo não cabe a 14 e os livres numa linha cabem a 13); só depois o
+ *   compacto, sem livres; se nem assim, 13 px a deslizar.
+ * - PC: de 12 a 16 px, sempre completo, com um "livre" por lugar nas casas e nas carrinhas (pedido do
+ *   Rafael: os lugares vazios das carrinhas "tal como nas casas"); se não couber, 14 px a deslizar.
+ */
+export const DEGRAUS_AJUSTE: Record<
+  'reuniao' | 'normal',
+  { degraus: readonly DegrauAjuste[]; senaoCouber: { letra: number; modo: ModoAjuste } }
+> = {
+  reuniao: {
+    degraus: [
+      { modo: 'completo', minimo: 14, maximo: 30 },
+      { modo: 'livres-numa-linha', minimo: 13, maximo: 30 },
+      { modo: 'compacto', minimo: 13, maximo: 30 },
+    ],
+    senaoCouber: { letra: 13, modo: 'compacto' },
+  },
+  normal: {
+    degraus: [{ modo: 'completo', minimo: 12, maximo: 16 }],
+    senaoCouber: { letra: LETRA_NORMAL, modo: 'completo' },
+  },
+};
 
 /**
  * Desce os degraus até o quadro caber: no primeiro em que caiba, a maior letra com que cabe. Assim, antes
@@ -480,12 +522,12 @@ export interface AjusteQuadro {
  */
 export function escolherAjuste(
   degraus: readonly DegrauAjuste[],
-  senaoCouber: { letra: number; compacto: boolean },
-  cabe: (letra: number, compacto: boolean) => boolean,
+  senaoCouber: { letra: number; modo: ModoAjuste },
+  cabe: (letra: number, modo: ModoAjuste) => boolean,
 ): AjusteQuadro {
-  for (const { compacto, minimo, maximo } of degraus) {
-    const letra = maiorLetraQueCabe(minimo, maximo, (f) => cabe(f, compacto));
-    if (letra !== null) return { letra, compacto, desliza: false };
+  for (const { modo, minimo, maximo } of degraus) {
+    const letra = maiorLetraQueCabe(minimo, maximo, (f) => cabe(f, modo));
+    if (letra !== null) return { letra, modo, desliza: false };
   }
   return { ...senaoCouber, desliza: true };
 }

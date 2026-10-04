@@ -2,9 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { dormidasDasCarrinhas } from '../../dominio/dormidas';
 import { indexar } from '../../dominio/indices';
 import { criarLocal } from '../../dominio/teste-fabrica';
+import type { Estado } from '../../dominio/tipos';
 import {
   blocosDoQuadro,
+  DEGRAUS_AJUSTE,
   escolherAjuste,
+  LETRA_NORMAL,
   maiorLetraQueCabe,
   montarQuadro,
   nomeNaZona,
@@ -112,8 +115,28 @@ describe('Quadro por carrinhas', () => {
     expect(c1.titulo).toBe('XX 1001');
     expect(c1.detalhe).toBe('Marca Furgão');
     expect(c1.lotacao).toEqual({ ocupados: 2, lugares: 5, nivel: 'livre' });
-    expect(c1.vazios).toBe(0);
     expect(bloco(carrinhas, 'carrinha:XX1005').detalhe).toBe('Carro · Marca Ligeiro');
+  });
+
+  it('lugares livres até ao número de lugares, como nas casas; com gente a mais, nenhum', () => {
+    expect(bloco(carrinhas, 'carrinha:XX1001').vazios).toBe(3);
+    expect(bloco(carrinhas, 'carrinha:XX1002').vazios).toBe(1);
+    // Vazia: todos os lugares livres.
+    expect(bloco(carrinhas, 'carrinha:XX1004').vazios).toBe(5);
+    // A XX1002 (2 passageiros) passa a ter 1 lugar: gente a mais, sem lugares livres.
+    const apertado: Estado = {
+      ...estado,
+      carrinhas: estado.carrinhas.map((c) => (c.id === 'XX1002' ? { ...c, lugares: 1 } : c)),
+    };
+    const ind2 = indexar(apertado);
+    const b = bloco(
+      montarQuadro('carrinhas', apertado, ind2, dormidasDasCarrinhas(apertado, ind2)),
+      'carrinha:XX1002',
+    );
+    expect(b.lotacao).toEqual({ ocupados: 2, lugares: 1, nivel: 'excesso' });
+    expect(b.vazios).toBe(0);
+    // Sem transporte: bloco largo, sem lugares.
+    expect(bloco(carrinhas, 'sem-transporte').vazios).toBe(0);
   });
 
   it('onde dorme: a casa, a sugestão, um local que não é casa ou por definir', () => {
@@ -184,30 +207,94 @@ describe('maiorLetraQueCabe', () => {
 
 describe('escolherAjuste (reunião: menos informação antes de letra pequena demais)', () => {
   const degraus = [
-    { compacto: false, minimo: 14, maximo: 30 },
-    { compacto: true, minimo: 13, maximo: 30 },
-  ];
-  const senao = { letra: 13, compacto: true };
+    { modo: 'completo', minimo: 14, maximo: 30 },
+    { modo: 'compacto', minimo: 13, maximo: 30 },
+  ] as const;
+  const senao = { letra: 13, modo: 'compacto' } as const;
 
   it('se couber tudo com letra legível, não tira nada', () => {
     // Completo cabe até 17; compacto até 19: fica o completo.
-    expect(escolherAjuste(degraus, senao, (f, compacto) => f <= (compacto ? 19 : 17))).toEqual({
+    expect(escolherAjuste(degraus, senao, (f, modo) => f <= (modo === 'compacto' ? 19 : 17))).toEqual({
       letra: 17,
-      compacto: false,
+      modo: 'completo',
       desliza: false,
     });
   });
 
   it('se o completo só coubesse abaixo do mínimo, passa a compacto em vez de encolher a letra', () => {
     // Completo só cabe a 12 (abaixo de 14); compacto cabe a 15.
-    expect(escolherAjuste(degraus, senao, (f, compacto) => f <= (compacto ? 15 : 12))).toEqual({
+    expect(escolherAjuste(degraus, senao, (f, modo) => f <= (modo === 'compacto' ? 15 : 12))).toEqual({
       letra: 15,
-      compacto: true,
+      modo: 'compacto',
       desliza: false,
     });
   });
 
   it('se nem compacto couber, fica o mínimo e desliza', () => {
-    expect(escolherAjuste(degraus, senao, () => false)).toEqual({ letra: 13, compacto: true, desliza: true });
+    expect(escolherAjuste(degraus, senao, () => false)).toEqual({
+      letra: 13,
+      modo: 'compacto',
+      desliza: true,
+    });
+  });
+});
+
+describe('DEGRAUS_AJUSTE (os lugares livres das carrinhas também na reunião e no PC)', () => {
+  /**
+   * Alturas (px) medidas no browser com um Quadro por carrinhas do tamanho do de outubro de 2026 (por
+   * letra e modo), para comparar com o espaço que há. Fictícias no conteúdo: só os números importam.
+   */
+  const ALTURAS: Record<string, Record<number, number>> = {
+    completo: { 12: 1007, 13: 1101, 14: 1174, 15: 1499 },
+    'livres-numa-linha': { 12: 849, 13: 931, 14: 991, 15: 1285 },
+    compacto: { 12: 813, 13: 892, 14: 950, 15: 1219 },
+  };
+  const cabeEm = (disponivel: number) => (letra: number, modo: string) =>
+    (ALTURAS[modo]?.[letra] ?? Number.POSITIVE_INFINITY) <= disponivel;
+
+  it('reunião (TV 1920×1080, 968 px): os livres numa linha a 13 px antes do compacto sem livres a 14', () => {
+    const { degraus, senaoCouber } = DEGRAUS_AJUSTE.reuniao;
+    expect(escolherAjuste(degraus, senaoCouber, cabeEm(968))).toEqual({
+      letra: 13,
+      modo: 'livres-numa-linha',
+      desliza: false,
+    });
+  });
+
+  it('reunião num ecrã maior: o completo, um "livre" por lugar', () => {
+    const { degraus, senaoCouber } = DEGRAUS_AJUSTE.reuniao;
+    expect(escolherAjuste(degraus, senaoCouber, cabeEm(1200))).toMatchObject({
+      letra: 14,
+      modo: 'completo',
+    });
+  });
+
+  it('reunião sem espaço nem para os livres numa linha: compacto, sem livres', () => {
+    const { degraus, senaoCouber } = DEGRAUS_AJUSTE.reuniao;
+    expect(escolherAjuste(degraus, senaoCouber, cabeEm(900))).toEqual({
+      letra: 13,
+      modo: 'compacto',
+      desliza: false,
+    });
+  });
+
+  it('PC (920 px): nunca junta os livres numa linha (um "livre" por lugar, como nas casas): desliza', () => {
+    const { degraus, senaoCouber } = DEGRAUS_AJUSTE.normal;
+    expect(degraus.every((d) => d.modo === 'completo')).toBe(true);
+    expect(escolherAjuste(degraus, senaoCouber, cabeEm(920))).toEqual({
+      letra: LETRA_NORMAL,
+      modo: 'completo',
+      desliza: true,
+    });
+  });
+
+  it('PC sem espaço: 14 px, completo, a deslizar (nunca compacto fora da reunião)', () => {
+    const { degraus, senaoCouber } = DEGRAUS_AJUSTE.normal;
+    expect(escolherAjuste(degraus, senaoCouber, cabeEm(600))).toEqual({
+      letra: LETRA_NORMAL,
+      modo: 'completo',
+      desliza: true,
+    });
+    expect(degraus.some((d) => d.modo === 'compacto')).toBe(false);
   });
 });

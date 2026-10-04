@@ -1,5 +1,6 @@
-// Exportar para Excel: três folhas — Pessoas (as colunas da tabela), Casas e Carrinhas (como as folhas
-// do Michael, um nome por célula com o fundo da cor do cliente). Exporta o que se vê: no modo de edição,
+// Exportar para Excel: três folhas — Pessoas (as colunas da tabela: o nome completo com maiúsculas
+// normais, como na Tabela), Casas e Carrinhas (como as folhas do Michael, um nome curto por célula com o
+// fundo da cor do cliente). Exporta o que se vê: no modo de edição,
 // a simulação (o ficheiro diz "simulação" no nome).
 // As linhas montam-se em funções puras (testadas); a biblioteca (write-excel-file, versão do browser)
 // só se descarrega quando se carrega no botão (import dinâmico).
@@ -103,14 +104,13 @@ export function folhaPessoas(estado: Estado, ind: Indices): FolhaExcel {
   const linhas = ordenarLinhas(linhasDaTabela(estado, ind), ORDEM_INICIAL);
   return {
     nome: 'Pessoas',
-    larguras: [LARGURA_NOME, 30, 12, 16, 22, 26, 11, 10, 18],
+    larguras: [30, 12, 16, 22, 26, 11, 10, 18],
     linhas: [
-      ['Nome', 'Nome completo', 'Nº', 'Cliente', 'Obra', 'Casa', 'Carrinha', 'Condutor', 'A confirmar'].map(
-        (t) => cabecalho(t),
+      ['Nome', 'Nº', 'Cliente', 'Obra', 'Casa', 'Carrinha', 'Condutor', 'A confirmar'].map((t) =>
+        cabecalho(t),
       ),
       ...linhas.map((l): Cell[] => [
-        celulaNome(l.pessoa, ind),
-        texto(l.nomeCompleto),
+        celulaNome(l.pessoa, ind, l.nomeMostrado),
         texto(l.numero),
         texto(l.cliente?.nome),
         texto(l.obra?.nome ?? 'sem obra', l.obra ? {} : { fontStyle: 'italic', textColor: '#70706F' }),
