@@ -8,3 +8,5 @@ dados/
 *.db
 *.db-*
 *.log
+# Configuração local só para as cópias de segurança (segredos): nunca vai para o git.
+.env.copias
