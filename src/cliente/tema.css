@@ -49,7 +49,7 @@ h6,
    O logótipo inteiro (209 px com a margem e o filete, contra 85 px do símbolo) só aparece a partir de
    1680 px de largura: abaixo disso o cabeçalho deixava de caber numa linha (medido: de 1340 a 1659 px
    passava de 51 para 118 px de altura, 67 px a menos de mapa em portáteis de 1366, 1440, 1536 e
-   1600 px). Se os contadores ou os botões do cabeçalho crescerem, voltar a medir este limite. */
+   1600 px). Se os botões do cabeçalho crescerem, voltar a medir este limite. */
 .marca {
   --marca-altura: 30px;
   --marca-margem: 10px;
@@ -94,7 +94,7 @@ h6,
   }
 }
 
-/* 105rem = 1680 px: o logótipo inteiro já cabe na mesma linha que os contadores e a pesquisa. */
+/* 105rem = 1680 px: o logótipo inteiro já cabe na mesma linha que o comutador e a pesquisa. */
 @media (min-width: 105rem) {
   .marca {
     --marca-altura: 45px;

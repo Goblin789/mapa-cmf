@@ -14,6 +14,11 @@
 // toda (até 60 % da altura, a deslizar por dentro, sempre com umas linhas da vista à mostra); volta a
 // recolher quando o foco muda a partir da vista (as ligações e os nomes da própria ficha não a recolhem).
 // Na vista a ficha tem o botão "Ver no mapa" (o único que muda de vista).
+// No PC (a partir de 640 px) a ficha arrasta-se pelo cabeçalho (ou pela pega, com as setas; Alt+setas em
+// qualquer sítio do cabeçalho) para qualquer sítio da área onde está posta, sem sair dela; cada lugar
+// lembra-se da posição (janelaArrastavel.ts, useJanelaArrastavel.ts). "Voltar ao sítio" ou um duplo
+// clique no cabeçalho põem-na outra vez na origem. O título e o subtítulo não arrastam (selecionam-se e
+// copiam-se). No mapa, arrastada, continua a acabar por cima da legenda. No telemóvel fica como estava.
 
 import {
   createContext,
@@ -72,6 +77,14 @@ import {
   textoMarcaModelo,
   textoTelefone,
 } from './textos';
+import {
+  ATRIBUTO_PEGA,
+  ATRIBUTO_TEXTO,
+  type JanelaArrastavel,
+  type PosicaoLugar,
+  useJanelaArrastavel,
+  usePosicaoJanela,
+} from './useJanelaArrastavel';
 
 /** Onde a ficha aparece: sobre o mapa ou sobre a Tabela/Quadro. */
 export type LugarFicha = 'mapa' | 'vista';
@@ -89,6 +102,9 @@ interface Recolher {
   marcarDentro: () => void;
 }
 const ContextoRecolher = createContext<Recolher | null>(null);
+
+/** A posição da ficha arrastável deste lugar (fica no PainelFoco: sobrevive a mudar de ficha). */
+const ContextoPosicao = createContext<PosicaoLugar | null>(null);
 
 /** O contrário do `sm:` do Tailwind: abaixo disto a ficha da vista é uma folha em baixo. */
 const CONSULTA_TELEMOVEL = '(max-width: 39.99rem)';
@@ -136,6 +152,12 @@ const ALTURA_VISTA_TELEMOVEL = {
 const ACOES_RECOLHIDA =
   'mt-1.5 [&_button]:shrink-0 [&_button]:whitespace-nowrap [&>div]:mt-0 [&>div]:border-t-0 [&>div]:pt-0 [&>div>div]:flex-nowrap [&>div>div]:overflow-x-auto [&>div>p]:sr-only [&>span]:mt-0 [&>span]:flex-nowrap [&>span]:overflow-x-auto';
 
+/**
+ * A legenda dos clientes (canto inferior esquerdo do mapa; paineis/Legenda.tsx): a ficha arrastada no
+ * mapa acaba por cima dela, como na origem, a não ser que se ponha o topo da ficha na faixa da legenda.
+ */
+const SELETOR_LEGENDA_MAPA = '[data-legenda-mapa]';
+
 const ROTULO_ELEMENTO = { casa: 'Casa', carrinha: 'Carrinha', obra: 'Obra' } as const;
 const CAMPO_ELEMENTO = { casa: 'casaId', carrinha: 'carrinhaId', obra: 'obraId' } as const;
 
@@ -167,13 +189,27 @@ function Moldura({
   const recolher = useContext(ContextoRecolher);
   const recolhida = recolher !== null && !recolher.inteira;
   const altura = lugar === 'vista' ? ALTURA_VISTA_TELEMOVEL[recolhida ? 'recolhida' : 'inteira'] : '';
+  const janela = useJanelaArrastavel(
+    useContext(ContextoPosicao),
+    lugar === 'mapa' ? { seletor: SELETOR_LEGENDA_MAPA, versao: alturaLegenda } : undefined,
+  );
+  // Arrastável: o título e o subtítulo (morada, matrícula) continuam a selecionar-se e a copiar-se; pega-se
+  // pela pega, pela linha do tipo e pelo espaço vazio do cabeçalho.
+  const texto = janela.ativa ? { [ATRIBUTO_TEXTO]: '' } : undefined;
+  const classeTexto = janela.ativa ? 'w-fit max-w-full cursor-text select-text' : '';
   return (
     <section
+      ref={janela.refJanela}
       aria-labelledby={idTitulo}
       // Na vista, quem desliza até um elemento (vistas/mostrar.ts) deixa-o fora da ficha.
       {...{ [ATRIBUTO_FICHA]: lugar }}
-      // No mapa, a ficha acaba por cima da legenda (canto inferior esquerdo) em vez de a tapar.
-      style={lugar === 'mapa' ? { maxHeight: alturaMaximaPainelFoco(alturaLegenda) } : undefined}
+      data-movida={janela.movida ? '' : undefined}
+      data-a-arrastar={janela.arrastando ? '' : undefined}
+      // Arrastada, manda a posição que se escolheu. Na origem, no mapa, a ficha acaba por cima da legenda
+      // (canto inferior esquerdo) em vez de a tapar.
+      style={
+        janela.estilo ?? (lugar === 'mapa' ? { maxHeight: alturaMaximaPainelFoco(alturaLegenda) } : undefined)
+      }
       onClickCapture={
         lugar === 'vista'
           ? (e) => {
@@ -184,13 +220,17 @@ function Moldura({
       }
       className={`absolute ${CLASSES_LUGAR[lugar]} ${altura} ${Z_SOBRE_MAPA} flex flex-col overflow-hidden border bg-white text-sm ${
         alterado ? 'border-amber-400' : 'border-slate-300'
-      }`}
+      } ${janela.arrastando ? 'shadow-2xl ring-2 ring-blue-500/40' : ''}`}
     >
       <header
-        className={`flex items-start gap-2 border-b border-slate-200 px-3 ${recolhida ? 'py-1.5' : 'py-2'}`}
+        {...janela.pega}
+        className={`flex items-start gap-2 border-b border-slate-200 px-3 ${recolhida ? 'py-1.5' : 'py-2'} ${
+          janela.ativa ? CLASSES_CABECALHO_ARRASTAVEL : ''
+        }`}
       >
         <div className="min-w-0 flex-1">
           <p className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+            {janela.ativa && <Pega janela={janela} />}
             <span className="text-[11px] font-semibold tracking-wide text-slate-600 uppercase">{tipo}</span>
             {alterado && <MarcaAlterado />}
             {recolher && (
@@ -200,7 +240,8 @@ function Moldura({
           {/* Recolhida: o título numa linha (inteiro na ficha toda) e sem o subtítulo; tocar-lhe abre-a. */}
           <h2
             id={idTitulo}
-            className={`text-base leading-tight font-bold text-slate-900 ${recolhida ? 'truncate' : 'break-words'}`}
+            {...texto}
+            className={`text-base leading-tight font-bold text-slate-900 ${recolhida ? 'truncate' : 'break-words'} ${classeTexto}`}
           >
             {recolhida && recolher ? (
               <button
@@ -217,8 +258,13 @@ function Moldura({
               titulo
             )}
           </h2>
-          {subtitulo && !recolhida && <p className="mt-0.5 text-xs text-slate-700">{subtitulo}</p>}
+          {subtitulo && !recolhida && (
+            <p {...texto} className={`mt-0.5 text-xs text-slate-700 ${classeTexto}`}>
+              {subtitulo}
+            </p>
+          )}
         </div>
+        {janela.movida && <BotaoVoltarAoSitio janela={janela} />}
         {lugar === 'vista' && <BotaoVerNoMapa />}
         <button
           type="button"
@@ -231,16 +277,104 @@ function Moldura({
         </button>
       </header>
       <div id={idCorpo} className="min-h-0 flex-1 overflow-y-auto px-3 py-2">
-        {recolhida ? (
-          <>
-            {resumo}
-            {acoes && <div className={ACOES_RECOLHIDA}>{acoes}</div>}
-          </>
-        ) : (
-          children
-        )}
+        {/* Invólucro sem estilo: a ficha arrastável mede-o para saber a altura do conteúdo todo. */}
+        <div ref={janela.refConteudo}>
+          {recolhida ? (
+            <>
+              {resumo}
+              {acoes && <div className={ACOES_RECOLHIDA}>{acoes}</div>}
+            </>
+          ) : (
+            children
+          )}
+        </div>
       </div>
     </section>
+  );
+}
+
+/**
+ * Cabeçalho da ficha arrastável (PC): a mão de agarrar, sem selecionar texto, e o dedo não desliza a
+ * página. Os botões ficam com a seta de sempre (o cursor herda-se).
+ */
+const CLASSES_CABECALHO_ARRASTAVEL = `cursor-grab touch-none select-none active:cursor-grabbing [&_button:not([${ATRIBUTO_PEGA}])]:cursor-default`;
+
+/**
+ * A pega da ficha arrastável, antes do tipo: arrasta-se como o resto do cabeçalho e, com o foco do
+ * teclado, as setas mudam a ficha de sítio (Shift: passos maiores) e Início volta à origem.
+ */
+function Pega({ janela }: { janela: JanelaArrastavel }) {
+  const idAjuda = useId();
+  return (
+    <>
+      <button
+        type="button"
+        {...{ [ATRIBUTO_PEGA]: '' }}
+        // Carregar não faz nada (arrasta-se ou usam-se as setas): o nome e o papel dizem-no.
+        aria-label="Mover a ficha com as setas"
+        aria-roledescription="pega"
+        aria-describedby={idAjuda}
+        title="Arrastar para mudar a ficha de sítio (duplo clique no cabeçalho volta ao sítio)"
+        className={`-my-1 -ml-1.5 shrink-0 cursor-grab rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 active:cursor-grabbing ${FOCO_VISIVEL}`}
+      >
+        <IconePega />
+      </button>
+      <span id={idAjuda} className="sr-only">
+        Setas para mover, com Shift em passos maiores; Início volta ao sítio.
+        {janela.movida ? ' A ficha não está no sítio de origem.' : ''}
+      </span>
+    </>
+  );
+}
+
+/** Seis pontos (agarrar). */
+function IconePega() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 16 16" className="size-4" fill="currentColor">
+      <circle cx="6" cy="4" r="1.25" />
+      <circle cx="10" cy="4" r="1.25" />
+      <circle cx="6" cy="8" r="1.25" />
+      <circle cx="10" cy="8" r="1.25" />
+      <circle cx="6" cy="12" r="1.25" />
+      <circle cx="10" cy="12" r="1.25" />
+    </svg>
+  );
+}
+
+/** Na ficha que se mudou de sítio: volta à posição de origem (o foco passa para a pega). */
+function BotaoVoltarAoSitio({ janela }: { janela: JanelaArrastavel }) {
+  return (
+    <button
+      type="button"
+      title="Voltar a pôr a ficha no sítio (ou duplo clique no cabeçalho)"
+      aria-label="Voltar a pôr a ficha no sítio"
+      onClick={(e) => {
+        e.currentTarget.closest('header')?.querySelector<HTMLElement>(`[${ATRIBUTO_PEGA}]`)?.focus();
+        janela.repor();
+      }}
+      className={`inline-flex h-7 shrink-0 items-center rounded border border-slate-300 bg-white px-1.5 text-slate-700 hover:bg-slate-50 hover:text-slate-900 ${FOCO_VISIVEL}`}
+    >
+      <IconeVoltar />
+    </button>
+  );
+}
+
+/** Seta que volta para trás (repor). */
+function IconeVoltar() {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 16 16"
+      className="size-4"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M3 5.5h6.5a3.5 3.5 0 0 1 0 7H6" />
+      <path d="M5.5 3 3 5.5 5.5 8" />
+    </svg>
   );
 }
 
@@ -723,10 +857,14 @@ function FichaCarrinha({
 export function PainelFoco({ lugar = 'mapa' }: { lugar?: LugarFicha }) {
   const telemovel = useTelemovel();
   const recolher = useRecolher(lugar === 'vista' && telemovel);
+  // No telemóvel a ficha fica onde sempre esteve (em baixo na vista, no canto do mapa) e não se arrasta.
+  const posicao = usePosicaoJanela(lugar, !telemovel);
   return (
     <ContextoLugar.Provider value={lugar}>
       <ContextoRecolher.Provider value={recolher}>
-        <Ficha />
+        <ContextoPosicao.Provider value={posicao}>
+          <Ficha />
+        </ContextoPosicao.Provider>
       </ContextoRecolher.Provider>
     </ContextoLugar.Provider>
   );

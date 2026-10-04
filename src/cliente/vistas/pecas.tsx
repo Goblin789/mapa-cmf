@@ -8,8 +8,8 @@
 // modo de edição o clique põe a pessoa em foco (abre a ficha; outro clique tira-a); no modo de edição o
 // clique seleciona (Ctrl/⌘+clique junta ou tira, Shift+clique escolhe o intervalo pela ordem do
 // ContextoOrdemPessoas) e põe-na em foco. Com `arrastavel` (só no modo de edição) leva o
-// data-arrastavel-pessoa do motor de arrastar (arrastar/motor.ts). Com `seguirLegenda` apaga-se quando a
-// legenda acende só outro cliente. Sem `interativo` (reunião) é só um nome.
+// data-arrastavel-pessoa do motor de arrastar (arrastar/motor.ts). Sem `interativo` (reunião) é só um
+// nome. Fica sempre numa só linha (com reticências e o nome inteiro no title, se não couber).
 // A Tabela mostra o nome completo (`nome`) e sem a sigla (`semSigla`: a coluna Cliente já a tem); por
 // omissão é o nome curto com a sigla (Quadro, reunião).
 
@@ -31,29 +31,20 @@ import { IconeDescarregar } from './icones';
 export function NomeVista({
   pessoa,
   condutor = false,
-  quebrar = false,
   className = '',
   interativo = false,
   arrastavel = false,
-  seguirLegenda = false,
   nome,
   semSigla = false,
 }: {
   pessoa: Pessoa;
   /** Conduz a carrinha onde vai: leva o volante antes do nome. */
   condutor?: boolean;
-  /**
-   * Um nome comprido parte em duas linhas em vez de ficar cortado com reticências (no Quadro: na TV da
-   * reunião não há rato para ver o nome inteiro no title).
-   */
-  quebrar?: boolean;
   className?: string;
   /** Botão: foco fora do modo de edição, seleção dentro dele (como o NomeChip). */
   interativo?: boolean;
   /** No modo de edição arrasta-se (data-arrastavel-pessoa). Só com `interativo`. */
   arrastavel?: boolean;
-  /** Apaga-se quando a legenda acende só outro cliente. */
-  seguirLegenda?: boolean;
   /** O nome a mostrar (e no início do title); por omissão o nome curto (e o completo no title). */
   nome?: string;
   /** Sem a sigla do cliente (a Tabela tem a coluna Cliente ao lado). */
@@ -72,14 +63,11 @@ export function NomeVista({
   );
   const emFoco = useLoja((s) => interativo && s.foco?.tipo === 'pessoa' && s.foco.id === pessoa.id);
   const selecionado = useLoja((s) => interativo && s.modoEdicao && s.selecao.has(pessoa.id));
-  const clienteDestacado = useLoja((s) => (seguirLegenda ? s.clienteDestacado : null));
   const ordem = useContext(ContextoOrdemPessoas);
   if (!indices) return null;
   const clienteId = clienteEfetivoId(pessoa, indices.obras);
   const cliente = indices.clientes.get(clienteId);
   const aConfirmar = pessoa.casaAConfirmar || pessoa.carrinhaAConfirmar;
-  // Um nome selecionado nunca fica apagado pela legenda: tem de se ver o que se vai mover.
-  const apagado = clienteDestacado !== null && clienteDestacado !== clienteId && !selecionado;
   const titulo = [
     nome ?? nomeCompleto(pessoa),
     condutor ? 'condutor' : null,
@@ -94,9 +82,7 @@ export function NomeVista({
   const conteudo = (
     <>
       {condutor && <IconeVolante tamanho={12} rotulo="condutor" className="size-[0.95em]" />}
-      <span className={`min-w-0 flex-1 ${quebrar ? 'break-words' : 'truncate'}`}>
-        {nome ?? pessoa.nomeCurto}
-      </span>
+      <span className="min-w-0 flex-1 truncate">{nome ?? pessoa.nomeCurto}</span>
       {aConfirmar && (
         <>
           <span
@@ -153,7 +139,7 @@ export function NomeVista({
       }}
       className={[
         base,
-        'w-full text-left transition-opacity',
+        'w-full text-left',
         FOCO_VISIVEL,
         arrastavel && modoEdicao ? 'cursor-grab' : 'cursor-pointer',
         selecionado
@@ -161,7 +147,6 @@ export function NomeVista({
           : emFoco
             ? 'border-slate-900 ring-2 ring-slate-900'
             : 'border-black/25',
-        apagado ? 'opacity-20' : 'opacity-100',
         className,
       ].join(' ')}
       style={cores}

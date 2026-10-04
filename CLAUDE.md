@@ -77,5 +77,7 @@ camadas, lista lateral, **modo de edição** (rascunho, arrastar, Mover para…,
   `mover`, `condutor` e `dormida`. Autor = e-mail (UPN) de quem tem sessão; 'local' no modo local.
   O histórico mostra o nome (`autorNome`).
 - Se a sessão termina a meio de uma edição, o rascunho fica guardado no browser e volta depois de entrar.
+- Os contadores (Livres nas casas, Sem transporte…) já não aparecem no ecrã (04/10/2026); `dominio/contadores.ts`
+  continua a calcular (a legenda do Mapa usa `pessoasPorCliente`). Filtros de escolha múltipla: `comum/FiltroMultiplo.tsx`.
 - Todos os nomes têm o mesmo texto (`COR_TEXTO_NOMES`); as cores dos clientes são claras (ver `docs/cores.md`).
 - Tipos da API em `src/dominio/api.ts`; formato das matrículas em `src/dominio/matricula.ts`.

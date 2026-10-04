@@ -11,7 +11,12 @@
 //   e, nas carrinhas, as que ainda não têm onde dormir.
 // Uma carrinha conta onde dorme (definido ou, sem isso, a sugestão: a casa da maioria dos passageiros).
 // Casas e carrinhas desenham os lugares livres até à lotação, com o mesmo aspeto.
+//
+// Filtro do Quadro (clientes e obras, vários de cada; ver FiltroQuadro): ficam SÓ as pessoas que passam.
+// Os blocos continuam todos lá, com a lotação real (não filtrada: é para lá que se larga no modo de
+// edição); os que não têm ninguém do filtro ficam recolhidos (só o título e a pastilha).
 
+import { clienteEfetivoId } from '../../dominio/cores';
 import type { Dormida } from '../../dominio/dormidas';
 import type { Indices } from '../../dominio/indices';
 import { formatarMatricula } from '../../dominio/matricula';
@@ -21,7 +26,8 @@ import {
   ocupacaoCarrinha,
   ocupacaoCasa,
 } from '../../dominio/ocupacao';
-import type { Carrinha, Casa, Cliente, Estado, Id, Local, Pais, Pessoa } from '../../dominio/tipos';
+import type { Carrinha, Casa, Cliente, Estado, Id, Local, Obra, Pais, Pessoa } from '../../dominio/tipos';
+import { GRUPO_ESPECIAIS, type OpcaoFiltro, passaFiltro } from '../comum/escolhaMultipla';
 import { condutorPrimeiro, ordenarPorClienteENome } from '../lista/seccoes';
 import { DISTANCIA_VIZINHOS_M, distanciaMetros } from '../mapa/layout/disposicao';
 import { nomeJunto } from '../mapa/layout/textos';
@@ -95,6 +101,10 @@ export interface BlocoQuadro {
   /** Bloco largo (fora das casas, sem transporte): ocupa a linha toda, com a divisão por cliente. */
   largo: boolean;
   porCliente: ParcelaClienteQuadro[];
+  /** Pessoas do bloco que o filtro esconde (0 sem filtro). */
+  escondidas: number;
+  /** Com o filtro ligado, ninguém do bloco passa: mostra-se só o título e a pastilha. */
+  recolhido: boolean;
 }
 
 /** Partes lado a lado (locais vizinhos, de oeste para leste) ou uma só parte (grelha do país). */
@@ -122,7 +132,98 @@ export interface SeccaoQuadro {
   nPessoas: number;
 }
 
+// --- Filtro ---------------------------------------------------------------------------------------
+
+/** Valor da opção "Sem obra" do filtro das obras (os outros valores são ids de obras). */
+export const SEM_OBRA = 'sem-obra';
+
+/**
+ * O filtro do Quadro: clientes (o efetivo: o da obra, ou o da pessoa sem obra) e obras (ids ou SEM_OBRA).
+ * Vazio = sem filtro. Dentro de cada um é OU; entre os dois é E.
+ */
+export interface FiltroQuadro {
+  clientes: ReadonlySet<Id>;
+  obras: ReadonlySet<string>;
+}
+
+export const SEM_FILTRO: FiltroQuadro = { clientes: new Set(), obras: new Set() };
+
+export function filtroQuadroAtivo(f: FiltroQuadro): boolean {
+  return f.clientes.size > 0 || f.obras.size > 0;
+}
+
+/**
+ * A obra da pessoa para o filtro: o id, ou SEM_OBRA sem obra ou com uma obra que não se conhece (apagada,
+ * ou a meio de uma importação). O mesmo critério conta o "Sem obra" (opcoesObrasQuadro).
+ */
+function obraDoFiltro(pessoa: Pessoa, obras: Map<Id, Obra>): string {
+  return pessoa.obraId !== null && obras.has(pessoa.obraId) ? pessoa.obraId : SEM_OBRA;
+}
+
+/** A pessoa passa no filtro (o cliente efetivo E a obra). */
+export function passaFiltroQuadro(pessoa: Pessoa, f: FiltroQuadro, obras: Map<Id, Obra>): boolean {
+  return (
+    passaFiltro(f.clientes, clienteEfetivoId(pessoa, obras)) &&
+    passaFiltro(f.obras, obraDoFiltro(pessoa, obras))
+  );
+}
+
+/**
+ * Opções do filtro das obras: as obras agrupadas pelo cliente (título pequeno com o nome dele, pela ordem
+ * dos clientes) e, no fim, "Sem obra". Sem obras nenhuma: lista vazia (o botão fica "Obra: sem obras").
+ */
+export function opcoesObrasQuadro(estado: Estado, ind: Indices): OpcaoFiltro[] {
+  if (estado.obras.length === 0) return [];
+  const ordemCliente = (id: Id) => ind.clientes.get(id)?.ordem ?? Number.POSITIVE_INFINITY;
+  const obras = [...estado.obras].sort(
+    (a, b) => ordemCliente(a.clienteId) - ordemCliente(b.clienteId) || a.nome.localeCompare(b.nome, 'pt'),
+  );
+  const opcoes: OpcaoFiltro[] = obras.map((o) => {
+    const cliente = ind.clientes.get(o.clienteId);
+    return {
+      valor: o.id,
+      rotulo: o.nome,
+      grupo: cliente?.nome ?? 'Cliente desconhecido',
+      contagem: ind.trabalhadores.get(o.id)?.length ?? 0,
+      termos: cliente ? `${cliente.nome} ${cliente.sigla}` : undefined,
+    };
+  });
+  const semObra = estado.pessoas.filter((p) => p.ativa && obraDoFiltro(p, ind.obras) === SEM_OBRA);
+  opcoes.push({ valor: SEM_OBRA, rotulo: 'Sem obra', grupo: GRUPO_ESPECIAIS, contagem: semObra.length });
+  return opcoes;
+}
+
+/** Larguras mínimas de sempre (em) de um nome e de um bloco. */
+export const LARGURA_MIN_NOME = 9.5;
+export const LARGURA_MIN_BLOCO = 12.5;
+
+/**
+ * Larguras mínimas (em) das colunas para o nome mais comprido caber numa só linha, como nas carrinhas:
+ * `nome` para a grelha dos nomes, `bloco` para a dos blocos (o nome mais as margens do bloco: 0,35 em de
+ * cada lado, a borda e uma folga para arredondamentos). Nunca abaixo das de sempre (9,5 e 12,5 em).
+ * @param nomeEm largura natural do nome mais comprido (em), medida no browser.
+ */
+export function largurasMinimas(nomeEm: number): { nome: number; bloco: number } {
+  const arredondar = (x: number) => Math.ceil(x * 20) / 20;
+  const nome = Number.isFinite(nomeEm) && nomeEm > 0 ? nomeEm : 0;
+  return {
+    nome: arredondar(Math.max(LARGURA_MIN_NOME, nome + 0.05)),
+    bloco: arredondar(Math.max(LARGURA_MIN_BLOCO, nome + 0.95)),
+  };
+}
+
 // --- Blocos ---------------------------------------------------------------------------------------
+
+/** Pessoas que passam no filtro e quantas ficam escondidas; sem filtro, todas. */
+function filtrar(
+  pessoas: Pessoa[],
+  ind: Indices,
+  filtro: FiltroQuadro | undefined,
+): { pessoas: Pessoa[]; escondidas: number; recolhido: boolean } {
+  if (!filtro || !filtroQuadroAtivo(filtro)) return { pessoas, escondidas: 0, recolhido: false };
+  const ficam = pessoas.filter((p) => passaFiltroQuadro(p, filtro, ind.obras));
+  return { pessoas: ficam, escondidas: pessoas.length - ficam.length, recolhido: ficam.length === 0 };
+}
 
 function parcelas(pessoas: Pessoa[], ind: Indices): ParcelaClienteQuadro[] {
   return agruparPorCliente(pessoas, ind).map((g) => ({
@@ -132,16 +233,24 @@ function parcelas(pessoas: Pessoa[], ind: Indices): ParcelaClienteQuadro[] {
   }));
 }
 
-function blocoCasa(casa: Casa, ind: Indices, dormidas: Map<Id, Dormida>): BlocoQuadro {
+function blocoCasa(
+  casa: Casa,
+  ind: Indices,
+  dormidas: Map<Id, Dormida>,
+  filtro: FiltroQuadro | undefined,
+): BlocoQuadro {
   const moradores = ind.moradores.get(casa.id) ?? [];
   const oc = ocupacaoCasa(casa, moradores.length);
+  const f = filtrar(ordenarPorClienteENome(moradores, ind), ind, filtro);
   return {
     chave: `casa:${casa.id}`,
     tipo: 'casa',
     id: casa.id,
     titulo: casa.nome,
     detalhe: null,
-    pessoas: ordenarPorClienteENome(moradores, ind),
+    pessoas: f.pessoas,
+    escondidas: f.escondidas,
+    recolhido: f.recolhido,
     lotacao: { ocupados: oc.ocupados, lugares: oc.lotacao, nivel: oc.nivel },
     vazios: oc.livres,
     ligacoes: carrinhasQueDormemEm(casa.id, ind, dormidas).map(({ carrinha, confianca }) => ({
@@ -172,10 +281,16 @@ function ligacaoDaCarrinha(d: Dormida | undefined, ind: Indices): LigacaoQuadro 
   };
 }
 
-function blocoCarrinha(carrinha: Carrinha, ind: Indices, dormidas: Map<Id, Dormida>): BlocoQuadro {
+function blocoCarrinha(
+  carrinha: Carrinha,
+  ind: Indices,
+  dormidas: Map<Id, Dormida>,
+  filtro: FiltroQuadro | undefined,
+): BlocoQuadro {
   const passageiros = ind.passageiros.get(carrinha.id) ?? [];
   const oc = ocupacaoCarrinha(carrinha, passageiros.length);
   const marcaModelo = textoMarcaModelo(carrinha);
+  const f = filtrar(condutorPrimeiro(ordenarPorClienteENome(passageiros, ind), carrinha), ind, filtro);
   return {
     chave: `carrinha:${carrinha.id}`,
     tipo: 'carrinha',
@@ -185,7 +300,9 @@ function blocoCarrinha(carrinha: Carrinha, ind: Indices, dormidas: Map<Id, Dormi
       carrinha.tipo === 'carro'
         ? [ROTULO_TIPO_VEICULO.carro, marcaModelo].filter(Boolean).join(' · ')
         : marcaModelo,
-    pessoas: condutorPrimeiro(ordenarPorClienteENome(passageiros, ind), carrinha),
+    pessoas: f.pessoas,
+    escondidas: f.escondidas,
+    recolhido: f.recolhido,
     lotacao: { ocupados: oc.ocupados, lugares: oc.lugares, nivel: oc.nivel },
     vazios: oc.livres,
     ligacoes: [ligacaoDaCarrinha(dormidas.get(carrinha.id), ind)],
@@ -197,8 +314,14 @@ function blocoCarrinha(carrinha: Carrinha, ind: Indices, dormidas: Map<Id, Dormi
   };
 }
 
-function blocoLargo(tipo: 'fora' | 'sem-transporte', pessoas: Pessoa[], ind: Indices): BlocoQuadro {
-  const ordenadas = ordenarPorClienteENome(pessoas, ind);
+function blocoLargo(
+  tipo: 'fora' | 'sem-transporte',
+  pessoas: Pessoa[],
+  ind: Indices,
+  filtro: FiltroQuadro | undefined,
+): BlocoQuadro {
+  const f = filtrar(ordenarPorClienteENome(pessoas, ind), ind, filtro);
+  const ordenadas = f.pessoas;
   return {
     chave: tipo,
     tipo,
@@ -206,6 +329,8 @@ function blocoLargo(tipo: 'fora' | 'sem-transporte', pessoas: Pessoa[], ind: Ind
     titulo: tipo === 'fora' ? ROTULO_FORA_DAS_CASAS : ROTULO_SEM_TRANSPORTE,
     detalhe: null,
     pessoas: ordenadas,
+    escondidas: f.escondidas,
+    recolhido: f.recolhido,
     lotacao: null,
     vazios: 0,
     ligacoes: [],
@@ -356,21 +481,28 @@ function seccaoLarga(bloco: BlocoQuadro): SeccaoQuadro {
   };
 }
 
-function seccoesCasas(estado: Estado, ind: Indices, dormidas: Map<Id, Dormida>): SeccaoQuadro[] {
+function seccoesCasas(
+  estado: Estado,
+  ind: Indices,
+  dormidas: Map<Id, Dormida>,
+  filtro: FiltroQuadro | undefined,
+): SeccaoQuadro[] {
   const casas = [...estado.casas].sort((a, b) => a.ordem - b.ordem);
   const itens = new Map<Id, ItemLocal>();
   for (const casa of casas) {
     const local = ind.locais.get(casa.localId);
     if (!local) continue;
     const item = itens.get(local.id);
-    if (item) item.blocos.push(blocoCasa(casa, ind, dormidas));
-    else itens.set(local.id, { local, blocos: [blocoCasa(casa, ind, dormidas)], ordem: casa.ordem });
+    if (item) item.blocos.push(blocoCasa(casa, ind, dormidas, filtro));
+    else itens.set(local.id, { local, blocos: [blocoCasa(casa, ind, dormidas, filtro)], ordem: casa.ordem });
   }
   // Casas cujo local não existe (não devia acontecer, mas não desaparecem): numa secção à parte.
-  const semLocal = casas.filter((c) => !ind.locais.has(c.localId)).map((c) => blocoCasa(c, ind, dormidas));
+  const semLocal = casas
+    .filter((c) => !ind.locais.has(c.localId))
+    .map((c) => blocoCasa(c, ind, dormidas, filtro));
   const seccoes = seccoesPorPais([...itens.values()], true);
   if (semLocal.length > 0) seccoes.push(seccaoSolta('casas-sem-local', 'Sem morada', semLocal));
-  seccoes.push(seccaoLarga(blocoLargo('fora', ind.foraDasCasas, ind)));
+  seccoes.push(seccaoLarga(blocoLargo('fora', ind.foraDasCasas, ind, filtro)));
   return seccoes;
 }
 
@@ -384,7 +516,12 @@ function seccaoSolta(chave: string, titulo: string, blocos: BlocoQuadro[]): Secc
   };
 }
 
-function seccoesCarrinhas(estado: Estado, ind: Indices, dormidas: Map<Id, Dormida>): SeccaoQuadro[] {
+function seccoesCarrinhas(
+  estado: Estado,
+  ind: Indices,
+  dormidas: Map<Id, Dormida>,
+  filtro: FiltroQuadro | undefined,
+): SeccaoQuadro[] {
   // Ordem de cada local: a da primeira casa que lá está (locais sem casas, como um estacionamento,
   // ficam depois de todas as casas).
   const ordemLocal = new Map<Id, number>();
@@ -400,7 +537,7 @@ function seccoesCarrinhas(estado: Estado, ind: Indices, dormidas: Map<Id, Dormid
   const itens = new Map<Id, ItemLocal>();
   const porDefinir: BlocoQuadro[] = [];
   for (const carrinha of carrinhas) {
-    const bloco = blocoCarrinha(carrinha, ind, dormidas);
+    const bloco = blocoCarrinha(carrinha, ind, dormidas, filtro);
     const localId = dormidas.get(carrinha.id)?.localId ?? null;
     const local = localId ? ind.locais.get(localId) : undefined;
     if (!local) {
@@ -418,20 +555,24 @@ function seccoesCarrinhas(estado: Estado, ind: Indices, dormidas: Map<Id, Dormid
   }
   const seccoes = seccoesPorPais([...itens.values()], false);
   if (porDefinir.length > 0) seccoes.push(seccaoSolta('por-definir', ROTULO_DORME_POR_DEFINIR, porDefinir));
-  seccoes.push(seccaoLarga(blocoLargo('sem-transporte', ind.semTransporte, ind)));
+  seccoes.push(seccaoLarga(blocoLargo('sem-transporte', ind.semTransporte, ind, filtro)));
   return seccoes;
 }
 
-/** As secções do Quadro, por casas ou por carrinhas. */
+/**
+ * As secções do Quadro, por casas ou por carrinhas. Com `filtro`, os blocos só têm as pessoas que passam
+ * (a lotação continua a real) e as secções contam só essas.
+ */
 export function montarQuadro(
   agrupamento: Agrupamento,
   estado: Estado,
   ind: Indices,
   dormidas: Map<Id, Dormida>,
+  filtro?: FiltroQuadro,
 ): SeccaoQuadro[] {
   return agrupamento === 'casas'
-    ? seccoesCasas(estado, ind, dormidas)
-    : seccoesCarrinhas(estado, ind, dormidas);
+    ? seccoesCasas(estado, ind, dormidas, filtro)
+    : seccoesCarrinhas(estado, ind, dormidas, filtro);
 }
 
 /** Todos os blocos do quadro, pela ordem em que aparecem (para os testes e para contar). */
@@ -476,11 +617,19 @@ export interface DegrauAjuste {
   modo: ModoAjuste;
   minimo: number;
   maximo: number;
+  /**
+   * As colunas ficam com a largura de sempre (LARGURA_MIN_BLOCO) e os nomes que não cabem levam
+   * reticências. Sem isto (por omissão), as colunas têm a largura do nome mais comprido (largurasMinimas):
+   * todos os nomes inteiros numa só linha.
+   */
+  nomesCortados?: boolean;
 }
 
 export interface AjusteQuadro {
   letra: number;
   modo: ModoAjuste;
+  /** Colunas da largura de sempre: algum nome comprido pode ficar com reticências. */
+  nomesCortados: boolean;
   /** Nem assim coube: o quadro desliza na vertical. */
   desliza: boolean;
 }
@@ -490,12 +639,17 @@ export const LETRA_NORMAL = 14;
 
 /**
  * Os degraus do ajuste (ver escolherAjuste) e o que fica se nenhum couber.
+ * Os nomes ficam sempre inteiros numa só linha (pedido do Rafael, 04/10/2026): as colunas têm a largura do
+ * nome mais comprido.
  * - Reunião (TV vista de longe): completo de 14 a 30 px; senão os livres numa linha, que podem ir até
- *   13 px (com eles as carrinhas mostram os lugares livres também na reunião: a 1920×1080, com os dados
- *   de outubro de 2026, o completo não cabe a 14 e os livres numa linha cabem a 13); só depois o
- *   compacto, sem livres; se nem assim, 13 px a deslizar.
+ *   13 px; senão o compacto, sem livres. Se nem assim couber, antes de deslizar (na TV ninguém desliza:
+ *   blocos inteiros ficavam fora do ecrã) as colunas voltam à largura de sempre e só os poucos nomes que
+ *   não cabem levam reticências: a 1920×1080, com os dados de outubro de 2026, o Quadro por carrinhas não
+ *   cabe com os nomes inteiros nem compacto a 13 px, e com 4 nomes cortados cabe com os livres numa
+ *   linha a 13. Se nem assim, 13 px a deslizar com os nomes inteiros.
  * - PC: de 12 a 16 px, sempre completo, com um "livre" por lugar nas casas e nas carrinhas (pedido do
- *   Rafael: os lugares vazios das carrinhas "tal como nas casas"); se não couber, 14 px a deslizar.
+ *   Rafael: os lugares vazios das carrinhas "tal como nas casas"); se não couber, 14 px a deslizar. Os
+ *   nomes nunca se cortam (no PC desliza-se).
  */
 export const DEGRAUS_AJUSTE: Record<
   'reuniao' | 'normal',
@@ -506,6 +660,8 @@ export const DEGRAUS_AJUSTE: Record<
       { modo: 'completo', minimo: 14, maximo: 30 },
       { modo: 'livres-numa-linha', minimo: 13, maximo: 30 },
       { modo: 'compacto', minimo: 13, maximo: 30 },
+      { modo: 'livres-numa-linha', minimo: 13, maximo: 30, nomesCortados: true },
+      { modo: 'compacto', minimo: 13, maximo: 30, nomesCortados: true },
     ],
     senaoCouber: { letra: 13, modo: 'compacto' },
   },
@@ -523,11 +679,11 @@ export const DEGRAUS_AJUSTE: Record<
 export function escolherAjuste(
   degraus: readonly DegrauAjuste[],
   senaoCouber: { letra: number; modo: ModoAjuste },
-  cabe: (letra: number, modo: ModoAjuste) => boolean,
+  cabe: (letra: number, modo: ModoAjuste, nomesCortados: boolean) => boolean,
 ): AjusteQuadro {
-  for (const { modo, minimo, maximo } of degraus) {
-    const letra = maiorLetraQueCabe(minimo, maximo, (f) => cabe(f, modo));
-    if (letra !== null) return { letra, modo, desliza: false };
+  for (const { modo, minimo, maximo, nomesCortados = false } of degraus) {
+    const letra = maiorLetraQueCabe(minimo, maximo, (f) => cabe(f, modo, nomesCortados));
+    if (letra !== null) return { letra, modo, nomesCortados, desliza: false };
   }
-  return { ...senaoCouber, desliza: true };
+  return { ...senaoCouber, nomesCortados: false, desliza: true };
 }

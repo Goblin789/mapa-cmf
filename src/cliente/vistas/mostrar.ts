@@ -1,7 +1,7 @@
 // "Mostrar" uma pessoa, casa ou carrinha SEM mudar de vista (docs/vistas-edicao.md). Quem pede (pesquisa
-// do cabeçalho, contadores, ligações da ficha) chama mostrarElemento: põe o elemento em foco (a ficha abre na vista ativa) e leva a vista
+// do cabeçalho, ligações da ficha) chama mostrarElemento: põe o elemento em foco (a ficha abre na vista ativa) e leva a vista
 // ativa até lá.
-// - Mapa: com noMapa 'ir' (pesquisa, contadores) pede ao mapa para ir até lá, como sempre; com 'so-foco'
+// - Mapa: com noMapa 'ir' (pesquisa) pede ao mapa para ir até lá, como sempre; com 'so-foco'
 //   (ligações da ficha) só muda o foco, como sempre. O Mapa fica exatamente como estava.
 // - Tabela e Quadro: deixam um pedido (usePedidoMostrar) que a vista ativa atende com useAoMostrar:
 //   desliza até ao elemento e realça-o por instantes (revelarElementos).
@@ -53,7 +53,7 @@ export const usePedidoMostrar = create<{
   pedir: (elemento) => set({ pedido: { elemento, seq: (get().pedido?.seq ?? 0) + 1 } }),
 }));
 
-/** No Mapa: 'ir' leva o mapa até lá (pesquisa, contadores); 'so-foco' só muda o foco (ligações da ficha). */
+/** No Mapa: 'ir' leva o mapa até lá (pesquisa); 'so-foco' só muda o foco (ligações da ficha). */
 export type ComportamentoNoMapa = 'ir' | 'so-foco';
 
 /** Põe o elemento em foco e leva a vista ativa até ele, sem mudar de vista. */

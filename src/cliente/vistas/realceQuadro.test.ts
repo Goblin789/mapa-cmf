@@ -8,7 +8,9 @@ import {
   avisoSemNadaNoQuadro,
   blocoTemAlteracoes,
   chavesNoQuadro,
+  filtroEscondeTudo,
   pessoasDoFocoSemBloco,
+  selecaoSemEscondidos,
 } from './realceQuadro';
 
 const ind = indexar(estadoVistas());
@@ -172,5 +174,38 @@ describe('blocoTemAlteracoes', () => {
     expect(blocoTemAlteracoes(entra, { tipo: 'sem-transporte', id: null })).toBe(true);
     expect(blocoTemAlteracoes(entra, { tipo: 'fora', id: null })).toBe(false);
     expect(blocoTemAlteracoes([], { tipo: 'fora', id: null })).toBe(false);
+  });
+});
+
+describe('filtroEscondeTudo', () => {
+  const passa = (id: string) => id === 'p-2';
+  it('só quando tudo o que se ia acender são pessoas escondidas pelo filtro', () => {
+    expect(filtroEscondeTudo(['pessoa:p-1'], passa)).toBe(true);
+    expect(filtroEscondeTudo(['pessoa:p-1', 'pessoa:p-4'], passa)).toBe(true);
+    // Uma à vista: acende-se essa, o filtro fica.
+    expect(filtroEscondeTudo(['pessoa:p-1', 'pessoa:p-2'], passa)).toBe(false);
+    // Os blocos ficam sempre (recolhidos, se for preciso).
+    expect(filtroEscondeTudo(['casa:casa-l1'], passa)).toBe(false);
+    expect(filtroEscondeTudo(['carrinha:XX1001', 'pessoa:p-1'], passa)).toBe(false);
+    expect(filtroEscondeTudo([], passa)).toBe(false);
+  });
+});
+
+describe('selecaoSemEscondidos', () => {
+  const passa = (id: string) => id !== 'p-1' && id !== 'p-4';
+  it('tira da seleção quem o filtro esconde, com o aviso no singular ou no plural', () => {
+    expect(selecaoSemEscondidos(new Set(['p-2', 'p-1']), passa)).toEqual({
+      fica: ['p-2'],
+      aviso: '1 pessoa escondida pelo filtro saiu da seleção.',
+    });
+    expect(selecaoSemEscondidos(new Set(['p-1', 'p-3', 'p-4']), passa)).toEqual({
+      fica: ['p-3'],
+      aviso: '2 pessoas escondidas pelo filtro saíram da seleção.',
+    });
+  });
+
+  it('ninguém sai (ou seleção vazia): null, a seleção fica igual', () => {
+    expect(selecaoSemEscondidos(new Set(['p-2', 'p-3']), passa)).toBeNull();
+    expect(selecaoSemEscondidos(new Set(), passa)).toBeNull();
   });
 });

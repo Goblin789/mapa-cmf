@@ -126,3 +126,32 @@ export function blocoTemAlteracoes(
     }
   }
 }
+
+/**
+ * O filtro do Quadro (clientes, obras) esconde tudo o que se ia acender: há chaves e são todas de pessoas
+ * que não passam (os blocos das casas e carrinhas ficam sempre, mesmo recolhidos). Quem pediu para mostrar
+ * limpa então o filtro, como a Tabela faz com os dela. Com alguma à vista, acende-se essa e o filtro fica.
+ */
+export function filtroEscondeTudo(chaves: readonly string[], passa: (pessoaId: Id) => boolean): boolean {
+  const prefixo = 'pessoa:';
+  return chaves.length > 0 && chaves.every((c) => c.startsWith(prefixo) && !passa(c.slice(prefixo.length)));
+}
+
+/**
+ * No modo de edição, quem está selecionado e o filtro do Quadro passa a esconder sai da seleção: senão ia
+ * no arrasto (o motor leva a seleção toda) sem se ver. `null` quando ninguém sai; senão a seleção que fica
+ * (pela mesma ordem) e o aviso curto a mostrar.
+ */
+export function selecaoSemEscondidos(
+  selecao: ReadonlySet<Id>,
+  passa: (pessoaId: Id) => boolean,
+): { fica: Id[]; aviso: string } | null {
+  const fica = [...selecao].filter(passa);
+  const saem = selecao.size - fica.length;
+  if (saem === 0) return null;
+  const aviso =
+    saem === 1
+      ? '1 pessoa escondida pelo filtro saiu da seleção.'
+      : `${saem} pessoas escondidas pelo filtro saíram da seleção.`;
+  return { fica, aviso };
+}

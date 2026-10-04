@@ -12,6 +12,7 @@ import {
   montarFolhasExcel,
   nomeFicheiroExcel,
 } from './excel';
+import { FILTROS_INICIAIS, filtrarLinhas, linhasDaTabela, ordenarLinhas } from './linhasTabela';
 
 const estado = estadoVistas();
 const ind = indexar(estado);
@@ -216,5 +217,38 @@ describe('nomeFicheiroExcel', () => {
     expect(nomeFicheiroExcel(new Date('2026-10-07T10:00:00Z'), true)).toBe(
       'Mapa CMF 2026-10-07 (simulação).xlsx',
     );
+  });
+
+  it('com os filtros da Tabela, diz que é filtrado', () => {
+    const dia = new Date('2026-10-07T10:00:00Z');
+    expect(nomeFicheiroExcel(dia, false, true)).toBe('Mapa CMF 2026-10-07 (filtrado).xlsx');
+    expect(nomeFicheiroExcel(dia, true, true)).toBe('Mapa CMF 2026-10-07 (simulação, filtrado).xlsx');
+  });
+});
+
+describe('Excel com os filtros da Tabela', () => {
+  // As linhas que a Tabela mostra: Casa L1 OU a Aldeia, pelo nome ao contrário.
+  const filtradas = ordenarLinhas(
+    filtrarLinhas(linhasDaTabela(estado, ind), {
+      ...FILTROS_INICIAIS,
+      casas: new Set(['casa-l1', 'casa-a']),
+    }),
+    { coluna: 'nome', direcao: 'desc' },
+  );
+
+  it('a folha Pessoas só tem as linhas filtradas, pela ordem da Tabela', () => {
+    const folha = folhaPessoas(estado, ind, filtradas);
+    expect(folha.linhas.slice(1).map((l) => valor(l[0] ?? null))).toEqual(
+      filtradas.map((l) => l.nomeMostrado),
+    );
+    expect(folha.linhas).toHaveLength(filtradas.length + 1);
+  });
+
+  it('as folhas Casas e Carrinhas ficam inteiras', () => {
+    const todas = montarFolhasExcel(estado, ind, dormidas);
+    const so = montarFolhasExcel(estado, ind, dormidas, filtradas);
+    expect(so[0]?.linhas).toHaveLength(filtradas.length + 1);
+    expect(so[1]).toEqual(todas[1]);
+    expect(so[2]).toEqual(todas[2]);
   });
 });

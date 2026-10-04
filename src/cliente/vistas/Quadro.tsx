@@ -9,9 +9,18 @@
 // - Ler: clicar num nome abre a ficha da pessoa; clicar no título de uma casa ou carrinha abre a dela (a
 //   mesma ficha do mapa, PainelFoco lugar="vista", por cima dos blocos). O que está em foco tem um anel; uma
 //   casa em foco no Quadro por carrinhas (ou uma carrinha no Quadro por casas) realça os nomes de quem lá
-//   mora (ou vai). Os pedidos de mostrar (pesquisa, contadores, ligações da ficha e do rodapé: mostrar.ts)
+//   mora (ou vai). Os pedidos de mostrar (pesquisa, ligações da ficha e do rodapé: mostrar.ts)
 //   deslizam até ao bloco ou aos nomes e acendem-nos (realceQuadro.ts); sem nada a que chegar, um aviso
-//   curto diz porquê. A legenda dos clientes vai na barra.
+//   curto diz porquê.
+// - Filtrar (também na reunião, que só vê): na barra, os clientes (cada pastilha liga/desliga o seu, sem
+//   Shift; "Todos" limpa; no telemóvel uma lista de caixas) e as obras (FiltroMultiplo), vários de cada.
+//   Ficam SÓ as pessoas desses clientes E dessas obras (agrupamentoQuadro.ts, FiltroQuadro). Os blocos
+//   continuam todos, com a lotação real (para se poder largar neles); os que não têm ninguém do filtro
+//   ficam recolhidos numa fila (só o título e a pastilha) e os outros dizem "+N fora do filtro". Mostrar
+//   alguém que o filtro esconde (pesquisa, ligações) limpa o filtro, com um aviso curto. O filtro fica até
+//   se sair da página (não se lembra no browser: um filtro esquecido escondia pessoas na reunião seguinte).
+//   No modo de edição, quem o filtro esconde sai da seleção, com um aviso curto (não vai no arrasto sem se
+//   ver). O realce por cliente da legenda do Mapa (clienteDestacado) já não apaga nomes no Quadro.
 // - Editar (modo de edição, como no mapa e na lista lateral): os nomes selecionam-se (clique, Ctrl/⌘+clique,
 //   Shift+clique) e arrastam-se (motor de arrastar/, toque longo no telemóvel) para outro bloco: cada bloco
 //   é um alvo (data-alvo = a chave do bloco) e o fantasma mostra a previsão. Shift+arrastar no fundo desenha
@@ -20,12 +29,15 @@
 //   guardar: contorno âmbar e "●". A arrastar (ou a desenhar a caixa) a ficha fica meio transparente e
 //   deixa passar o ponteiro: os blocos por baixo dela continuam a ser alvos.
 // - Reunião: só leitura (sem ficha, nomes e títulos não se clicam, sem alvos), mas os pedidos de mostrar
-//   (casa do popover dos contadores) também deslizam e acendem.
+//   também deslizam e acendem.
 //
 // Ajuste ao ecrã: tudo é medido em em a partir da letra do quadro, e a letra escolhe-se para o quadro
-// caber inteiro no espaço que tem, sem deslizar (pesquisa binária com medição no browser). Os nomes
-// compridos partem em duas linhas (nunca ficam cortados: na TV não há rato para ver o title), e a
-// medição conta com isso.
+// caber inteiro no espaço que tem, sem deslizar (pesquisa binária com medição no browser). Os nomes ficam
+// sempre numa só linha: antes de escolher a letra mede-se, em cada grelha de blocos, o nome mais comprido
+// (em em, por isso vale para qualquer letra) e as colunas dos blocos e dos nomes dessa grelha nunca ficam
+// mais estreitas do que ele (largurasMinimas). Só na reunião, se nada couber assim, as colunas voltam à
+// largura de sempre e os poucos nomes compridos levam reticências (DEGRAUS_AJUSTE); num ecrã estreito
+// demais também (o nome todo fica no title).
 // - Reunião (TV 1920×1080 vista de longe): sem a marca e o modelo das carrinhas; letra de 14 a 30 px.
 //   Se nem a 14 couber, os lugares livres de cada bloco juntam-se numa só linha ("4 livres") e sai o que
 //   a pastilha ou o título da secção já dizem, de 13 a 30; se nem assim, compacto (sem os livres), de 13
@@ -49,9 +61,11 @@ import {
   useRef,
   useState,
 } from 'react';
+import { create } from 'zustand';
 import { COR_TEXTO_NOMES } from '../../dominio/cores';
 import type { Id } from '../../dominio/tipos';
 import { registarOuvintesArrasto } from '../arrastar/ouvintes';
+import { FiltroMultiplo, type OpcaoFiltroMultiplo } from '../comum/FiltroMultiplo';
 import { IconeVolante } from '../comum/IconeVolante';
 import { Matricula } from '../comum/Matricula';
 import { ContextoOrdemPessoas } from '../comum/ordemPessoas';
@@ -62,10 +76,11 @@ import { dormidaPendente } from '../edicao/resumo';
 import { abrirDormida, useUiEdicao } from '../edicao/ui';
 import { useLoja } from '../estado/loja';
 import { IconeDormir } from '../lista/icones';
+import { clientesPorOrdem, contagemDoCliente } from '../paineis/agrupar';
 import { FOCO_VISIVEL } from '../paineis/classes';
 import { ehCondutor, ROTULO_SEM_CONDUTOR } from '../paineis/condutor';
-import { Legenda } from '../paineis/Legenda';
 import { PainelFoco } from '../paineis/PainelFoco';
+import { MarcaCliente } from '../paineis/pecas';
 import { comPlural } from '../paineis/textos';
 import {
   type BlocoQuadro,
@@ -73,10 +88,16 @@ import {
   DEGRAUS_AJUSTE,
   escolherAjuste,
   type FaixaQuadro,
+  type FiltroQuadro,
+  filtroQuadroAtivo,
+  LARGURA_MIN_BLOCO,
   LETRA_NORMAL,
   type LigacaoQuadro,
+  largurasMinimas,
   type ModoAjuste,
   montarQuadro,
+  opcoesObrasQuadro,
+  passaFiltroQuadro,
   type SeccaoQuadro,
 } from './agrupamentoQuadro';
 import { AlternadorAgrupamento } from './Comutador';
@@ -93,7 +114,9 @@ import {
   avisoSemNadaNoQuadro,
   blocoTemAlteracoes,
   chavesNoQuadro,
+  filtroEscondeTudo,
   pessoasDoFocoSemBloco,
+  selecaoSemEscondidos,
 } from './realceQuadro';
 import { type Agrupamento, useVista } from './vista';
 
@@ -102,14 +125,19 @@ const CONSULTA_VARIAS_COLUNAS = '(min-width: 40rem)';
 
 /**
  * Colunas dos blocos: tantas quantas couberem (no telemóvel, uma). auto-fit: numa linha com poucos
- * blocos, eles alargam em vez de deixarem colunas vazias (menos nomes partidos), até LARGURA_MAX_BLOCO.
+ * blocos, eles alargam em vez de deixarem colunas vazias, até LARGURA_MAX_BLOCO. Nunca mais estreitas
+ * do que o nome mais comprido (--min-bloco, posto pelo useAjuste; por omissão LARGURA_MIN_BLOCO).
  */
 const GRELHA_BLOCOS =
-  'grid grid-cols-1 gap-[0.45em] sm:max-w-(--largura-grelha) sm:grid-cols-[repeat(auto-fit,minmax(min(100%,12.5em),1fr))]';
+  'grid grid-cols-1 gap-[0.45em] sm:max-w-(--largura-grelha) sm:grid-cols-[repeat(auto-fit,minmax(min(100%,var(--min-bloco,12.5em)),1fr))]';
 /** Largura máxima de um bloco (em): com várias colunas, a grelha não passa de n blocos desta largura. */
 const LARGURA_MAX_BLOCO = 20;
-/** Nomes dentro de um bloco: uma coluna num bloco estreito, mais num alargado (ou no telemóvel). */
-const GRELHA_NOMES = 'grid grid-cols-[repeat(auto-fill,minmax(min(100%,9.5em),1fr))] gap-[0.18em]';
+/**
+ * Nomes dentro de um bloco: uma coluna num bloco estreito, mais num alargado (ou no telemóvel). Cada
+ * coluna tem pelo menos a largura do nome mais comprido (--min-nome): nenhum nome fica cortado.
+ */
+const GRELHA_NOMES =
+  'grid grid-cols-[repeat(auto-fill,minmax(min(100%,var(--min-nome,9.5em)),1fr))] gap-[0.18em]';
 /**
  * Nos blocos largos (fora das casas, sem transporte) os nomes seguem uns atrás dos outros, cada um com a
  * largura do seu nome (já vêm juntos por cliente): cabem mais por linha e nenhum parte.
@@ -141,6 +169,49 @@ const LIGACAO = `rounded-[0.15em] underline decoration-slate-300 underline-offse
 const ContextoRealceFoco = createContext<ReadonlySet<Id>>(new Set());
 const NINGUEM: ReadonlySet<Id> = new Set();
 
+// --- Filtro (clientes e obras) ---------------------------------------------------------------------
+
+interface LojaFiltroQuadro extends FiltroQuadro {
+  definirClientes: (clientes: Set<Id>) => void;
+  definirObras: (obras: Set<string>) => void;
+  limpar: () => void;
+}
+
+/**
+ * O filtro do Quadro: o mesmo dentro e fora da reunião e ao voltar ao Quadro; esquece-se ao recarregar a
+ * página (de propósito: ver o comentário do início).
+ */
+const useFiltroQuadro = create<LojaFiltroQuadro>()((set) => ({
+  clientes: new Set(),
+  obras: new Set(),
+  definirClientes: (clientes) => set({ clientes }),
+  definirObras: (obras) => set({ obras }),
+  limpar: () => set({ clientes: new Set(), obras: new Set() }),
+}));
+
+/** Texto que muda quando o filtro muda (para o ajuste ao ecrã voltar a medir no modo de edição). */
+function chaveFiltro(f: FiltroQuadro): string {
+  return `${[...f.clientes].join(',')}|${[...f.obras].join(',')}`;
+}
+
+/** "40 de 137 pessoas", com o filtro ligado. */
+function ContagemFiltro({ n, total }: { n: number; total: number }) {
+  return (
+    <span
+      className="text-sm whitespace-nowrap text-slate-700 tabular-nums"
+      title="Pessoas que o filtro mostra"
+    >
+      <strong className="font-semibold">{n}</strong> de {comPlural(total, 'pessoa', 'pessoas')}
+    </span>
+  );
+}
+
+function useFiltro(): FiltroQuadro {
+  const clientes = useFiltroQuadro((s) => s.clientes);
+  const obras = useFiltroQuadro((s) => s.obras);
+  return useMemo(() => ({ clientes, obras }), [clientes, obras]);
+}
+
 interface Ajuste {
   letra: number;
   modo: ModoAjuste;
@@ -153,6 +224,42 @@ interface Ajuste {
  */
 function alturaMatricula(letra: number): number {
   return Math.max(16, Math.floor(letra * 1.5));
+}
+
+/**
+ * Largura natural (em) do nome mais comprido dentro de `raiz`: o texto inteiro mais o resto da etiqueta
+ * (margens, volante, "?", sigla). Em em, por isso vale para qualquer letra. O texto do NomeVista é o span
+ * `.truncate`; sem nenhum dá 0 e ficam as larguras de sempre.
+ */
+function larguraNomeMaisComprido(raiz: HTMLElement, letra: number): number {
+  const intervalo = document.createRange();
+  let maior = 0;
+  for (const texto of raiz.querySelectorAll<HTMLElement>('[data-elemento^="pessoa:"] span.truncate')) {
+    const etiqueta = texto.parentElement;
+    if (!etiqueta) continue;
+    intervalo.selectNodeContents(texto);
+    // Cortado: o scrollWidth é o texto todo; senão o span estica (flex-1) e só o intervalo mede o texto.
+    const natural =
+      texto.scrollWidth > texto.clientWidth ? texto.scrollWidth : intervalo.getBoundingClientRect().width;
+    maior = Math.max(maior, etiqueta.offsetWidth - texto.clientWidth + natural + 1);
+  }
+  return maior / letra;
+}
+
+/**
+ * Com as colunas da largura de sempre (telemóvel, ou a reunião sem espaço), um nome que não cabe na sua
+ * coluna ocupa a linha toda do bloco (`data-nome-largo`): continua inteiro, numa só linha. Só se nem
+ * assim couber leva reticências. `alargar` = false tira a marca a todos.
+ */
+function alargarNomesCompridos(interior: HTMLElement, alargar: boolean): void {
+  const itens = [...interior.querySelectorAll<HTMLElement>('ul > li[data-elemento^="pessoa:"]')];
+  for (const li of itens) delete li.dataset.nomeLargo;
+  if (!alargar) return;
+  const cortados = itens.filter((li) => {
+    const texto = li.querySelector<HTMLElement>('span.truncate');
+    return texto !== null && texto.scrollWidth > texto.clientWidth;
+  });
+  for (const li of cortados) li.dataset.nomeLargo = '';
 }
 
 /** Atributos `data-` do interior do quadro em cada modo (para SO_COMPLETO e SO_LIVRES_NUMA_LINHA). */
@@ -179,20 +286,39 @@ function useAjuste(
     if (!cont || !inter) return;
     let ativo = true;
     let pedido = 0;
-    const aplicar = ({ letra, modo }: Ajuste) => {
+    // Larguras mínimas das colunas de cada grelha de blocos: as do nome mais comprido DESSA grelha
+    // (medidas em cada ajuste: só alarga onde há nomes compridos) ou as de sempre.
+    let grelhas: { grelha: HTMLElement; inteiras: ReturnType<typeof largurasMinimas> }[] = [];
+    const sempre = largurasMinimas(0);
+    const aplicar = ({ letra, modo }: Ajuste, nomesCortados = false) => {
       inter.style.fontSize = `${letra}px`;
       for (const [nome, sim] of Object.entries(atributosDoModo(modo))) {
         if (sim) inter.dataset[nome] = '';
         else delete inter.dataset[nome];
       }
+      for (const { grelha, inteiras } of grelhas) {
+        const larguras = nomesCortados ? sempre : inteiras;
+        grelha.style.setProperty('--min-nome', `${larguras.nome}em`);
+        grelha.style.setProperty('--min-bloco', `${larguras.bloco}em`);
+      }
+      alargarNomesCompridos(inter, nomesCortados);
     };
     const guardar = (novo: Ajuste) =>
       setAjuste((a) => (a.letra === novo.letra && a.modo === novo.modo ? a : novo));
     const ajustar = () => {
       if (!ativo) return;
+      // Nomes numa só linha: as colunas nunca mais estreitas do que o nome mais comprido (o texto mede-se
+      // inteiro, seja qual for a largura atual).
+      const letraAtual = Number.parseFloat(inter.style.fontSize) || LETRA_NORMAL;
+      grelhas = [...inter.querySelectorAll<HTMLElement>('[data-grelha-blocos]')].map((grelha) => ({
+        grelha,
+        inteiras: largurasMinimas(larguraNomeMaisComprido(grelha, letraAtual)),
+      }));
       if (!window.matchMedia(CONSULTA_VARIAS_COLUNAS).matches) {
         const fixo: Ajuste = { letra: LETRA_NORMAL, modo: 'completo' };
-        aplicar(fixo);
+        // Telemóvel: os nomes em duas colunas (com a largura do nome mais comprido ficava quase tudo numa
+        // só e o Quadro com o dobro do comprimento); os poucos compridos ocupam a linha toda do bloco.
+        aplicar(fixo, true);
         guardar(fixo);
         return;
       }
@@ -202,11 +328,11 @@ function useAjuste(
       cont.style.overflowY = 'hidden';
       // 2 px de folga para arredondamentos.
       const disponivel = cont.clientHeight - 2;
-      const escolha = escolherAjuste(degraus, senaoCouber, (letra, modo) => {
-        aplicar({ letra, modo });
+      const escolha = escolherAjuste(degraus, senaoCouber, (letra, modo, nomesCortados) => {
+        aplicar({ letra, modo }, nomesCortados);
         return inter.offsetHeight <= disponivel;
       });
-      aplicar(escolha);
+      aplicar(escolha, escolha.nomesCortados);
       cont.style.overflowY = overflow;
       guardar({ letra: escolha.letra, modo: escolha.modo });
     };
@@ -442,6 +568,11 @@ function PorCliente({ bloco }: { bloco: BlocoQuadro }) {
   );
 }
 
+/** "3 fora do filtro": pessoas do bloco que o filtro esconde. */
+function textoForaDoFiltro(n: number): string {
+  return `${n} fora do filtro`;
+}
+
 /** Os lugares livres de um bloco numa só linha ("4 livres"), no modo livres-numa-linha. */
 function LivresNumaLinha({ vazios }: { vazios: number }) {
   return (
@@ -466,39 +597,61 @@ function BlocoVista({ bloco, letra }: { bloco: BlocoQuadro; letra: number }) {
   const ordem = useMemo(() => bloco.pessoas.map((p) => p.id), [bloco.pessoas]);
   const idTitulo = useId();
   if (!indices) return null;
-  const { lotacao, largo, pessoas, vazios, detalhe, tipo, id } = bloco;
+  const { lotacao, largo, pessoas, vazios, detalhe, tipo, id, recolhido, escondidas } = bloco;
+  const cabecalho = (
+    <>
+      <Titulo bloco={bloco} letra={letra} id={idTitulo} interativo={interativo} />
+      {largo && !recolhido && <PorCliente bloco={bloco} />}
+      {alterado && (
+        <span className="font-semibold text-amber-700" title="Alterado — por guardar">
+          <span aria-hidden="true">●</span>
+          <span className="sr-only">alterado, por guardar</span>
+        </span>
+      )}
+      {lotacao ? (
+        <PastilhaVista ocupados={lotacao.ocupados} lugares={lotacao.lugares} nivel={lotacao.nivel} />
+      ) : (
+        <span className="rounded-[0.25em] bg-slate-200 px-[0.4em] leading-[1.5] font-semibold text-slate-800 tabular-nums">
+          {pessoas.length}
+          <span className="sr-only"> {pessoas.length === 1 ? 'pessoa' : 'pessoas'}</span>
+        </span>
+      )}
+    </>
+  );
+  const atributos = {
+    'aria-labelledby': idTitulo,
+    'data-elemento':
+      id !== null && (tipo === 'casa' || tipo === 'carrinha') ? chaveElemento({ tipo, id }) : undefined,
+    'data-alvo': alvo ? bloco.chave : undefined,
+  };
+  const contorno = [
+    'rounded-[0.35em] border transition-[background-color,border-color,box-shadow]',
+    alterado ? 'border-amber-400' : largo ? 'border-slate-400' : 'border-slate-300',
+    emFoco ? 'ring-2 ring-slate-900' : '',
+    POR_CIMA,
+  ].join(' ');
+  // Ninguém do filtro: só o título e a pastilha (a lotação real), numa fila à parte (FaixaVista). Continua
+  // a ser um alvo de largar e a abrir a ficha.
+  if (recolhido) {
+    return (
+      <article
+        {...atributos}
+        title={escondidas > 0 ? `Ninguém do filtro (${textoForaDoFiltro(escondidas)})` : 'Ninguém do filtro'}
+        className={`flex min-h-[1.9em] min-w-0 max-w-full items-center gap-x-[0.4em] px-[0.45em] py-[0.15em] ${
+          largo ? 'border-dashed bg-slate-50' : 'bg-white/70'
+        } ${contorno}`}
+      >
+        {cabecalho}
+      </article>
+    );
+  }
   return (
     <article
-      aria-labelledby={idTitulo}
-      data-elemento={
-        id !== null && (tipo === 'casa' || tipo === 'carrinha') ? chaveElemento({ tipo, id }) : undefined
-      }
-      data-alvo={alvo ? bloco.chave : undefined}
-      className={[
-        'flex min-w-0 flex-col rounded-[0.35em] border transition-[background-color,border-color,box-shadow]',
-        largo ? 'col-span-full border-dashed bg-slate-50' : 'bg-white shadow-xs',
-        alterado ? 'border-amber-400' : largo ? 'border-slate-400' : 'border-slate-300',
-        emFoco ? 'ring-2 ring-slate-900' : '',
-        POR_CIMA,
-      ].join(' ')}
+      {...atributos}
+      className={`flex min-w-0 flex-col ${largo ? 'col-span-full border-dashed bg-slate-50' : 'bg-white shadow-xs'} ${contorno}`}
     >
       <header className="flex min-h-[1.9em] flex-wrap items-center gap-x-[0.4em] gap-y-[0.15em] px-[0.45em] pt-[0.25em] pb-[0.15em]">
-        <Titulo bloco={bloco} letra={letra} id={idTitulo} interativo={interativo} />
-        {largo && <PorCliente bloco={bloco} />}
-        {alterado && (
-          <span className="font-semibold text-amber-700" title="Alterado — por guardar">
-            <span aria-hidden="true">●</span>
-            <span className="sr-only">alterado, por guardar</span>
-          </span>
-        )}
-        {lotacao ? (
-          <PastilhaVista ocupados={lotacao.ocupados} lugares={lotacao.lugares} nivel={lotacao.nivel} />
-        ) : (
-          <span className="rounded-[0.25em] bg-slate-200 px-[0.4em] leading-[1.5] font-semibold text-slate-800 tabular-nums">
-            {pessoas.length}
-            <span className="sr-only"> {pessoas.length === 1 ? 'pessoa' : 'pessoas'}</span>
-          </span>
-        )}
+        {cabecalho}
       </header>
       {/* Na reunião não há marca e modelo: não interessam para a reunião e roubavam uma linha por carrinha. */}
       {detalhe && tipo === 'carrinha' && !reuniao && (
@@ -528,18 +681,26 @@ function BlocoVista({ bloco, letra }: { bloco: BlocoQuadro; letra: number }) {
               <li
                 key={p.id}
                 data-elemento={chaveElemento({ tipo: 'pessoa', id: p.id })}
-                className={`min-w-0 rounded-[0.25em] ${realceFoco.has(p.id) ? 'ring-2 ring-slate-400' : ''}`}
+                className={`min-w-0 rounded-[0.25em] data-[nome-largo]:col-span-full ${realceFoco.has(p.id) ? 'ring-2 ring-slate-400' : ''}`}
               >
+                {/* Numa só linha (as colunas têm a largura do nome mais comprido: useAjuste). O
+                    Quadro não segue a legenda do Mapa: filtra-se pelos clientes da barra. */}
                 <NomeVista
                   pessoa={p}
                   condutor={ehCondutor(p, indices)}
-                  quebrar
                   interativo={interativo}
                   arrastavel={interativo}
-                  seguirLegenda={interativo}
                 />
               </li>
             ))}
+            {escondidas > 0 && (
+              <li
+                className={`col-span-full min-w-0 px-[0.2em] ${TEXTO_SECUNDARIO} leading-[1.35] text-slate-500 italic`}
+                title={`${comPlural(escondidas, 'pessoa', 'pessoas')} que o filtro esconde`}
+              >
+                +{textoForaDoFiltro(escondidas)}
+              </li>
+            )}
             {Array.from({ length: vazios }, (_, i) => (
               // biome-ignore lint/suspicious/noArrayIndexKey: os lugares livres não têm identidade própria.
               <li key={`livre-${i}`} aria-hidden="true" data-livre="" className={`min-w-0 ${SO_COMPLETO}`}>
@@ -579,32 +740,60 @@ function FaixaVista({
         </p>
       )}
       <div className={ladoALado ? 'flex flex-col gap-[0.6em] sm:flex-row' : ''}>
-        {faixa.partes.map((parte) => (
-          <div
-            key={parte.chave}
-            className="min-w-0"
-            // Lado a lado, cada parte fica com a largura proporcional aos seus blocos.
-            style={ladoALado ? { flex: `${parte.blocos.length} 1 0%` } : undefined}
-          >
-            {parte.titulo && (
-              <p className={`mb-[0.2em] ${TEXTO_SECUNDARIO} font-semibold text-slate-600`}>{parte.titulo}</p>
-            )}
+        {faixa.partes.map((parte) => {
+          // Com o filtro, os blocos sem ninguém dele vão para uma fila por baixo, só com o título e a
+          // pastilha: a grelha fica só com os que têm nomes (sem colunas cheias de vazio).
+          const abertos = parte.blocos.filter((b) => !b.recolhido);
+          const recolhidos = parte.blocos.filter((b) => b.recolhido);
+          return (
+            // data-grelha-blocos: o useAjuste põe aqui as larguras mínimas (--min-bloco, --min-nome) desta
+            // parte, pelo nome mais comprido que ela tem.
             <div
-              className={GRELHA_BLOCOS}
+              key={parte.chave}
+              data-grelha-blocos=""
+              className="flex min-w-0 flex-col gap-[0.3em] sm:[flex:var(--flex-parte,none)]"
+              // Lado a lado (a partir de sm), cada parte parte da largura de que os seus blocos (os abertos)
+              // precisam e o que sobra reparte-se pelo nº de blocos.
               style={
-                parte.blocos.some((b) => b.largo)
-                  ? undefined
-                  : ({
-                      '--largura-grelha': `${(parte.blocos.length * (LARGURA_MAX_BLOCO + 0.45)).toFixed(2)}em`,
+                ladoALado
+                  ? ({
+                      '--flex-parte': `${Math.max(1, abertos.length)} 1 calc(${Math.max(1, abertos.length)} * (var(--min-bloco, ${LARGURA_MIN_BLOCO}em) + 0.45em))`,
                     } as CSSProperties)
+                  : undefined
               }
             >
-              {parte.blocos.map((b) => (
-                <BlocoVista key={b.chave} bloco={b} letra={letra} />
-              ))}
+              {parte.titulo && (
+                <p className={`-mb-[0.1em] ${TEXTO_SECUNDARIO} font-semibold text-slate-600`}>
+                  {parte.titulo}
+                </p>
+              )}
+              {abertos.length > 0 && (
+                <div
+                  className={GRELHA_BLOCOS}
+                  style={
+                    abertos.some((b) => b.largo)
+                      ? undefined
+                      : ({
+                          // n blocos da largura máxima (ou da do nome mais comprido, se for maior).
+                          '--largura-grelha': `calc(${abertos.length} * (max(var(--min-bloco, ${LARGURA_MIN_BLOCO}em), ${LARGURA_MAX_BLOCO}em) + 0.45em))`,
+                        } as CSSProperties)
+                  }
+                >
+                  {abertos.map((b) => (
+                    <BlocoVista key={b.chave} bloco={b} letra={letra} />
+                  ))}
+                </div>
+              )}
+              {recolhidos.length > 0 && (
+                <div className="flex flex-wrap gap-[0.3em]">
+                  {recolhidos.map((b) => (
+                    <BlocoVista key={b.chave} bloco={b} letra={letra} />
+                  ))}
+                </div>
+              )}
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
@@ -647,6 +836,134 @@ function SeccaoVista({
   );
 }
 
+/**
+ * Filtro dos clientes. PC (md+): as pastilhas de sempre ("Clientes" e a marca de cada um); cada clique liga
+ * ou desliga esse cliente (vários ao mesmo tempo, sem Shift) e "Todos" limpa. Telemóvel: o FiltroMultiplo
+ * (uma lista de caixas, com a marca e o nº de pessoas de cada cliente).
+ */
+function FiltroClientes() {
+  const estado = useLoja((s) => s.estado);
+  const contadores = useLoja((s) => s.contadores);
+  const escolhidos = useFiltroQuadro((s) => s.clientes);
+  const definir = useFiltroQuadro((s) => s.definirClientes);
+  const clientes = useMemo(() => (estado ? clientesPorOrdem(estado.clientes) : []), [estado]);
+  const pastilhas = useRef<HTMLUListElement>(null);
+  if (!estado) return null;
+  const n = (id: Id) => (contadores ? contagemDoCliente(contadores.pessoasPorCliente, id) : 0);
+  const opcoes: OpcaoFiltroMultiplo[] = clientes.map((c) => ({
+    valor: c.id,
+    rotulo: c.nome,
+    contagem: n(c.id),
+    termos: c.sigla,
+    marca: <MarcaCliente cliente={c} />,
+  }));
+  const alternar = (id: Id) => {
+    const novos = new Set(escolhidos);
+    if (novos.has(id)) novos.delete(id);
+    else novos.add(id);
+    definir(novos);
+  };
+  const algum = escolhidos.size > 0;
+  // "Todos" desaparece ao limpar: o foco passa para a pastilha do primeiro cliente que estava escolhido
+  // (as pastilhas ficam sempre), para o teclado e os leitores de ecrã não o perderem.
+  const limpar = () => {
+    const alvo = pastilhas.current?.querySelector<HTMLButtonElement>('button[aria-pressed="true"]');
+    definir(new Set());
+    alvo?.focus();
+  };
+  return (
+    <>
+      <FiltroMultiplo
+        rotulo="Cliente"
+        genero="m"
+        opcoes={opcoes}
+        escolhidos={escolhidos}
+        aoMudar={definir}
+        className="md:hidden"
+        classeBotao="max-w-[11rem]"
+      />
+      <section
+        aria-label="Filtrar por cliente (vários ao mesmo tempo)"
+        className="hidden min-w-0 flex-wrap items-center gap-1 text-xs md:flex"
+      >
+        <span
+          aria-hidden="true"
+          className="mr-0.5 text-[11px] font-semibold tracking-wide text-slate-600 uppercase"
+        >
+          Clientes
+        </span>
+        <ul ref={pastilhas} className="flex flex-wrap items-center gap-1">
+          {clientes.map((c) => {
+            const escolhido = escolhidos.has(c.id);
+            return (
+              <li key={c.id} className="flex">
+                <button
+                  type="button"
+                  aria-pressed={escolhido}
+                  aria-label={`${c.nome} (${comPlural(n(c.id), 'pessoa', 'pessoas')})`}
+                  title={
+                    escolhido
+                      ? `Tirar ${c.nome} do filtro`
+                      : algum
+                        ? `Juntar ${c.nome} ao filtro (${comPlural(n(c.id), 'pessoa', 'pessoas')})`
+                        : `Mostrar só ${c.nome} (${comPlural(n(c.id), 'pessoa', 'pessoas')})`
+                  }
+                  onClick={() => alternar(c.id)}
+                  className={`grid h-7 place-items-center rounded border px-1 ${FOCO_VISIVEL} ${
+                    escolhido
+                      ? 'border-slate-900 bg-slate-100 ring-1 ring-slate-900'
+                      : 'border-transparent hover:bg-slate-100'
+                  } ${algum && !escolhido ? 'opacity-40 hover:opacity-100' : ''}`}
+                >
+                  <MarcaCliente cliente={c} />
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+        {algum && (
+          <button
+            type="button"
+            title="Mostrar todos os clientes"
+            onClick={limpar}
+            className={`h-7 rounded border border-slate-300 bg-white px-2 font-medium hover:bg-slate-100 ${FOCO_VISIVEL}`}
+          >
+            Todos
+          </button>
+        )}
+      </section>
+    </>
+  );
+}
+
+/** Filtro das obras (várias; "Sem obra"). Sem obras nenhumas: "Obra: sem obras", desativado. */
+function FiltroObras() {
+  const estado = useLoja((s) => s.estado);
+  const indices = useLoja((s) => s.indices);
+  const escolhidos = useFiltroQuadro((s) => s.obras);
+  const definir = useFiltroQuadro((s) => s.definirObras);
+  const opcoes = useMemo(
+    () => (estado && indices ? opcoesObrasQuadro(estado, indices) : []),
+    [estado, indices],
+  );
+  const comum = { rotulo: 'Obra', opcoes, escolhidos, aoMudar: definir, textoVazio: 'sem obras' };
+  // Compacto (como as pastilhas dos clientes) a partir de md. No telemóvel o tamanho normal, como o botão
+  // "Cliente" ao lado (melhor para o dedo); desativado ("Obra: sem obras") não se toca e fica compacto, para
+  // a barra continuar em duas linhas.
+  const ativo = opcoes.length > 0 || escolhidos.size > 0;
+  return (
+    <>
+      <FiltroMultiplo
+        {...comum}
+        tamanho={ativo ? 'normal' : 'compacto'}
+        className="md:hidden"
+        classeBotao="max-w-[11rem]"
+      />
+      <FiltroMultiplo {...comum} tamanho="compacto" className="hidden md:block" classeBotao="max-w-[14rem]" />
+    </>
+  );
+}
+
 export function Quadro({ reuniao = false }: { reuniao?: boolean }) {
   const estado = useLoja((s) => s.estado);
   const indices = useLoja((s) => s.indices);
@@ -659,19 +976,22 @@ export function Quadro({ reuniao = false }: { reuniao?: boolean }) {
   const interior = useRef<HTMLDivElement>(null);
   const caixa = useRef<HTMLDivElement>(null);
   const editar = modoEdicao && !reuniao;
+  const filtro = useFiltro();
+  const filtrado = filtroQuadroAtivo(filtro);
 
   const seccoes = useMemo(
-    () => (estado && indices && dormidas ? montarQuadro(agrupamento, estado, indices, dormidas) : []),
-    [agrupamento, estado, indices, dormidas],
+    () => (estado && indices && dormidas ? montarQuadro(agrupamento, estado, indices, dormidas, filtro) : []),
+    [agrupamento, estado, indices, dormidas, filtro],
   );
   const nBlocos = useMemo(() => blocosDoQuadro(seccoes).filter((b) => !b.largo).length, [seccoes]);
   // No modo de edição o rascunho muda o estado a cada largada: a letra só se volta a escolher quando muda o
-  // agrupamento ou o número de blocos (ou o espaço, pelo ResizeObserver); se deixar de caber, desliza.
+  // agrupamento, o número de blocos ou o filtro (ou o espaço, pelo ResizeObserver); se deixar de caber,
+  // desliza.
   const { letra, modo } = useAjuste(
     contentor,
     interior,
     reuniao,
-    editar ? `edicao:${agrupamento}:${nBlocos}` : seccoes,
+    editar ? `edicao:${agrupamento}:${nBlocos}:${chaveFiltro(filtro)}` : seccoes,
   );
   const realceFoco = useMemo(
     () => (indices && !reuniao ? pessoasDoFocoSemBloco(foco, agrupamento, indices) : NINGUEM),
@@ -707,9 +1027,23 @@ export function Quadro({ reuniao = false }: { reuniao?: boolean }) {
     [atravessarFicha],
   );
   useCaixaSelecaoQuadro(raiz, contentor, caixa, editar, aoDesenharCaixa);
+  // No modo de edição a seleção fica só com quem o filtro mostra: quem ele esconde sai dela, com um aviso
+  // curto (senão ia no arrasto sem se ver). Também ao chegar ao Quadro com uma seleção feita noutra vista.
+  const selecao = useLoja((s) => s.selecao);
+  useEffect(() => {
+    if (!editar || !indices || !filtroQuadroAtivo(filtro) || selecao.size === 0) return;
+    const passa = (id: Id) => {
+      const p = indices.pessoas.get(id);
+      return p !== undefined && passaFiltroQuadro(p, filtro, indices.obras);
+    };
+    const tirar = selecaoSemEscondidos(selecao, passa);
+    if (!tirar) return;
+    useLoja.getState().definirSelecao(tirar.fica);
+    useUiEdicao.getState().avisar(tirar.aviso);
+  }, [editar, indices, filtro, selecao]);
   const espacador = useRef<HTMLDivElement>(null);
   useEspacoFicha(envolventeFicha, espacador, !reuniao && foco !== null);
-  // Pesquisa, contadores, ligações: desliza até ao elemento e acende-o, sem mudar de vista (também na
+  // Pesquisa, ligações da ficha e do rodapé: desliza até ao elemento e acende-o, sem mudar de vista (também na
   // reunião). Depois de desenhar: o foco acabou de mudar (anéis, espaço da ficha no telemóvel).
   // Procura-se só dentro do Quadro (o mapa escondido também tem data-alvo e data-pessoa-id).
   // Sem nada a que chegar (ex.: casa sem moradores e sem carrinhas a dormir lá, no Quadro por carrinhas),
@@ -724,11 +1058,28 @@ export function Quadro({ reuniao = false }: { reuniao?: boolean }) {
       if (aviso) useUiEdicao.getState().avisar(aviso);
       return;
     }
+    // O filtro esconde tudo o que se ia acender (ex.: pesquisa de alguém de outro cliente): limpa-o, como
+    // a Tabela faz com os dela. Os nomes aparecem no próximo desenho; o revelar espera por ele.
+    const f = useFiltroQuadro.getState();
+    const passa = (id: Id) => {
+      const p = ind.pessoas.get(id);
+      return p !== undefined && passaFiltroQuadro(p, f, ind.obras);
+    };
+    if (filtroQuadroAtivo(f) && filtroEscondeTudo(chaves, passa)) {
+      f.limpar();
+      const pessoa = elemento.tipo === 'pessoa' ? ind.pessoas.get(elemento.id) : undefined;
+      useUiEdicao
+        .getState()
+        .avisar(
+          pessoa ? `Filtro do Quadro limpo para mostrar ${pessoa.nomeCurto}.` : 'Filtro do Quadro limpo.',
+        );
+    }
     revelarDepoisDeDesenhar(() => raiz.current, chaves);
   });
 
   if (!estado || !indices || !dormidas) return null;
   const nPessoas = estado.pessoas.filter((p) => p.ativa).length;
+  const nFiltradas = filtrado ? seccoes.reduce((n, s) => n + s.nPessoas, 0) : nPessoas;
   const comFicha = !reuniao && foco !== null;
 
   return (
@@ -737,16 +1088,33 @@ export function Quadro({ reuniao = false }: { reuniao?: boolean }) {
       aria-label={agrupamento === 'casas' ? 'Quadro das casas' : 'Quadro das carrinhas'}
       className="relative flex min-h-0 flex-1 flex-col bg-slate-50"
     >
+      {reuniao && (
+        // Na reunião (só ver) também se filtra: uma barra fina só com os filtros e quantas pessoas ficam.
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-slate-200 bg-white px-3 py-1">
+          <FiltroClientes />
+          <FiltroObras />
+          {filtrado && <ContagemFiltro n={nFiltradas} total={nPessoas} />}
+        </div>
+      )}
       {!reuniao && (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-slate-200 bg-white px-3 py-2">
           <AlternadorAgrupamento />
+          {/* No telemóvel só as pessoas: assim a barra fica em duas linhas (a 2.ª com os filtros). */}
           <p className="text-sm text-slate-700 tabular-nums">
-            {agrupamento === 'casas'
-              ? comPlural(nBlocos, 'casa', 'casas')
-              : comPlural(nBlocos, 'carrinha', 'carrinhas')}{' '}
-            · {comPlural(nPessoas, 'pessoa', 'pessoas')}
+            <span className="max-sm:hidden">
+              {agrupamento === 'casas'
+                ? comPlural(nBlocos, 'casa', 'casas')
+                : comPlural(nBlocos, 'carrinha', 'carrinhas')}{' '}
+              ·{' '}
+            </span>
+            {filtrado ? (
+              <ContagemFiltro n={nFiltradas} total={nPessoas} />
+            ) : (
+              comPlural(nPessoas, 'pessoa', 'pessoas')
+            )}
           </p>
-          <Legenda lugar="barra" />
+          <FiltroClientes />
+          <FiltroObras />
           <div className="ml-auto">
             <BotaoExcel />
           </div>

@@ -1,6 +1,6 @@
-// Vista Tabela: uma linha por pessoa ativa, com ordenação por coluna, pesquisa (indiferente a acentos)
-// e filtros por cliente, casa e carrinha, e o realce do que está em foco (a ficha). Funções puras, sem
-// browser (usadas também pelo Excel).
+// Vista Tabela: uma linha por pessoa ativa, com ordenação por coluna, pesquisa (indiferente a acentos),
+// filtros de escolha múltipla por cliente, casa, carrinha e obra, e o realce do que está em foco (a ficha)
+// ou da linha em que se clicou. Funções puras, sem browser (usadas também pelo Excel).
 
 import { clienteEfetivoId } from '../../dominio/cores';
 import type { Indices } from '../../dominio/indices';
@@ -8,8 +8,9 @@ import { formatarMatricula } from '../../dominio/matricula';
 import { nomeComMaiusculasNormais } from '../../dominio/nomes';
 import { compactar, normalizarTexto } from '../../dominio/pesquisa';
 import type { Carrinha, Casa, Cliente, Estado, Id, Obra, Pessoa } from '../../dominio/tipos';
+import { GRUPO_ESPECIAIS, type OpcaoFiltro, passaFiltro } from '../comum/escolhaMultipla';
 import { carrinhaConduzida } from '../paineis/condutor';
-import { nomeCompleto } from '../paineis/textos';
+import { nomeCompleto, ROTULO_FORA_DAS_CASAS, ROTULO_SEM_TRANSPORTE } from '../paineis/textos';
 
 export interface LinhaTabela {
   pessoa: Pessoa;
@@ -182,41 +183,45 @@ export function ariaSort(ordem: OrdemTabela, coluna: ColunaTabela): 'ascending' 
 
 // --- Filtros --------------------------------------------------------------------------------------
 
-/** Valor especial dos filtros de casa e de carrinha: quem não tem. */
+/** Valor especial dos filtros de casa, carrinha e obra: quem não tem (fora das casas, sem transporte, sem obra). */
 export const SEM = '__sem__';
 
+/**
+ * Filtros da Tabela. Cliente, Casa, Carrinha e Obra são de escolha múltipla (comum/FiltroMultiplo): um
+ * conjunto VAZIO é sem filtro; dentro do mesmo filtro basta uma das escolhas (Casa 1 OU Casa 2); entre
+ * filtros diferentes têm de passar todos (E).
+ */
 export interface FiltrosTabela {
   texto: string;
-  /** Cliente da cor da pessoa; null = todos. */
-  clienteId: Id | null;
-  /** Id da casa, SEM (fora das casas) ou null (todas). */
-  casa: Id | null;
-  /** Id da carrinha, SEM (sem transporte) ou null (todas). */
-  carrinha: Id | null;
+  /** Clientes da cor da pessoa (o da obra, ou o da pessoa enquanto não tem obra). */
+  clientes: ReadonlySet<Id>;
+  /** Ids das casas e/ou SEM (fora das casas CMF). */
+  casas: ReadonlySet<string>;
+  /** Ids das carrinhas e/ou SEM (sem transporte da empresa). */
+  carrinhas: ReadonlySet<string>;
+  /** Ids das obras e/ou SEM (sem obra). */
+  obras: ReadonlySet<string>;
   soAConfirmar: boolean;
 }
 
 export const FILTROS_INICIAIS: FiltrosTabela = {
   texto: '',
-  clienteId: null,
-  casa: null,
-  carrinha: null,
+  clientes: new Set(),
+  casas: new Set(),
+  carrinhas: new Set(),
+  obras: new Set(),
   soAConfirmar: false,
 };
 
 export function filtrosTabelaAtivos(f: FiltrosTabela): boolean {
   return (
     normalizarTexto(f.texto) !== '' ||
-    f.clienteId !== null ||
-    f.casa !== null ||
-    f.carrinha !== null ||
+    f.clientes.size > 0 ||
+    f.casas.size > 0 ||
+    f.carrinhas.size > 0 ||
+    f.obras.size > 0 ||
     f.soAConfirmar
   );
-}
-
-function passaNoFiltro(id: Id | null, filtro: Id | null): boolean {
-  if (filtro === null) return true;
-  return filtro === SEM ? id === null : id === filtro;
 }
 
 /**
@@ -227,14 +232,106 @@ export function filtrarLinhas(linhas: readonly LinhaTabela[], f: FiltrosTabela):
   const palavras = normalizarTexto(f.texto).split(' ').filter(Boolean);
   const compacto = compactar(f.texto);
   return linhas.filter((l) => {
-    if (f.clienteId !== null && l.clienteId !== f.clienteId) return false;
-    if (!passaNoFiltro(l.casa?.id ?? null, f.casa)) return false;
-    if (!passaNoFiltro(l.carrinha?.id ?? null, f.carrinha)) return false;
+    if (!passaFiltro(f.clientes, l.clienteId)) return false;
+    if (!passaFiltro(f.casas, l.casa?.id ?? SEM)) return false;
+    if (!passaFiltro(f.carrinhas, l.carrinha?.id ?? SEM)) return false;
+    if (!passaFiltro(f.obras, l.obra?.id ?? SEM)) return false;
     if (f.soAConfirmar && !(l.casaAConfirmar || l.carrinhaAConfirmar)) return false;
     if (palavras.length === 0) return true;
     if (palavras.every((p) => l.textoPesquisa.includes(p))) return true;
     return l.numero !== null && compacto.length >= 2 && compactar(l.numero).includes(compacto);
   });
+}
+
+/** As opções dos quatro filtros da barra (sem as marcas dos clientes, que são da interface). */
+export interface OpcoesFiltrosTabela {
+  clientes: OpcaoFiltro[];
+  casas: OpcaoFiltro[];
+  carrinhas: OpcaoFiltro[];
+  /** Vazia enquanto não há obras: o filtro fica desativado ("Obra: sem obras"). */
+  obras: OpcaoFiltro[];
+}
+
+/** Rótulos das opções especiais dos filtros (quem não tem). */
+export const ROTULO_FILTRO_SEM_OBRA = 'Sem obra';
+
+/**
+ * As opções dos filtros, com o número de pessoas de cada uma (de todas as linhas, não só das filtradas:
+ * o número não muda ao escolher). Clientes pela ordem; casas pela ordem das casas (a do Michael); carrinhas
+ * pela matrícula (os carros com "carro" ao lado); obras pela ordem do cliente e pelo nome, numa secção por cliente. As opções especiais
+ * (fora das casas, sem transporte, sem obra) ficam no fim, separadas. Sem obras, a lista das obras fica
+ * vazia (o "Sem obra" seria toda a gente).
+ */
+export function opcoesFiltrosTabela(
+  estado: Pick<Estado, 'clientes' | 'casas' | 'carrinhas' | 'obras'>,
+  ind: Pick<Indices, 'clientes'>,
+  linhas: readonly LinhaTabela[],
+): OpcoesFiltrosTabela {
+  const contar = (chave: (l: LinhaTabela) => string) => {
+    const n = new Map<string, number>();
+    for (const l of linhas) n.set(chave(l), (n.get(chave(l)) ?? 0) + 1);
+    return (valor: string) => n.get(valor) ?? 0;
+  };
+  const porCliente = contar((l) => l.clienteId);
+  const porCasa = contar((l) => l.casa?.id ?? SEM);
+  const porCarrinha = contar((l) => l.carrinha?.id ?? SEM);
+  const porObra = contar((l) => l.obra?.id ?? SEM);
+
+  const clientes = [...estado.clientes]
+    .sort((a, b) => a.ordem - b.ordem || a.nome.localeCompare(b.nome, 'pt'))
+    .map((c) => ({ valor: c.id, rotulo: c.nome, termos: c.sigla, contagem: porCliente(c.id) }));
+  const casas: OpcaoFiltro[] = [...estado.casas]
+    .sort((a, b) => a.ordem - b.ordem)
+    .map((c) => ({ valor: c.id, rotulo: c.nome, contagem: porCasa(c.id) }));
+  casas.push({
+    valor: SEM,
+    rotulo: ROTULO_FORA_DAS_CASAS,
+    grupo: GRUPO_ESPECIAIS,
+    contagem: porCasa(SEM),
+  });
+  const carrinhas: OpcaoFiltro[] = [...estado.carrinhas]
+    .map((c) => ({ c, rotulo: formatarMatricula(c.matricula) }))
+    .sort((a, b) => a.rotulo.localeCompare(b.rotulo, 'pt'))
+    .map(({ c, rotulo }) => ({
+      valor: c.id,
+      rotulo,
+      // Os carros também estão no filtro "Carrinha": diz-se quais são.
+      ...(c.tipo === 'carro' ? { detalhe: 'carro' } : {}),
+      termos: [c.matricula, ...c.matriculasAlternativas].join(' '),
+      contagem: porCarrinha(c.id),
+    }));
+  carrinhas.push({
+    valor: SEM,
+    rotulo: ROTULO_SEM_TRANSPORTE,
+    grupo: GRUPO_ESPECIAIS,
+    contagem: porCarrinha(SEM),
+  });
+  const ordemCliente = (id: Id) => ind.clientes.get(id)?.ordem ?? Number.MAX_SAFE_INTEGER;
+  const obras: OpcaoFiltro[] = [...estado.obras]
+    .sort(
+      (a, b) =>
+        ordemCliente(a.clienteId) - ordemCliente(b.clienteId) ||
+        comparador.compare(a.clienteId, b.clienteId) ||
+        comparador.compare(a.nome, b.nome),
+    )
+    .map((o) => {
+      const cliente = ind.clientes.get(o.clienteId);
+      return {
+        valor: o.id,
+        rotulo: o.nome,
+        grupo: cliente?.nome ?? 'Outro cliente',
+        termos: cliente?.sigla,
+        contagem: porObra(o.id),
+      };
+    });
+  if (obras.length > 0)
+    obras.push({
+      valor: SEM,
+      rotulo: ROTULO_FILTRO_SEM_OBRA,
+      grupo: GRUPO_ESPECIAIS,
+      contagem: porObra(SEM),
+    });
+  return { clientes, casas, carrinhas, obras };
 }
 
 /** "a confirmar: casa", "casa e carrinha"… (texto para o Excel e para os leitores de ecrã). */
@@ -257,17 +354,39 @@ export function textoContagem(mostradas: number, total: number, comFiltros: bool
 export type FocoTabela = { tipo: 'pessoa' | 'casa' | 'carrinha'; id: Id } | null;
 
 /**
- * Realce persistente de uma linha: 'foco' = a pessoa da ficha; 'ligada' = mora na casa (ou vai na
- * carrinha) da ficha; null = nenhum.
+ * Realce persistente de uma linha: 'foco' = a pessoa da ficha; 'marcada' = a linha em que se clicou
+ * (clicar numa linha realça-a sem abrir a ficha); 'ligada' = mora na casa (ou vai na carrinha) da ficha;
+ * null = nenhum.
  */
 export function realceDaLinha(
   linha: Pick<LinhaTabela, 'pessoa' | 'casa' | 'carrinha'>,
   foco: FocoTabela,
-): 'foco' | 'ligada' | null {
-  if (!foco) return null;
-  if (foco.tipo === 'pessoa') return foco.id === linha.pessoa.id ? 'foco' : null;
+  marcada: Id | null = null,
+): RealceLinha {
+  if (foco?.tipo === 'pessoa' && foco.id === linha.pessoa.id) return 'foco';
+  if (marcada === linha.pessoa.id) return 'marcada';
+  if (!foco || foco.tipo === 'pessoa') return null;
   const sitio = foco.tipo === 'casa' ? linha.casa : linha.carrinha;
   return sitio?.id === foco.id ? 'ligada' : null;
+}
+
+export type RealceLinha = 'foco' | 'marcada' | 'ligada' | null;
+
+/**
+ * O que um clique numa linha faz (docs/vistas-edicao.md): a linha já mostra tudo, por isso NÃO abre a
+ * ficha. Fora da edição realça a linha (outro clique tira o realce); no modo de edição a seleção é o
+ * realce (o clique seleciona, como hoje) e não fica nenhuma marcada. Se a ficha de uma pessoa já está
+ * aberta (abriu-se no botão do fim da linha), passa para a pessoa da linha clicada: quem a abriu quer vê-la.
+ * `foco` undefined = não muda.
+ */
+export function cliqueNaLinha(
+  id: Id,
+  { foco, marcada, modoEdicao }: { foco: FocoTabela; marcada: Id | null; modoEdicao: boolean },
+): { marcada: Id | null; foco?: FocoTabela } {
+  const fichaDePessoa = foco?.tipo === 'pessoa';
+  const novaMarcada = modoEdicao ? null : fichaDePessoa || marcada !== id ? id : null;
+  if (fichaDePessoa && foco.id !== id) return { marcada: novaMarcada, foco: { tipo: 'pessoa', id } };
+  return { marcada: novaMarcada };
 }
 
 /**
@@ -283,7 +402,7 @@ export function linhaApagada(
 }
 
 /**
- * As linhas que mostram um elemento (pesquisa, contadores, ligações da ficha): a pessoa, ou quem mora
+ * As linhas que mostram um elemento (pesquisa, ligações da ficha): a pessoa, ou quem mora
  * na casa / vai na carrinha, pela ordem recebida.
  */
 export function pessoasDoElemento(
@@ -330,9 +449,20 @@ export interface Caixa {
 }
 
 /**
+ * O espaço que a caixa da tabela deixa à ficha aberta, para as colunas e as últimas linhas continuarem a
+ * alcançar-se deslizando: em baixo no telemóvel (a ficha fica em baixo, a toda a largura) e à direita no
+ * PC, mas só com a ficha no sítio de origem (à direita). Arrastada para outro sítio (PainelFoco), a
+ * reserva ficava uma faixa vazia e a tabela deslizava de lado sem precisar: aí não há reserva.
+ */
+export function reservaDaFicha(haFicha: boolean, movida: boolean): { baixo: boolean; direita: boolean } {
+  return { baixo: haFicha, direita: haFicha && !movida };
+}
+
+/**
  * A parte da caixa da tabela onde uma linha se vê: por baixo do cabeçalho fixo e, quando a ficha tapa
- * o princípio das linhas (no telemóvel fica em baixo, a toda a largura), por cima da ficha. No PC a ficha
- * fica à direita e não tapa a célula do nome: não conta. Uma ficha escondida tem o retângulo vazio.
+ * o princípio das linhas (no telemóvel fica em baixo, a toda a largura; no PC, se foi arrastada para cima
+ * dos nomes), por cima da ficha. Na origem, no PC, a ficha fica à direita e não tapa a célula do nome:
+ * não conta. Uma ficha escondida tem o retângulo vazio.
  */
 export function zonaLivreDaTabela(
   contentor: Caixa,

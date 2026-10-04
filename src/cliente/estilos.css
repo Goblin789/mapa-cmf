@@ -81,7 +81,7 @@ body {
 }
 
 /* --- Vistas: modo reunião (vistas/modoReuniao.ts) ----------------------------------------------- */
-/* Na reunião numa TV (vista de longe) tudo o que está em rem fica 25 % maior: cabeçalho, contadores,
+/* Na reunião numa TV (vista de longe) tudo o que está em rem fica 25 % maior: cabeçalho,
    legenda e avisos. Só em ecrãs grandes: num portátil o cabeçalho passava a três linhas e tirava o
    espaço ao Quadro. O Quadro escolhe a sua própria letra (em px) para caber no ecrã; os cartões do
    mapa estão em px e não mudam. */
@@ -92,7 +92,7 @@ body {
 }
 
 /* --- Vistas: mostrar um elemento sem mudar de vista (vistas/mostrar.ts) ------------------------- */
-/* revelarElementos põe data-realce durante 1,6 s no que a pesquisa, os contadores ou a ficha pediram para
+/* revelarElementos põe data-realce durante 1,6 s no que a pesquisa ou a ficha pediram para
    mostrar (blocos e nomes do Quadro, linhas da Tabela): acende e apaga devagar. Sem o fotograma 100 %, a
    animação acaba no valor do próprio elemento (o anel de selecionado ou em foco, o fundo branco das
    células fixas da Tabela) em vez de piscar para "nada" antes de ele voltar. */

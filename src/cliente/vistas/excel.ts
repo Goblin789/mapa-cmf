@@ -1,7 +1,8 @@
 // Exportar para Excel: três folhas — Pessoas (as colunas da tabela: o nome completo com maiúsculas
 // normais, como na Tabela), Casas e Carrinhas (como as folhas do Michael, um nome curto por célula com o
-// fundo da cor do cliente). Exporta o que se vê: no modo de edição,
-// a simulação (o ficheiro diz "simulação" no nome).
+// fundo da cor do cliente). Exporta o que se vê: no modo de edição, a simulação (o ficheiro diz
+// "simulação" no nome); na Tabela com filtros, a folha Pessoas só com as linhas filtradas, pela ordem da
+// Tabela (o ficheiro diz "filtrado"; as folhas Casas e Carrinhas ficam inteiras).
 // As linhas montam-se em funções puras (testadas); a biblioteca (write-excel-file, versão do browser)
 // só se descarrega quando se carrega no botão (import dinâmico).
 
@@ -24,7 +25,13 @@ import {
   textoMarcaModelo,
 } from '../paineis/textos';
 import { dataISOLuxemburgo } from './horas';
-import { linhasDaTabela, ORDEM_INICIAL, ordenarLinhas, textoAConfirmar } from './linhasTabela';
+import {
+  type LinhaTabela,
+  linhasDaTabela,
+  ORDEM_INICIAL,
+  ordenarLinhas,
+  textoAConfirmar,
+} from './linhasTabela';
 
 export interface FolhaExcel {
   nome: string;
@@ -100,8 +107,16 @@ function cabecalhoNomes(rotulo: string, colunas: number): Cell[] {
 
 // --- Folhas ---------------------------------------------------------------------------------------
 
-export function folhaPessoas(estado: Estado, ind: Indices): FolhaExcel {
-  const linhas = ordenarLinhas(linhasDaTabela(estado, ind), ORDEM_INICIAL);
+/**
+ * Folha Pessoas: por omissão toda a gente, pelo nome. Da Tabela com filtros vêm as linhas que ela mostra
+ * (filtradas e pela ordem dela): "exporta o que se vê".
+ */
+export function folhaPessoas(
+  estado: Estado,
+  ind: Indices,
+  soEstas: readonly LinhaTabela[] | null = null,
+): FolhaExcel {
+  const linhas = soEstas ?? ordenarLinhas(linhasDaTabela(estado, ind), ORDEM_INICIAL);
   return {
     nome: 'Pessoas',
     larguras: [30, 12, 16, 22, 26, 11, 10, 18],
@@ -240,18 +255,30 @@ export function folhaCarrinhas(estado: Estado, ind: Indices, dormidas: Map<Id, D
   };
 }
 
-/** As três folhas do ficheiro, pela ordem: Pessoas, Casas, Carrinhas. */
-export function montarFolhasExcel(estado: Estado, ind: Indices, dormidas: Map<Id, Dormida>): FolhaExcel[] {
+/**
+ * As três folhas do ficheiro, pela ordem: Pessoas, Casas, Carrinhas. `pessoas` = as linhas que a Tabela
+ * mostra com filtros (só a folha Pessoas as segue: as Casas e as Carrinhas ficam inteiras, com a lotação).
+ */
+export function montarFolhasExcel(
+  estado: Estado,
+  ind: Indices,
+  dormidas: Map<Id, Dormida>,
+  pessoas: readonly LinhaTabela[] | null = null,
+): FolhaExcel[] {
   return [
-    folhaPessoas(estado, ind),
+    folhaPessoas(estado, ind, pessoas),
     folhaCasas(estado, ind, dormidas),
     folhaCarrinhas(estado, ind, dormidas),
   ];
 }
 
-/** "Mapa CMF 2026-10-04.xlsx" (data do Luxemburgo); com alterações por guardar, "… (simulação).xlsx". */
-export function nomeFicheiroExcel(agora: Date, simulacao = false): string {
-  return `Mapa CMF ${dataISOLuxemburgo(agora)}${simulacao ? ' (simulação)' : ''}.xlsx`;
+/**
+ * "Mapa CMF 2026-10-04.xlsx" (data do Luxemburgo); com alterações por guardar, "… (simulação).xlsx"; com
+ * os filtros da Tabela, "… (filtrado).xlsx" (ou "(simulação, filtrado)").
+ */
+export function nomeFicheiroExcel(agora: Date, simulacao = false, filtrado = false): string {
+  const notas = [simulacao && 'simulação', filtrado && 'filtrado'].filter(Boolean);
+  return `Mapa CMF ${dataISOLuxemburgo(agora)}${notas.length > 0 ? ` (${notas.join(', ')})` : ''}.xlsx`;
 }
 
 /** Quanto tempo o endereço do ficheiro fica válido depois de se carregar em descarregar. */
@@ -274,15 +301,19 @@ function descarregar(conteudo: Blob, nome: string): void {
   window.setTimeout(() => URL.revokeObjectURL(url), VALIDADE_DESCARGA_MS);
 }
 
-/** Monta o ficheiro e entrega-o ao browser para guardar. A biblioteca só se descarrega aqui. */
+/**
+ * Monta o ficheiro e entrega-o ao browser para guardar. A biblioteca só se descarrega aqui. `pessoas` = as
+ * linhas filtradas da Tabela (null = toda a gente, como no Quadro ou na Tabela sem filtros).
+ */
 export async function exportarExcel(
   estado: Estado,
   ind: Indices,
   dormidas: Map<Id, Dormida>,
   simulacao: boolean,
+  pessoas: readonly LinhaTabela[] | null = null,
 ): Promise<void> {
   const { default: escreverXlsx } = await import('write-excel-file/browser');
-  const folhas = montarFolhasExcel(estado, ind, dormidas);
+  const folhas = montarFolhasExcel(estado, ind, dormidas, pessoas);
   const conteudo = await escreverXlsx(
     folhas.map((f) => ({
       data: f.linhas,
@@ -292,5 +323,5 @@ export async function exportarExcel(
     })),
     { fontFamily: 'Calibri', fontSize: 11 },
   ).toBlob();
-  descarregar(conteudo, nomeFicheiroExcel(new Date(), simulacao));
+  descarregar(conteudo, nomeFicheiroExcel(new Date(), simulacao, pessoas !== null));
 }

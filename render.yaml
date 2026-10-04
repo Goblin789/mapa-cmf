@@ -48,7 +48,7 @@ services:
       - key: COPIAS_S3_SEGREDO
         sync: false
       # Mudam de instalação para instalação (endereço, destino das cópias, quem entra).
-      # UTILIZADORES_PERMITIDOS é obrigatória em produção (os e-mails dos três): sem ela o servidor não arranca.
+      # UTILIZADORES_PERMITIDOS é obrigatória em produção (os UPN dos quatro: rafael@, michael@, joao@ e cardoso@cmf-lux.lu): sem ela o servidor não arranca.
       # ANFITRIOES (ex.: mapa-cmf.onrender.com): as páginas abertas por esse nome vão para ENDERECO_PUBLICO.
       - key: ENDERECO_PUBLICO
         sync: false

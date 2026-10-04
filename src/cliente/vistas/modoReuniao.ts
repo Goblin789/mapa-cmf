@@ -60,7 +60,7 @@ export function useModoReuniao(reuniao: boolean): void {
     html.classList.add(CLASSE_REUNIAO);
     if (document.fullscreenElement) useVista.getState().definirEcraInteiro(true);
 
-    // Esc sai. Um popover (contadores) ou um diálogo aberto tratam o Esc primeiro.
+    // Esc sai. Um popover (filtro) ou um diálogo aberto tratam o Esc primeiro.
     const aoTeclar = (e: KeyboardEvent) => {
       if (e.key !== 'Escape' || e.defaultPrevented || haDialogoAberto()) return;
       e.preventDefault();

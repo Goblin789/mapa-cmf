@@ -1,11 +1,11 @@
 // Cabeçalho do modo reunião, pensado para uma TV 1920×1080 vista de longe: a marca, o dia e a hora,
-// "Atualizado às HH:MM", os contadores, Quadro | Mapa (e Casas | Carrinhas no Quadro) e "Sair da reunião".
-// Sem Editar nem Histórico: a reunião é só para ver.
+// "Atualizado às HH:MM", Quadro | Mapa (e Casas | Carrinhas no Quadro) e "Sair da reunião".
+// Sem Editar nem Histórico: a reunião é só para ver. Sem os contadores (Livres nas casas, Sem transporte…):
+// saíram a pedido do Rafael (04/10/2026) e o Quadro/Mapa da TV fica com esse espaço.
 
 import { useEffect, useState } from 'react';
 import { Marca } from '../comum/Marca';
 import { useLoja } from '../estado/loja';
-import { Contadores } from '../paineis/Contadores';
 import { FOCO_VISIVEL } from '../paineis/classes';
 import { AlternadorAgrupamento, ComutadorReuniao } from './Comutador';
 import { dataPorExtenso, horaLuxemburgo, textoAtualizado } from './horas';
@@ -45,12 +45,12 @@ export function CabecalhoReuniao() {
   const atualizado = textoAtualizado(geradoEm);
 
   return (
-    // TV e PC largo (xl): a marca à esquerda, nas duas linhas; em cima o dia, a hora e os comandos; em
-    // baixo os contadores. Abaixo de xl os comandos não cabiam ao lado da data (partia palavra a palavra):
-    // vão para uma linha própria, por baixo da marca e da data, e os contadores para a seguinte.
+    // TV e PC largo (xl): uma só linha — a marca, o dia e a hora e, à direita, os comandos. Abaixo de xl
+    // os comandos não cabiam ao lado da data (partia palavra a palavra): vão para uma linha própria, por
+    // baixo da marca e da data.
     // Tudo em rem: a classe modo-reuniao no <html> aumenta a letra (ver estilos.css).
     <header className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-4 gap-y-1.5 border-b border-slate-200 bg-white px-3 py-2 xl:grid-cols-[auto_minmax(0,1fr)_auto] xl:gap-x-6 xl:px-4">
-      <Marca className="xl:row-span-2" />
+      <Marca />
       <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-0.5 leading-tight">
         <h2 className="text-xl font-semibold text-[var(--cmf-preto)]">Reunião</h2>
         <p className="text-base text-slate-700">
@@ -92,9 +92,6 @@ export function CabecalhoReuniao() {
           <IconeSairEcra />
           Sair da reunião
         </button>
-      </div>
-      <div className="col-span-full xl:col-span-2 xl:col-start-2">
-        <Contadores />
       </div>
     </header>
   );

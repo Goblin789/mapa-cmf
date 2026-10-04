@@ -2,6 +2,55 @@
 
 Registo das decisões do Rafael e das escolhas por omissão. Mais recentes primeiro.
 
+## 04/10/2026 — pedidos do Rafael (cabeçalho, Tabela, filtros, Quadro, ficha arrastável)
+
+Pedidos ditados pelo Rafael (saiu e não pôde responder; decidido com bom senso). Desenho em
+`docs/vistas-edicao.md`.
+- **A. Cabeçalho**: saíram todas as caixas dos contadores (Livres nas casas / acima do contrato, Sem transporte,
+  Fora das casas, Paradas/oficina, Carrinhas vazias, A confirmar) do cabeçalho principal, em todas as vistas,
+  e também do cabeçalho da reunião (é a "barra de cima" lá). O cabeçalho fica mais baixo (1366 px: 89 → 51 px;
+  1920 px: 89 → 76 px, o logótipo inteiro do manual de marca define a altura; reunião 1920: 111 → 80 px;
+  telemóvel no Mapa: 264 → 137 px). `paineis/Contadores.tsx` foi apagado; os números continuam calculados
+  (`dominio/contadores.ts`), porque a legenda do Mapa usa o nº de pessoas por cliente. Ficaram sem uso, mas não
+  se apagaram (podem voltar a servir se o Rafael quiser os números noutro sítio): `divisaoPorCliente`
+  (`paineis/agrupar.ts`), `resumoDasCasas` (`paineis/fichas.ts`) e `contadoresServidor` (loja).
+- **B. Tabela sem informação repetida**: clicar numa linha só a realça e **não abre a ficha** (a linha já tem
+  tudo); no modo de edição o clique seleciona como antes (clique, Ctrl/⌘, Shift, caixas), sem ficha. Um botão
+  pequeno ⓘ a seguir ao nome abre/fecha a ficha da pessoa (para "Ver no mapa", Mudar onde dorme, etc.). Fica a
+  seguir ao nome, e não no fim da linha, porque no fim ficava fora do ecrã no modo de edição a 1366 px. Com a
+  ficha de uma pessoa aberta, clicar noutra linha passa a ficha para ela. As ligações Casa e Carrinha
+  continuam a abrir as fichas da casa e da carrinha. A ficha em si não mudou: como só abre a pedido, já não
+  repete a linha a cada clique.
+- **C. Filtros múltiplos na Tabela**: Cliente, Casa, Carrinha e **Obra** (novo), cada um com várias escolhas
+  ao mesmo tempo. Dentro do mesmo filtro é OU, entre filtros é E. Especiais: "Fora das casas CMF", "Sem
+  transporte da empresa", "Sem obra". Sem obras na BD, "Obra: sem obras" desativado. "N de M pessoas" e
+  "Limpar filtros". **Excel**: até aqui ignorava os filtros; agora, com filtros, a folha Pessoas leva só as
+  linhas filtradas (ficheiro "… (filtrado).xlsx"; Casas e Carrinhas inteiras). Sem filtros, igual a antes.
+- **D. Filtros no Quadro**: Clientes e Obras, vários ao mesmo tempo; ficam **só** as pessoas desses
+  clientes/obras (não é esbater). As pastilhas dos clientes da barra passaram a ser este filtro: cada clique
+  liga/desliga, sem Shift; "Todos" limpa (no telemóvel, um botão "Cliente" com a lista). Os blocos continuam
+  com a lotação real e continuam a ser alvos de largar; os sem ninguém do filtro ficam recolhidos (título e
+  pastilha) numa fila por baixo. Funciona também na reunião (só para ver). O filtro não fica guardado ao
+  recarregar (um filtro esquecido escondia pessoas na reunião seguinte). No modo de edição, quem o filtro
+  esconde sai da seleção, com aviso. O realce por cliente da legenda do Mapa fica como estava, só no Mapa; o
+  Excel do Quadro exporta tudo.
+- **E. Nomes numa só linha no Quadro** (casas e carrinhas): as colunas têm a largura do nome mais comprido de
+  cada parte do Quadro; nunca há quebra de linha. Medido sem reticências nem nomes partidos a 1920, 1366,
+  reunião 1920 e telemóvel. No PC, onde antes os nomes partiam, o Quadro fica um pouco mais comprido (desliza).
+- **F. Ficha arrastável** (Mapa, Quadro e Tabela, no PC a partir de 640 px): pega-se pelo cabeçalho e
+  arrasta-se para qualquer sítio dentro da área; nunca sai do ecrã; a posição fica lembrada (uma para o Mapa,
+  outra para a Tabela e o Quadro); botão "Voltar a pôr a ficha no sítio" e duplo clique no cabeçalho voltam à
+  origem; setas na pega e Alt+setas no cabeçalho. No telemóvel fica como estava.
+- *Por confirmar com o Rafael*:
+  - se quer os números dos contadores noutro sítio (ex.: na lista lateral ou no Histórico), ou se não fazem
+    falta;
+  - se o ⓘ a seguir ao nome é fácil de encontrar para abrir a ficha na Tabela;
+  - se o filtro do Quadro deve ficar guardado ao recarregar (hoje não fica);
+  - se o Excel do Quadro também deve seguir o filtro do Quadro (hoje exporta tudo; o da Tabela segue os
+    filtros);
+  - o filtro de obras foi ensaiado só com obras fictícias numa cópia da BD (ainda não há obras na BD real);
+  - não se ensaiou com um leitor de ecrã real nem no modo entra (login Microsoft).
+
 ## 04/10/2026 — nomes completos na Tabela e lugares livres nas carrinhas
 
 Pedidos do Rafael: "na tabela apareça só o nome completo, não os nomes repetidos (…) não precisa de repetir a

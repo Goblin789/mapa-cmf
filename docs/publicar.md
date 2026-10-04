@@ -122,7 +122,7 @@ A partir daqui **só se edita online**: a BD do PC passa a ser só para testes.
    | `COPIAS_S3_REGIAO` | `auto` |
    | `ENDERECO_PUBLICO` | `https://mapa-cmf.onrender.com` (provisório; confirma-se no passo 6) |
    | `ANFITRIOES` | `mapa-cmf.onrender.com` (só o nome, sem `https://`) |
-   | `UTILIZADORES_PERMITIDOS` | o nome de utilizador Microsoft (UPN) dos três, separados por vírgulas — normalmente o e-mail `@cmf-lux.lu`; confirma em Entra → **Users** → **User principal name** |
+   | `UTILIZADORES_PERMITIDOS` | `rafael@cmf-lux.lu,michael@cmf-lux.lu,joao@cmf-lux.lu,cardoso@cmf-lux.lu` (o nome de utilizador Microsoft, UPN, de cada um; confirma em Entra → **Users** → **User principal name**) |
    | `RESTAURAR_AO_ARRANCAR` | `ultima` |
 
 4. **Deploy Blueprint**. A 1.ª construção leva uns minutos. Em **Logs** deve aparecer

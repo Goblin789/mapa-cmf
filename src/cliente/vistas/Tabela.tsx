@@ -1,16 +1,20 @@
 // Vista Tabela: uma linha por pessoa ativa — Nome, Nº, Cliente, Obra, Casa, Carrinha, Condutor e o que
 // está por confirmar. O nome é o completo com maiúsculas normais (dominio/nomes.ts), numa só etiqueta da
-// cor do cliente e sem a sigla (a coluna Cliente já a mostra). Ordena-se clicando no cabeçalho (aria-sort); o campo da barra filtra (indiferente a
-// acentos), com filtros por cliente, casa e carrinha. O cabeçalho fica fixo; no telemóvel a tabela desliza
-// dentro do seu contentor (a página nunca desliza na horizontal) e a coluna do nome fica presa à esquerda.
-// A ordem e os filtros mantêm-se ao mudar de vista.
+// cor do cliente e sem a sigla (a coluna Cliente já a mostra). Ordena-se clicando no cabeçalho
+// (aria-sort); o campo da barra filtra (indiferente a acentos), com filtros de escolha múltipla por
+// cliente, casa, carrinha e obra (comum/FiltroMultiplo: Casa 1 e Casa 2 ao mesmo tempo; entre filtros é E).
+// O cabeçalho fica fixo; no telemóvel a tabela desliza dentro do seu contentor (a página nunca desliza na
+// horizontal) e a coluna do nome fica presa à esquerda. A ordem e os filtros mantêm-se ao mudar de vista.
 //
-// Nunca muda de vista (docs/vistas-edicao.md): clicar numa linha abre a ficha da pessoa (PainelFoco, por
-// cima da tabela); o nome da casa e a matrícula abrem a ficha da casa ou da carrinha. A linha em foco fica
-// realçada, e as da casa ou carrinha em foco levemente. A pesquisa do cabeçalho, os contadores e as
-// ligações da ficha mostram aqui (useAoMostrar): desliza até às linhas e acende-as, limpando os filtros
-// que as escondam. Com um cliente aceso na legenda (no Mapa ou no Quadro), as linhas dos outros ficam
-// esbatidas, como os nomes no Quadro; a barra diz qual está aceso e tem "Todos".
+// Nunca muda de vista (docs/vistas-edicao.md). A linha já mostra tudo da pessoa: clicar nela só a realça
+// (não abre a ficha, que repetia a linha); o botão pequeno a seguir ao nome (ⓘ) abre a ficha da pessoa
+// (PainelFoco, por cima da tabela) para quem precisa dela (ex.: "Ver no mapa"). Com a ficha de uma pessoa
+// aberta, clicar noutra linha passa a ficha para ela. O nome da casa e a matrícula abrem a ficha da casa ou
+// da carrinha. A linha em foco fica realçada, e as da casa ou carrinha em foco levemente. A pesquisa do
+// cabeçalho e as ligações da ficha mostram aqui (useAoMostrar): desliza até às linhas e
+// acende-as, limpando os filtros que as escondam. Com um cliente aceso na legenda do Mapa,
+// as linhas dos outros ficam esbatidas; a barra diz qual está aceso e tem "Todos".
+// O Excel da barra exporta o que se vê: com filtros, a folha Pessoas só tem as linhas filtradas.
 //
 // No modo de edição mostra a simulação (o rascunho) e edita como o mapa: coluna de caixas de seleção
 // (e "todas as visíveis"), clique na linha = seleção como nos nomes (Ctrl/⌘, Shift pela ordem visível),
@@ -36,6 +40,7 @@ import {
 import { create } from 'zustand';
 import type { Cliente, Id } from '../../dominio/tipos';
 import { modoDoClique } from '../arrastar/selecao';
+import { FiltroMultiplo, type OpcaoFiltroMultiplo } from '../comum/FiltroMultiplo';
 import { IconeVolante } from '../comum/IconeVolante';
 import { formatarMatricula, Matricula } from '../comum/Matricula';
 import {
@@ -51,11 +56,10 @@ import { operacoesConfirmarSugestoes } from '../edicao/ondeDorme';
 import { haDialogoAberto, useUiEdicao } from '../edicao/ui';
 import { useLoja } from '../estado/loja';
 import { IconeCarrinhaLado, IconeCarroLado, IconeCasa, IconeDormir, IconeLupa } from '../lista/icones';
-import { clientesPorOrdem } from '../paineis/agrupar';
 import { FOCO_VISIVEL } from '../paineis/classes';
 import { PainelFoco } from '../paineis/PainelFoco';
 import { MarcaAConfirmar, MarcaCliente } from '../paineis/pecas';
-import { ROTULO_FORA_DAS_CASAS, ROTULO_SEM_TRANSPORTE } from '../paineis/textos';
+import { ROTULO_FORA_DAS_CASAS } from '../paineis/textos';
 import {
   type AntesDaLinha,
   acaoTeclaLista,
@@ -72,11 +76,13 @@ import {
   teclaMudaLista,
   valorDaCelula,
 } from './celulasTabela';
-import { IconeOrdem } from './icones';
+import { exportarExcel } from './excel';
+import { IconeDescarregar, IconeOrdem } from './icones';
 import {
   ariaSort,
   COLUNAS_TABELA,
   type ColunaTabela,
+  cliqueNaLinha,
   deslocamentoParaVer,
   FILTROS_INICIAIS,
   type FiltrosTabela,
@@ -88,11 +94,13 @@ import {
   modoDaCaixa,
   ORDEM_INICIAL,
   type OrdemTabela,
+  opcoesFiltrosTabela,
   ordenarLinhas,
   pessoasDoElemento,
   proximaOrdem,
+  type RealceLinha,
   realceDaLinha,
-  SEM,
+  reservaDaFicha,
   selecaoComVisiveis,
   textoContagem,
   zonaLivreDaTabela,
@@ -106,19 +114,27 @@ import {
   seletorElementos,
   useAoMostrar,
 } from './mostrar';
-import { BotaoExcel, NomeVista } from './pecas';
+import { BOTAO_VISTA, NomeVista } from './pecas';
 
-/** Ordem e filtros da tabela: ficam ao ir ao mapa e voltar (não ao recarregar a página). */
+/**
+ * Ordem, filtros e a linha realçada pelo clique: ficam ao ir ao mapa e voltar (não ao recarregar a
+ * página).
+ */
 const useEstadoTabela = create<{
   ordem: OrdemTabela;
   filtros: FiltrosTabela;
+  /** A linha em que se clicou (fora do modo de edição): realçada, sem abrir a ficha. */
+  marcada: Id | null;
   definirOrdem: (ordem: OrdemTabela) => void;
   definirFiltros: (filtros: FiltrosTabela) => void;
+  definirMarcada: (marcada: Id | null) => void;
 }>()((set) => ({
   ordem: ORDEM_INICIAL,
   filtros: FILTROS_INICIAIS,
+  marcada: null,
   definirOrdem: (ordem) => set({ ordem }),
   definirFiltros: (filtros) => set({ filtros }),
+  definirMarcada: (marcada) => set({ marcada }),
 }));
 
 const CAMPO =
@@ -133,6 +149,12 @@ const PRESA_NOME = { fora: 'sticky left-0', edicao: 'sticky left-9' } as const;
 
 /** Lista de uma célula no modo de edição (16 px no telemóvel, para o iPhone não aproximar). */
 const LISTA_CELULA = `h-7 shrink-0 rounded border border-slate-300 bg-white px-1 text-base text-slate-800 sm:text-sm ${FOCO_VISIVEL}`;
+
+/**
+ * Filtros de escolha múltipla da barra: no telemóvel dois por linha (quatro numa linha ficavam "Cli…");
+ * no PC ao lado uns dos outros, com a largura dos campos de antes.
+ */
+const FILTRO = { className: 'min-w-0 sm:w-auto', classeBotao: 'sm:max-w-[10rem] xl:max-w-[12rem]' };
 
 /** Ligação-botão dentro de uma célula (nome da casa, matrícula): abre a ficha. */
 const LIGACAO = `rounded text-left hover:underline hover:underline-offset-2 ${FOCO_VISIVEL}`;
@@ -165,42 +187,6 @@ const SEM_ANTES: ReadonlyMap<Id, AntesDaLinha> = new Map();
 
 function Vazio({ children }: { children: ReactNode }) {
   return <span className="text-slate-500 italic">{children}</span>;
-}
-
-function Seletor({
-  rotulo,
-  valor,
-  aoMudar,
-  todos,
-  opcoes,
-}: {
-  rotulo: string;
-  valor: string | null;
-  aoMudar: (valor: string | null) => void;
-  todos: string;
-  opcoes: { id: string; rotulo: string }[];
-}) {
-  const id = useId();
-  return (
-    <div className="flex min-w-0 items-center">
-      <label htmlFor={id} className="sr-only">
-        {rotulo}
-      </label>
-      <select
-        id={id}
-        value={valor ?? ''}
-        onChange={(e) => aoMudar(e.target.value === '' ? null : e.target.value)}
-        className={`${CAMPO} w-full min-w-0 sm:w-auto sm:max-w-[10rem] xl:max-w-[12rem] ${valor !== null ? 'border-slate-800 font-semibold' : ''}`}
-      >
-        <option value="">{todos}</option>
-        {opcoes.map((o) => (
-          <option key={o.id} value={o.id}>
-            {o.rotulo}
-          </option>
-        ))}
-      </select>
-    </div>
-  );
 }
 
 /** "●" com o "antes: …" para os leitores de ecrã (o title fica na célula). */
@@ -244,6 +230,32 @@ function manterLinhaAVista(tr: HTMLTableRowElement): void {
     const reduzir = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
     caixa.scrollBy({ top: delta, behavior: reduzir ? 'auto' : 'smooth' });
   });
+}
+
+/**
+ * A ficha da vista (PainelFoco, dentro de `area`) foi arrastada para fora do sítio de origem: o PainelFoco
+ * marca-a com `data-movida` (e guarda a posição só para si). Segue a marca enquanto há ficha aberta: muda
+ * ao largar a ficha, ao voltar ao sítio e quando abre outra ficha (que já vem na posição lembrada).
+ */
+function useFichaMovida(area: HTMLElement | null, haFicha: boolean): boolean {
+  const [movida, setMovida] = useState(false);
+  useLayoutEffect(() => {
+    if (!area || !haFicha) {
+      setMovida(false);
+      return;
+    }
+    const ler = () => setMovida(area.querySelector(`[${ATRIBUTO_FICHA}="vista"][data-movida]`) !== null);
+    ler();
+    const observador = new MutationObserver(ler);
+    observador.observe(area, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeFilter: ['data-movida'],
+    });
+    return () => observador.disconnect();
+  }, [area, haFicha]);
+  return movida;
 }
 
 /**
@@ -392,14 +404,31 @@ function BotaoFicha({
 /** O lugar do BotaoFicha quando não há casa/carrinha: as marcas "●" ficam alinhadas. */
 const SEM_BOTAO_FICHA = <span aria-hidden="true" className="w-7 shrink-0" />;
 
-type RealceLinha = 'foco' | 'ligada' | null;
+/** "i" num círculo: o botão a seguir ao nome que abre a ficha da pessoa. */
+function IconeFicha({ className = 'size-4' }: { className?: string }) {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 16 16"
+      className={`shrink-0 ${className}`}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+    >
+      <circle cx="8" cy="8" r="6.25" />
+      <path d="M8 7.25v4" />
+      <circle cx="8" cy="4.9" r="0.4" fill="currentColor" />
+    </svg>
+  );
+}
 
 interface PropsLinha {
   linha: LinhaTabela;
   modoEdicao: boolean;
   selecionada: boolean;
   realce: RealceLinha;
-  /** Outro cliente está aceso na legenda: a linha fica esbatida (como os nomes no Quadro). */
+  /** Outro cliente está aceso na legenda do Mapa: a linha fica esbatida. */
   apagada: boolean;
   /** Há obras no estado (sem obras e sem obra na pessoa, a célula fica "sem obra", como na ficha). */
   haObras: boolean;
@@ -445,20 +474,21 @@ const LinhaPessoa = memo(function LinhaPessoa({
     ? `Abrir a ficha ${carrinha.tipo === 'carro' ? 'do carro' : 'da carrinha'} ${formatarMatricula(carrinha.matricula)}`
     : '';
 
-  // O teclado usa o botão do nome; o clique serve a linha toda. Os controlos das células param o clique.
-  // Ao abrir a ficha, a linha fica à vista (no telemóvel a ficha abre em baixo, por cima das linhas).
+  // O clique na linha realça-a (no modo de edição, seleciona) sem abrir a ficha: a linha já mostra tudo.
+  // O teclado usa o botão da ficha a seguir ao nome e, no modo de edição, a caixa de seleção. Os controlos
+  // das células param o clique. Ao abrir a ficha (ou ao passá-la para esta linha), a linha fica à vista
+  // (no telemóvel a ficha abre em baixo, por cima das linhas).
   const aoClicar = (e: MouseEvent<HTMLTableRowElement>) => {
     const { foco, definirFoco, selecionar } = useLoja.getState();
+    const { marcada, definirMarcada } = useEstadoTabela.getState();
     const tr = e.currentTarget;
-    if (!modoEdicao) {
-      const emFoco = foco?.tipo === 'pessoa' && foco.id === id;
-      definirFoco(emFoco ? null : { tipo: 'pessoa', id });
-      if (!emFoco) manterLinhaAVista(tr);
-      return;
+    if (modoEdicao) selecionar(id, modoDoClique(e), obterOrdem());
+    const depois = cliqueNaLinha(id, { foco, marcada, modoEdicao });
+    definirMarcada(depois.marcada);
+    if (depois.foco !== undefined) {
+      definirFoco(depois.foco);
+      manterLinhaAVista(tr);
     }
-    selecionar(id, modoDoClique(e), obterOrdem());
-    definirFoco({ tipo: 'pessoa', id });
-    manterLinhaAVista(tr);
   };
   const abrir = (e: MouseEvent<HTMLElement>, foco: ElementoVista) => {
     e.stopPropagation();
@@ -466,9 +496,22 @@ const LinhaPessoa = memo(function LinhaPessoa({
     const tr = e.currentTarget.closest('tr');
     if (tr) manterLinhaAVista(tr);
   };
+  // Botão ⓘ a seguir ao nome: abre a ficha da pessoa (e realça a linha); na pessoa da ficha, fecha-a.
+  // Fica na célula presa do nome: à vista em qualquer largura e nos dois modos (no fim da linha, no modo
+  // de edição a 1366 px, ficava fora do ecrã), e nunca por baixo da ficha, que abre à direita.
+  const emFoco = realce === 'foco';
+  const alternarFicha = (e: MouseEvent<HTMLButtonElement>) => {
+    e.stopPropagation();
+    if (emFoco) {
+      useLoja.getState().definirFoco(null);
+      return;
+    }
+    if (!modoEdicao) useEstadoTabela.getState().definirMarcada(id);
+    abrir(e, { tipo: 'pessoa', id });
+  };
 
   const fundo =
-    selecionada || realce === 'foco'
+    selecionada || realce === 'foco' || realce === 'marcada'
       ? 'bg-blue-50'
       : realce === 'ligada'
         ? 'bg-slate-100'
@@ -484,7 +527,11 @@ const LinhaPessoa = memo(function LinhaPessoa({
   };
   const meio = sombra(null);
   const naPrimeira = sombra(
-    realce === 'foco' ? `inset 4px 0 0 ${AZUL_FOCO}` : selecionada ? `inset 2px 0 0 ${AZUL_SELECAO}` : null,
+    realce === 'foco' || realce === 'marcada'
+      ? `inset 4px 0 0 ${AZUL_FOCO}`
+      : selecionada
+        ? `inset 2px 0 0 ${AZUL_SELECAO}`
+        : null,
   );
   const naUltima = sombra(selecionada ? `inset -1px 0 0 ${AZUL_SELECAO}` : null);
 
@@ -528,12 +575,7 @@ const LinhaPessoa = memo(function LinhaPessoa({
         className={`${CELULA} ${modoEdicao ? PRESA_NOME.edicao : PRESA_NOME.fora} z-[1] ${fundo}`}
         style={modoEdicao ? meio : naPrimeira}
       >
-        <button
-          type="button"
-          title="Abrir a ficha"
-          aria-label={`Abrir a ficha de ${l.nomeMostrado}`}
-          className={`flex min-w-0 items-center rounded text-left ${FOCO_VISIVEL}`}
-        >
+        <span className="flex min-w-0 items-center">
           <NomeVista
             pessoa={l.pessoa}
             condutor={l.condutor}
@@ -541,7 +583,21 @@ const LinhaPessoa = memo(function LinhaPessoa({
             semSigla
             className={`${modoEdicao ? 'w-[9rem]' : 'w-[12rem]'} shrink-0 text-[13px] sm:w-[16rem] 2xl:w-[18.5rem]`}
           />
-        </button>
+          <button
+            type="button"
+            onClick={alternarFicha}
+            aria-pressed={emFoco}
+            aria-label={`Ficha de ${l.nomeMostrado}`}
+            title={emFoco ? `Fechar a ficha de ${l.nomeMostrado}` : `Abrir a ficha de ${l.nomeMostrado}`}
+            className={`ml-1 inline-flex size-7 shrink-0 items-center justify-center rounded ${FOCO_VISIVEL} ${
+              emFoco
+                ? 'bg-blue-100 text-blue-800 hover:bg-blue-200'
+                : 'text-slate-400 group-hover:text-slate-600 hover:bg-slate-200 hover:text-slate-900'
+            }`}
+          >
+            <IconeFicha />
+          </button>
+        </span>
       </td>
       <td className={`${CELULA} text-xs whitespace-nowrap text-slate-700 tabular-nums ${fundo}`} style={meio}>
         {l.numero !== null ? <span>{l.numero}</span> : <Vazio>—</Vazio>}
@@ -747,7 +803,7 @@ function CaixaTodas({ ids }: { ids: readonly Id[] }) {
 }
 
 /**
- * Cliente aceso na legenda (no Mapa ou no Quadro): diz qual é e "Todos" volta a acender todos. No
+ * Cliente aceso na legenda do Mapa: diz qual é e "Todos" volta a acender todos. No
  * telemóvel só a marca do cliente e "Todos" (o "Só <cliente>" fica para os leitores de ecrã), para
  * caber na linha de "Só a confirmar" e da contagem.
  */
@@ -771,6 +827,55 @@ function ClienteAceso({ cliente }: { cliente: Cliente }) {
   );
 }
 
+/**
+ * Excel da Tabela: como o das outras vistas (pecas/BotaoExcel), mas com filtros a folha Pessoas só tem as
+ * linhas que se veem, pela ordem da Tabela (o ficheiro diz "filtrado"). `filtradas` = null sem filtros.
+ */
+function BotaoExcelTabela({ filtradas }: { filtradas: () => readonly LinhaTabela[] | null }) {
+  const [aExportar, setAExportar] = useState(false);
+  const comFiltros = useEstadoTabela((s) => filtrosTabelaAtivos(s.filtros));
+  const exportar = async () => {
+    const { estado, indices, dormidas, modoEdicao, pendentes } = useLoja.getState();
+    if (!estado || !indices || !dormidas || aExportar) return;
+    setAExportar(true);
+    try {
+      await exportarExcel(estado, indices, dormidas, modoEdicao && pendentes.length > 0, filtradas());
+    } catch (e) {
+      const motivo = e instanceof Error ? e.message : String(e);
+      useUiEdicao.getState().avisar(`Não foi possível exportar para Excel (${motivo}).`);
+    } finally {
+      setAExportar(false);
+    }
+  };
+  return (
+    <button
+      type="button"
+      onClick={() => void exportar()}
+      disabled={aExportar}
+      title={
+        comFiltros
+          ? 'Exportar para Excel: a folha Pessoas só com as linhas filtradas; folhas Casas e Carrinhas inteiras'
+          : 'Exportar para Excel: folhas Pessoas, Casas e Carrinhas'
+      }
+      className={BOTAO_VISTA}
+    >
+      <IconeDescarregar />
+      {aExportar ? 'A exportar…' : 'Excel'}
+    </button>
+  );
+}
+
+/** As marcas dos clientes nas opções dos filtros Cliente e Obra (a obra tem a cor do seu cliente). */
+function comMarcas(
+  opcoes: readonly OpcaoFiltroMultiplo[],
+  cliente: (valor: string) => Cliente | null | undefined,
+): OpcaoFiltroMultiplo[] {
+  return opcoes.map((o) => {
+    const c = cliente(o.valor);
+    return c ? { ...o, marca: <MarcaCliente cliente={c} /> } : o;
+  });
+}
+
 export function Tabela() {
   const estado = useLoja((s) => s.estado);
   const indices = useLoja((s) => s.indices);
@@ -784,8 +889,12 @@ export function Tabela() {
   const ordem = useEstadoTabela((s) => s.ordem);
   const filtros = useEstadoTabela((s) => s.filtros);
   const definirFiltros = useEstadoTabela((s) => s.definirFiltros);
+  const marcada = useEstadoTabela((s) => s.marcada);
   const raiz = useRef<HTMLElement>(null);
   const idFiltro = useId();
+  // A caixa onde a ficha está posta e se ela foi arrastada para fora do sítio de origem.
+  const [areaFicha, setAreaFicha] = useState<HTMLDivElement | null>(null);
+  const reserva = reservaDaFicha(Boolean(foco), useFichaMovida(areaFicha, Boolean(foco)));
 
   const linhas = useMemo(() => (estado && indices ? linhasDaTabela(estado, indices) : []), [estado, indices]);
   const visiveis = useMemo(
@@ -796,6 +905,30 @@ export function Tabela() {
   const ordemVisivel = useRef(idsVisiveis);
   ordemVisivel.current = idsVisiveis;
   const obterOrdem = useCallback(() => ordemVisivel.current, []);
+  // O Excel exporta o que se vê: com filtros, só as linhas filtradas (pela ordem da Tabela).
+  const filtradas = useRef<readonly LinhaTabela[] | null>(null);
+  filtradas.current = filtrosTabelaAtivos(filtros) ? visiveis : null;
+  const obterFiltradas = useCallback(() => filtradas.current, []);
+
+  // As opções dos filtros (com o nº de pessoas de cada uma) e as marcas dos clientes.
+  const opcoesFiltros = useMemo(() => {
+    if (!estado || !indices) return null;
+    const o = opcoesFiltrosTabela(estado, indices, linhas);
+    return {
+      ...o,
+      clientes: comMarcas(o.clientes, (id) => indices.clientes.get(id)),
+      obras: comMarcas(o.obras, (id) => {
+        const obra = indices.obras.get(id);
+        return obra ? indices.clientes.get(obra.clienteId) : null;
+      }),
+    };
+  }, [estado, indices, linhas]);
+
+  // A ficha de uma pessoa aberta (pela pesquisa, pelo botão da linha, pela ficha de uma casa…): a linha
+  // dela passa a ser a realçada; ao fechar a ficha, continua realçada (sabe-se onde se estava).
+  useEffect(() => {
+    if (foco?.tipo === 'pessoa' && !modoEdicao) useEstadoTabela.getState().definirMarcada(foco.id);
+  }, [foco, modoEdicao]);
 
   // As opções das listas das células calculam-se uma vez por estado (useOpcoesTabela); as que não mudaram
   // (ex.: mudou uma carrinha e não uma casa) ficam as mesmas e a lista aberta não se redesenha.
@@ -825,7 +958,7 @@ export function Tabela() {
     [modoEdicao, estado, dormidas],
   );
 
-  // Pesquisa do cabeçalho, contadores e ligações da ficha: desliza até às linhas e acende-as. Se os
+  // Pesquisa do cabeçalho e ligações da ficha: desliza até às linhas e acende-as. Se os
   // filtros as escondem todas, limpam-se (com aviso) e mostra-se depois de desenhar.
   useAoMostrar((elemento) => {
     const existentes = new Set(linhas.map((l) => l.pessoa.id));
@@ -850,14 +983,10 @@ export function Tabela() {
     return carrinha ? formatarMatricula(carrinha.matricula) : '';
   }
 
-  if (!estado || !indices) return null;
+  if (!estado || !indices || !opcoesFiltros) return null;
 
   const comFiltros = filtrosTabelaAtivos(filtros);
   const mudar = (mudanca: Partial<FiltrosTabela>) => definirFiltros({ ...filtros, ...mudanca });
-  const casas = [...estado.casas].sort((a, b) => a.ordem - b.ordem);
-  const carrinhas = [...estado.carrinhas].sort((a, b) =>
-    formatarMatricula(a.matricula).localeCompare(formatarMatricula(b.matricula), 'pt'),
-  );
   const contagem = textoContagem(visiveis.length, linhas.length, comFiltros);
   const haObras = estado.obras.length > 0;
   const clienteAceso = clienteDestacado ? (indices.clientes.get(clienteDestacado) ?? null) : null;
@@ -868,7 +997,7 @@ export function Tabela() {
       aria-label="Tabela de pessoas"
       className="relative flex min-h-0 flex-1 flex-col bg-white"
     >
-      {/* No telemóvel: filtro e Excel; os três filtros; "Só a confirmar" e a contagem; a dica da edição.
+      {/* No telemóvel: filtro e Excel; os quatro filtros (2 × 2); "Só a confirmar" e a contagem; a dica da edição.
           No PC tudo numa linha sempre que couber (a ordem muda com order-*). */}
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 border-b border-slate-200 bg-white px-3 py-1.5 sm:py-2">
         <div className="relative order-1 min-w-0 flex-1 basis-40 sm:w-56 sm:flex-none sm:basis-auto">
@@ -887,35 +1016,37 @@ export function Tabela() {
             className={`${CAMPO} w-full pl-8`}
           />
         </div>
-        {/* No telemóvel os três filtros partilham uma linha e ficam cortados: a opção vazia começa pelo
-            nome do filtro ("Casa: todas"), para se saber qual é qual. */}
-        <div className="order-3 grid w-full grid-cols-3 gap-2 sm:order-2 sm:flex sm:w-auto">
-          <Seletor
-            rotulo="Filtrar por cliente"
-            valor={filtros.clienteId}
-            aoMudar={(clienteId) => mudar({ clienteId })}
-            todos="Cliente: todos"
-            opcoes={clientesPorOrdem(estado.clientes).map((c) => ({ id: c.id, rotulo: c.nome }))}
+        <div className="order-3 grid w-full grid-cols-2 gap-2 sm:order-2 sm:flex sm:w-auto">
+          <FiltroMultiplo
+            rotulo="Cliente"
+            genero="m"
+            opcoes={opcoesFiltros.clientes}
+            escolhidos={filtros.clientes}
+            aoMudar={(clientes) => mudar({ clientes })}
+            {...FILTRO}
           />
-          <Seletor
-            rotulo="Filtrar por casa"
-            valor={filtros.casa}
-            aoMudar={(casa) => mudar({ casa })}
-            todos="Casa: todas"
-            opcoes={[
-              ...casas.map((c) => ({ id: c.id, rotulo: c.nome })),
-              { id: SEM, rotulo: ROTULO_FORA_DAS_CASAS },
-            ]}
+          <FiltroMultiplo
+            rotulo="Casa"
+            opcoes={opcoesFiltros.casas}
+            escolhidos={filtros.casas}
+            aoMudar={(casas) => mudar({ casas })}
+            {...FILTRO}
           />
-          <Seletor
-            rotulo="Filtrar por carrinha"
-            valor={filtros.carrinha}
-            aoMudar={(carrinha) => mudar({ carrinha })}
-            todos="Carrinha: todas"
-            opcoes={[
-              ...carrinhas.map((c) => ({ id: c.id, rotulo: formatarMatricula(c.matricula) })),
-              { id: SEM, rotulo: ROTULO_SEM_TRANSPORTE },
-            ]}
+          <FiltroMultiplo
+            rotulo="Carrinha"
+            opcoes={opcoesFiltros.carrinhas}
+            escolhidos={filtros.carrinhas}
+            aoMudar={(carrinhas) => mudar({ carrinhas })}
+            {...FILTRO}
+          />
+          <FiltroMultiplo
+            rotulo="Obra"
+            opcoes={opcoesFiltros.obras}
+            escolhidos={filtros.obras}
+            aoMudar={(obras) => mudar({ obras })}
+            textoVazio="sem obras"
+            larguraPainel={320}
+            {...FILTRO}
           />
         </div>
         <label className="order-4 flex shrink-0 cursor-pointer items-center gap-1.5 text-sm text-slate-700 sm:order-3">
@@ -967,22 +1098,23 @@ export function Tabela() {
           {contagem}
         </p>
         <div className="order-2 flex shrink-0 sm:order-7">
-          <BotaoExcel />
+          <BotaoExcelTabela filtradas={obterFiltradas} />
         </div>
       </div>
       {/* A ficha fica por cima da tabela, fora da caixa que desliza (não desliza com as linhas). */}
-      <div className="relative flex min-h-0 flex-1 flex-col">
+      <div ref={setAreaFicha} className="relative flex min-h-0 flex-1 flex-col">
         {/* relative: os textos só para leitores de ecrã (sr-only, absolutos) ficam presos a esta caixa.
-            Com a ficha aberta, a tabela deixa-lhe espaço (à direita no PC, em baixo no telemóvel): as
-            colunas e as últimas linhas continuam a alcançar-se, deslizando. */}
+            Com a ficha aberta, a tabela deixa-lhe espaço (reservaDaFicha: em baixo no telemóvel; à direita
+            no PC, só com a ficha no sítio de origem): as colunas e as últimas linhas continuam a
+            alcançar-se, deslizando. */}
         <div
-          className={`relative min-h-0 flex-1 overflow-auto overscroll-contain ${foco ? 'max-sm:scroll-pb-[60vh] sm:scroll-pr-[23.5rem] sm:pr-[23.5rem]' : ''}`}
+          className={`relative min-h-0 flex-1 overflow-auto overscroll-contain ${reserva.baixo ? 'max-sm:scroll-pb-[60vh]' : ''} ${reserva.direita ? 'sm:scroll-pr-[23.5rem] sm:pr-[23.5rem]' : ''}`}
         >
           <table
             className={`w-full border-separate border-spacing-0 text-sm ${modoEdicao ? 'min-w-[76rem]' : 'min-w-[60rem]'}`}
           >
             <caption className="sr-only">
-              Pessoas ({contagem}). Clicar numa linha abre a ficha da pessoa
+              Pessoas ({contagem}). O botão a seguir a cada nome abre a ficha da pessoa
               {modoEdicao ? '; no modo de edição muda-se nas células e selecionam-se linhas.' : '.'}
             </caption>
             <thead>
@@ -1002,7 +1134,7 @@ export function Tabela() {
             <tbody>
               {visiveis.map((l) => {
                 const selecionada = modoEdicao && selecao.has(l.pessoa.id);
-                const realce = realceDaLinha(l, foco);
+                const realce = realceDaLinha(l, foco, modoEdicao ? null : marcada);
                 return (
                   <LinhaPessoa
                     key={l.pessoa.id}

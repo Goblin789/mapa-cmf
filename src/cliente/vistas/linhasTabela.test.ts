@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { indexar } from '../../dominio/indices';
+import { criarObra } from '../../dominio/teste-fabrica';
 import type { Pessoa } from '../../dominio/tipos';
+import { GRUPO_ESPECIAIS } from '../comum/escolhaMultipla';
+import { ROTULO_FORA_DAS_CASAS, ROTULO_SEM_TRANSPORTE } from '../paineis/textos';
 import { estadoVistas } from './estadoTeste';
 import {
   ariaSort,
+  cliqueNaLinha,
   deslocamentoParaVer,
   FILTROS_INICIAIS,
   type FiltrosTabela,
@@ -13,10 +17,12 @@ import {
   linhasDaTabela,
   modoDaCaixa,
   ORDEM_INICIAL,
+  opcoesFiltrosTabela,
   ordenarLinhas,
   pessoasDoElemento,
   proximaOrdem,
   realceDaLinha,
+  reservaDaFicha,
   SEM,
   selecaoComVisiveis,
   textoAConfirmar,
@@ -222,15 +228,134 @@ describe('filtrarLinhas', () => {
   });
 
   it('por cliente, casa e carrinha (SEM = fora das casas / sem transporte)', () => {
-    expect(filtrar({ clienteId: 'beta' }).sort()).toEqual(['Eva D.', 'Zé A.', 'Óscar G.']);
-    expect(filtrar({ casa: 'casa-a' }).sort()).toEqual(['Eva D.', 'Luís E.']);
-    expect(filtrar({ casa: SEM }).sort()).toEqual(['Ivo F.', 'Óscar G.']);
-    expect(filtrar({ carrinha: SEM }).sort()).toEqual(['Inês H.', 'Óscar G.']);
-    expect(filtrar({ carrinha: 'XX1002', clienteId: 'alfa' })).toEqual(['Luís E.']);
+    expect(filtrar({ clientes: new Set(['beta']) }).sort()).toEqual(['Eva D.', 'Zé A.', 'Óscar G.']);
+    expect(filtrar({ casas: new Set(['casa-a']) }).sort()).toEqual(['Eva D.', 'Luís E.']);
+    expect(filtrar({ casas: new Set([SEM]) }).sort()).toEqual(['Ivo F.', 'Óscar G.']);
+    expect(filtrar({ carrinhas: new Set([SEM]) }).sort()).toEqual(['Inês H.', 'Óscar G.']);
+    expect(filtrar({ carrinhas: new Set(['XX1002']), clientes: new Set(['alfa']) })).toEqual(['Luís E.']);
+  });
+
+  it('várias escolhas no mesmo filtro: basta uma (Casa L1 OU a Aldeia)', () => {
+    expect(filtrar({ casas: new Set(['casa-l1', 'casa-a']) }).sort()).toEqual([
+      'Ana B.',
+      'Eva D.',
+      'Luís E.',
+      'Zé A.',
+    ]);
+    // Uma casa e "fora das casas" ao mesmo tempo.
+    expect(filtrar({ casas: new Set(['casa-a', SEM]) }).sort()).toEqual([
+      'Eva D.',
+      'Ivo F.',
+      'Luís E.',
+      'Óscar G.',
+    ]);
+    expect(filtrar({ clientes: new Set(['alfa', 'beta']) })).toHaveLength(filtrar({}).length);
+    expect(filtrar({ carrinhas: new Set(['XX1001', SEM]) }).sort()).toEqual([
+      'Ana B.',
+      'Inês H.',
+      'Zé A.',
+      'Óscar G.',
+    ]);
+  });
+
+  it('entre filtros diferentes têm de passar todos (E)', () => {
+    const casas = new Set(['casa-l1', 'casa-a']);
+    expect(filtrar({ casas, clientes: new Set(['beta']) }).sort()).toEqual(['Eva D.', 'Zé A.']);
+    expect(filtrar({ casas, carrinhas: new Set(['XX1002']), clientes: new Set(['beta']) })).toEqual([
+      'Eva D.',
+    ]);
+    expect(filtrar({ casas, carrinhas: new Set([SEM]) })).toEqual([]);
+  });
+
+  it('os conjuntos vazios são "sem filtro"; qualquer escolha conta como filtro ativo', () => {
+    expect(filtrosTabelaAtivos({ ...FILTROS_INICIAIS, casas: new Set() })).toBe(false);
+    expect(filtrosTabelaAtivos({ ...FILTROS_INICIAIS, casas: new Set([SEM]) })).toBe(true);
+    expect(filtrosTabelaAtivos({ ...FILTROS_INICIAIS, obras: new Set(['o-1']) })).toBe(true);
+    expect(filtrosTabelaAtivos({ ...FILTROS_INICIAIS, clientes: new Set(['alfa']) })).toBe(true);
+    expect(filtrosTabelaAtivos({ ...FILTROS_INICIAIS, carrinhas: new Set(['XX1001']) })).toBe(true);
   });
 
   it('só a confirmar (a casa ou a carrinha)', () => {
     expect(filtrar({ soAConfirmar: true }).sort()).toEqual(['Eva D.', 'Óscar G.']);
+  });
+});
+
+// Obras fictícias: a Ponte Norte (Alfa) e a Escola Sul (Beta). O Zé vai para a Escola, a Ana para a Ponte.
+const comObras = {
+  ...estado,
+  obras: [
+    criarObra({ id: 'o-ponte', nome: 'Ponte Norte', clienteId: 'alfa' }),
+    criarObra({ id: 'o-escola', nome: 'Escola Sul', clienteId: 'beta' }),
+    criarObra({ id: 'o-armazem', nome: 'Armazém', clienteId: 'beta' }),
+  ],
+  pessoas: estado.pessoas.map((p) =>
+    p.id === 'p-1' ? { ...p, obraId: 'o-escola' } : p.id === 'p-2' ? { ...p, obraId: 'o-ponte' } : p,
+  ),
+};
+const indObras = indexar(comObras);
+const linhasObras = linhasDaTabela(comObras, indObras);
+
+describe('filtro por obra', () => {
+  const filtrarObras = (obras: string[], extra: Partial<FiltrosTabela> = {}) =>
+    nomes(filtrarLinhas(linhasObras, { ...FILTROS_INICIAIS, ...extra, obras: new Set(obras) })).sort();
+
+  it('uma ou várias obras, e "sem obra"', () => {
+    expect(filtrarObras(['o-escola'])).toEqual(['Zé A.']);
+    expect(filtrarObras(['o-escola', 'o-ponte'])).toEqual(['Ana B.', 'Zé A.']);
+    expect(filtrarObras([SEM])).toHaveLength(linhasObras.length - 2);
+    expect(filtrarObras(['o-armazem'])).toEqual([]);
+  });
+
+  it('com os outros filtros (E)', () => {
+    expect(filtrarObras(['o-escola', 'o-ponte'], { clientes: new Set(['alfa']) })).toEqual(['Ana B.']);
+  });
+});
+
+describe('opcoesFiltrosTabela', () => {
+  const o = opcoesFiltrosTabela(estado, ind, linhas);
+
+  it('clientes pela ordem, com a sigla na pesquisa e o nº de pessoas', () => {
+    expect(o.clientes.map((c) => c.valor)).toEqual(['alfa', 'beta']);
+    expect(o.clientes.map((c) => c.contagem)).toEqual([5, 3]);
+    expect(o.clientes[0]?.termos).toBe('AL');
+  });
+
+  it('casas pela ordem e "fora das casas" no fim, à parte', () => {
+    expect(o.casas.map((c) => c.valor)).toEqual(['casa-l1', 'casa-l2', 'casa-o1', 'casa-a', 'casa-m', SEM]);
+    expect(o.casas.at(-1)).toMatchObject({
+      rotulo: ROTULO_FORA_DAS_CASAS,
+      grupo: GRUPO_ESPECIAIS,
+      contagem: 2,
+    });
+    expect(o.casas[0]?.contagem).toBe(2);
+    expect(o.casas[1]?.contagem).toBe(0);
+  });
+
+  it('carrinhas pela matrícula e "sem transporte" no fim, à parte', () => {
+    expect(o.carrinhas.map((c) => c.rotulo).slice(0, 2)).toEqual(['XX 1001', 'XX 1002']);
+    // O XX1005 é um carro.
+    expect(o.carrinhas.find((c) => c.valor === 'XX1005')?.detalhe).toBe('carro');
+    expect(o.carrinhas[0]?.detalhe).toBeUndefined();
+    expect(o.carrinhas.at(-1)).toMatchObject({
+      valor: SEM,
+      rotulo: ROTULO_SEM_TRANSPORTE,
+      grupo: GRUPO_ESPECIAIS,
+      contagem: 2,
+    });
+  });
+
+  it('sem obras, a lista das obras fica vazia (o filtro fica desativado)', () => {
+    expect(o.obras).toEqual([]);
+  });
+
+  it('obras numa secção por cliente (pela ordem dos clientes e pelo nome) e "Sem obra" no fim', () => {
+    const obras = opcoesFiltrosTabela(comObras, indObras, linhasObras).obras;
+    expect(obras.map((x) => [x.rotulo, x.grupo, x.contagem])).toEqual([
+      ['Ponte Norte', 'Alfa Obras', 1],
+      ['Armazém', 'Beta Construções', 0],
+      ['Escola Sul', 'Beta Construções', 1],
+      ['Sem obra', GRUPO_ESPECIAIS, linhasObras.length - 2],
+    ]);
   });
 });
 
@@ -263,6 +388,14 @@ describe('realceDaLinha', () => {
     expect(realceDaLinha(oscar, { tipo: 'pessoa', id: 'p-1' })).toBeNull();
   });
 
+  it('a linha em que se clicou: marcada (a da ficha ganha; a marcada ganha à ligada)', () => {
+    expect(realceDaLinha(ze, null, 'p-1')).toBe('marcada');
+    expect(realceDaLinha(oscar, null, 'p-1')).toBeNull();
+    expect(realceDaLinha(ze, { tipo: 'pessoa', id: 'p-1' }, 'p-1')).toBe('foco');
+    expect(realceDaLinha(ze, { tipo: 'casa', id: 'casa-l1' }, 'p-1')).toBe('marcada');
+    expect(realceDaLinha(ze, { tipo: 'pessoa', id: 'p-2' }, 'p-1')).toBe('marcada');
+  });
+
   it('quem mora na casa ou vai na carrinha da ficha: ligada', () => {
     expect(realceDaLinha(ze, { tipo: 'casa', id: 'casa-l1' })).toBe('ligada');
     expect(realceDaLinha(ze, { tipo: 'carrinha', id: 'XX1001' })).toBe('ligada');
@@ -270,6 +403,39 @@ describe('realceDaLinha', () => {
     // Fora das casas e sem transporte não ficam ligados a nada.
     expect(realceDaLinha(oscar, { tipo: 'casa', id: 'casa-l1' })).toBeNull();
     expect(realceDaLinha(oscar, { tipo: 'carrinha', id: 'XX1001' })).toBeNull();
+  });
+});
+
+describe('cliqueNaLinha', () => {
+  const sem = { foco: null, marcada: null, modoEdicao: false };
+
+  it('não abre a ficha: só realça a linha; outro clique na mesma tira o realce', () => {
+    expect(cliqueNaLinha('p-1', sem)).toEqual({ marcada: 'p-1' });
+    expect(cliqueNaLinha('p-1', { ...sem, marcada: 'p-1' })).toEqual({ marcada: null });
+    expect(cliqueNaLinha('p-2', { ...sem, marcada: 'p-1' })).toEqual({ marcada: 'p-2' });
+  });
+
+  it('com a ficha de uma pessoa aberta, a ficha passa para a linha clicada', () => {
+    const foco = { tipo: 'pessoa', id: 'p-1' } as const;
+    expect(cliqueNaLinha('p-2', { ...sem, foco, marcada: 'p-1' })).toEqual({
+      marcada: 'p-2',
+      foco: { tipo: 'pessoa', id: 'p-2' },
+    });
+    // A da própria ficha: fica (não fecha a ficha nem tira o realce).
+    expect(cliqueNaLinha('p-1', { ...sem, foco, marcada: 'p-1' })).toEqual({ marcada: 'p-1' });
+  });
+
+  it('com a ficha de uma casa ou carrinha aberta, não lhe mexe', () => {
+    expect(cliqueNaLinha('p-1', { ...sem, foco: { tipo: 'casa', id: 'casa-l1' } })).toEqual({
+      marcada: 'p-1',
+    });
+  });
+
+  it('no modo de edição o realce é a seleção: nenhuma marcada', () => {
+    expect(cliqueNaLinha('p-1', { ...sem, modoEdicao: true, marcada: 'p-2' })).toEqual({ marcada: null });
+    expect(
+      cliqueNaLinha('p-2', { foco: { tipo: 'pessoa', id: 'p-1' }, marcada: null, modoEdicao: true }),
+    ).toEqual({ marcada: null, foco: { tipo: 'pessoa', id: 'p-2' } });
   });
 });
 
@@ -317,6 +483,21 @@ describe('modoDaCaixa', () => {
   });
 });
 
+describe('reservaDaFicha', () => {
+  it('sem ficha, a tabela não reserva nada', () => {
+    expect(reservaDaFicha(false, false)).toEqual({ baixo: false, direita: false });
+    expect(reservaDaFicha(false, true)).toEqual({ baixo: false, direita: false });
+  });
+
+  it('com a ficha na origem, reserva à direita (PC) e em baixo (telemóvel)', () => {
+    expect(reservaDaFicha(true, false)).toEqual({ baixo: true, direita: true });
+  });
+
+  it('com a ficha arrastada para outro sítio, deixa de reservar à direita', () => {
+    expect(reservaDaFicha(true, true)).toEqual({ baixo: true, direita: false });
+  });
+});
+
 describe('zonaLivreDaTabela e deslocamentoParaVer', () => {
   // Telemóvel 375×812: a caixa da tabela de 476 a 812, o cabeçalho até 508, a ficha de 602 a 804.
   const contentor = { top: 476, bottom: 812, left: 0, right: 375 };
@@ -329,6 +510,15 @@ describe('zonaLivreDaTabela e deslocamentoParaVer', () => {
     expect(zonaLivreDaTabela({ ...contentor, right: 1366 }, 508, pc, celula)).toEqual({
       top: 508,
       bottom: 812,
+    });
+  });
+
+  it('no PC, a ficha arrastada para cima dos nomes encurta a zona', () => {
+    const arrastada = { top: 600, bottom: 760, left: 140, right: 492 };
+    const nome = { left: 0, right: 300 };
+    expect(zonaLivreDaTabela({ ...contentor, right: 1366 }, 508, arrastada, nome)).toEqual({
+      top: 508,
+      bottom: 600,
     });
   });
 
