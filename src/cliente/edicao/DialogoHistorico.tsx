@@ -2,6 +2,7 @@
 // comentário e o que mudou. "Carregar mais" pede mais lotes. Disponível sempre, também fora da edição.
 
 import { useEffect, useState } from 'react';
+import { useSessao } from '../entrar/sessao';
 import { type EntradaHistorico, obterHistorico } from '../estado/api';
 import { useLoja } from '../estado/loja';
 import { FOCO_VISIVEL } from '../paineis/classes';
@@ -11,13 +12,14 @@ import { Dialogo } from './Dialogo';
 import { textoDoErro } from './erros';
 import {
   DESCRICOES_VISIVEIS,
+  dicaDoAutor,
   formatarDataHora,
+  nomeDoAutor,
   notaEstadoLote,
   PASSO_HISTORICO,
   partirDescricao,
   podeHaverMais,
   proximoLimite,
-  rotuloAutor,
   rotuloTipoLote,
 } from './historico';
 import { IconeAviso, IconeRodar } from './icones';
@@ -35,7 +37,10 @@ function Lote({ entrada }: { entrada: EntradaHistorico }) {
         <time dateTime={entrada.criadoEm} className="text-sm font-semibold text-slate-900 tabular-nums">
           {formatarDataHora(entrada.criadoEm)}
         </time>
-        <span className="text-sm text-slate-700">{rotuloAutor(entrada.autor)}</span>
+        {/* O e-mail de quem gravou fica na dica: o nome chega para o reconhecer. */}
+        <span className="text-sm text-slate-700" title={dicaDoAutor(entrada) ?? undefined}>
+          {nomeDoAutor(entrada)}
+        </span>
         <span className="ml-auto flex items-center gap-1.5">
           {nota && (
             <span className="rounded border border-amber-400 bg-amber-50 px-1.5 text-[11px] leading-4 font-medium text-amber-900">
@@ -90,6 +95,8 @@ function Lote({ entrada }: { entrada: EntradaHistorico }) {
 export function DialogoHistorico({ aoFechar }: { aoFechar: () => void }) {
   // Volta a pedir quando o estado gravado muda (ex.: acabou de se guardar).
   const versao = useLoja((s) => s.estadoServidor?.versao ?? 0);
+  // Sem sessão não vale a pena pedir; quando ela volta (entrou outra vez), pede de novo.
+  const dentro = useSessao((s) => s.estado === 'dentro');
   const [limite, setLimite] = useState(PASSO_HISTORICO);
   const [tentativa, setTentativa] = useState(0);
   const [entradas, setEntradas] = useState<EntradaHistorico[] | null>(null);
@@ -99,6 +106,7 @@ export function DialogoHistorico({ aoFechar }: { aoFechar: () => void }) {
   // `versao` e `tentativa` não se usam lá dentro: só servem para voltar a pedir.
   // biome-ignore lint/correctness/useExhaustiveDependencies: dependências de propósito
   useEffect(() => {
+    if (!dentro) return;
     let atual = true;
     setACarregar(true);
     setErro(null);
@@ -115,7 +123,7 @@ export function DialogoHistorico({ aoFechar }: { aoFechar: () => void }) {
     return () => {
       atual = false;
     };
-  }, [limite, versao, tentativa]);
+  }, [limite, versao, tentativa, dentro]);
 
   const haMais = entradas !== null && podeHaverMais(entradas.length, limite);
 

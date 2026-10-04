@@ -66,7 +66,7 @@ describe('GET /api/estado', () => {
 });
 
 describe('GET /api/saude', () => {
-  it('responde ok com a versão e o número de pessoas', async () => {
+  it('responde ok com a versão, sem dados pessoais (nem a contagem de pessoas)', async () => {
     inserirDadosFicticios(bd);
     inserirLotes(bd, 5);
     const resposta = await criarApp({ bd }).request('/api/saude');
@@ -74,14 +74,20 @@ describe('GET /api/saude', () => {
     expect(resposta.status).toBe(200);
     expect(resposta.headers.get('Cache-Control')).toBe('no-store');
     const corpo = (await resposta.json()) as Record<string, unknown>;
-    expect(corpo).toMatchObject({ ok: true, versao: 5, pessoas: 4 });
-    expect(Object.keys(corpo).sort()).toStrictEqual(['geradoEm', 'ok', 'pessoas', 'versao']);
+    expect(corpo).toMatchObject({ ok: true, versao: 5 });
+    expect(Object.keys(corpo).sort()).toStrictEqual(['geradoEm', 'ok', 'versao']);
     expect(Number.isNaN(Date.parse(String(corpo.geradoEm)))).toBe(false);
   });
 
-  it('com a base de dados vazia responde ok com zeros', async () => {
+  it('diz o commit da versão quando o servidor o conhece (RENDER_GIT_COMMIT)', async () => {
+    const commit = '0123456789abcdef0123456789abcdef01234567';
+    const corpo = await (await criarApp({ bd, commit }).request('/api/saude')).json();
+    expect(corpo).toMatchObject({ ok: true, commit });
+  });
+
+  it('com a base de dados vazia responde ok com a versão 0', async () => {
     const corpo = await (await criarApp({ bd }).request('/api/saude')).json();
-    expect(corpo).toMatchObject({ ok: true, versao: 0, pessoas: 0 });
+    expect(corpo).toMatchObject({ ok: true, versao: 0 });
   });
 
   it('dá 503 quando a base de dados não responde', async () => {
@@ -157,6 +163,8 @@ describe('cabeçalhos de segurança', () => {
       expect(resposta.headers.get('Referrer-Policy'), caminho).toBe('strict-origin-when-cross-origin');
       expect(resposta.headers.get('X-Content-Type-Options'), caminho).toBe('nosniff');
       expect(resposta.headers.get('X-Frame-Options'), caminho).toBe('SAMEORIGIN');
+      // Sem login (http no próprio PC) não há HSTS.
+      expect(resposta.headers.get('Strict-Transport-Security'), caminho).toBeNull();
     }
   });
 
@@ -220,7 +228,9 @@ describe('ficheiros do browser (build de produção)', () => {
   it('a CSP deixa carregar os mosaicos do OpenStreetMap e mais nada de fora', () => {
     expect(POLITICA_CONTEUDO).toBe(
       "default-src 'self'; img-src 'self' data: https://tile.openstreetmap.org; " +
-        "style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'",
+        "style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; worker-src 'self' blob:; " +
+        "frame-ancestors 'none'; " +
+        "base-uri 'self'; object-src 'none'; form-action 'self'",
     );
   });
 

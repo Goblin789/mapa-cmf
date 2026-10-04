@@ -151,3 +151,10 @@ export function inserirLotes(bd: Bd, quantos: number): void {
       .run();
   }
 }
+
+/** Um utilizador fictício que já entrou (tabela utilizadores). */
+export function inserirUtilizador(bd: Bd, u: { id: string; email: string; nome: string }): void {
+  bd.insert(esquema.utilizadores)
+    .values({ ...u, criadoEm: '2026-01-01T00:00:00.000Z', ultimaEntradaEm: '2026-01-01T00:00:00.000Z' })
+    .run();
+}

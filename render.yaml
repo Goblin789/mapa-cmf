@@ -1,0 +1,71 @@
+# Blueprint do Render: o serviço do Mapa CMF (especificação: https://render.com/docs/blueprint-spec).
+# Guia passo a passo: docs/publicar.md. Todas as variáveis: docs/m1.md.
+#
+# - Com disco persistente o Render pára a versão antiga ANTES de arrancar a nova: cada publicação deixa o
+#   mapa uns segundos em baixo. Por isso não há deploys automáticos: publica-se com "npm run publicar",
+#   que recusa de terça às 18:00 a quarta às 12:00 (reunião de quarta) e no quarto de hora antes.
+# - As variáveis com "sync: false" (segredos e o que muda de instalação para instalação) só são pedidas
+#   quando se cria o Blueprint. Depois mudam-se no Render (serviço > Environment), nunca aqui.
+# - Node: o Render usa a versão do .node-version (24).
+
+services:
+  - type: web
+    name: mapa-cmf
+    runtime: node
+    region: frankfurt
+    # 0,5 CPU e 512 MB: o plano que antes se chamava "Starter" (o disco exige um plano pago).
+    plan: 0.5c-512mb
+    branch: main
+    # --include=dev: com NODE_ENV=production o npm saltava as devDependencies, e o build (Vite) e o
+    # arranque (tsx) precisam delas. O browser fica em dist/cliente; o servidor corre com tsx.
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npm start
+    # Pública e sem dados pessoais; 503 quando a base de dados não responde.
+    healthCheckPath: /api/saude
+    # Entre aspas: sem elas o YAML lê off como "falso".
+    autoDeployTrigger: "off"
+    disk:
+      name: dados
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: BD
+        value: /var/data/mapa.db
+      # Aplicação "Mapa CMF" no Entra: Directory (tenant) ID e Application (client) ID. Não são segredos.
+      - key: ENTRA_INQUILINO
+        value: 6f4f640a-4847-479d-9d4a-83da89cf4b22
+      - key: ENTRA_CLIENTE
+        value: 62142d13-d1c2-4f84-9b5a-3d8fee7d28e6
+      # Segredos: só no Render, colados pelo Rafael.
+      - key: ENTRA_SEGREDO
+        sync: false
+      - key: COPIAS_CHAVE
+        sync: false
+      - key: COPIAS_S3_ID
+        sync: false
+      - key: COPIAS_S3_SEGREDO
+        sync: false
+      # Mudam de instalação para instalação (endereço, destino das cópias, quem entra).
+      # UTILIZADORES_PERMITIDOS é obrigatória em produção (os e-mails dos três): sem ela o servidor não arranca.
+      # ANFITRIOES (ex.: mapa-cmf.onrender.com): as páginas abertas por esse nome vão para ENDERECO_PUBLICO.
+      - key: ENDERECO_PUBLICO
+        sync: false
+      - key: ANFITRIOES
+        sync: false
+      - key: UTILIZADORES_PERMITIDOS
+        sync: false
+      - key: COPIAS_DESTINO
+        sync: false
+      - key: COPIAS_S3_ENDPOINT
+        sync: false
+      - key: COPIAS_S3_BALDE
+        sync: false
+      - key: COPIAS_S3_REGIAO
+        sync: false
+      # Só para restaurar (1.º arranque, disco novo ou docs/recuperar.md): restaura a cópia indicada se a BD
+      # não existir; nunca substitui uma que exista. Apagar depois. "nenhuma" = começar com uma BD vazia (só
+      # numa instalação de raiz). Sem ela, com o disco vazio e cópias no balde, o servidor não arranca.
+      - key: RESTAURAR_AO_ARRANCAR
+        sync: false

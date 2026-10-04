@@ -4,6 +4,15 @@
 // (Ctrl+Z desfaz o passo inteiro). O que se vê (`estado`, `indices`, `contadores`, `dormidas`) é
 // SEMPRE o estado do servidor com o rascunho aplicado — é isso que faz a simulação "e se".
 // Só "Guardar" envia o rascunho ao servidor; "Cancelar" deita-o fora e volta tudo ao que estava.
+//
+// Tempo real (tempoReal/): quando outra pessoa grava, o estado recarrega e o rascunho continua por cima.
+// Um carregamento que responda depois de outro mais recente é ignorado. Os lotes gravados por este
+// separador ficam registados, para o tempo real não se avisar a si próprio.
+//
+// Se a sessão terminou quando se carregou em Guardar, o rascunho fica também no localStorage (ver
+// tempoReal/rascunhoPendente.ts): se a página fechar ou recarregar, volta no 1.º carregamento depois de
+// entrar outra vez. Se este separador continuar aberto, quando a sessão volta é o rascunho em memória que
+// conta e o registo apaga-se.
 
 import { create } from 'zustand';
 import { type Contadores, calcularContadores } from '../../dominio/contadores';
@@ -17,7 +26,31 @@ import {
   operacoesParaAlvo,
 } from '../../dominio/operacoes';
 import type { Estado, Id } from '../../dominio/tipos';
-import { type ConflitoServidor, ErroConflito, ErroServidor, guardarLote, obterEstado } from './api';
+import { useSessao } from '../entrar/sessao';
+import {
+  apagarSeForDeste,
+  armazenamentoLocal,
+  autorCompativel,
+  comTrancaRascunhos,
+  guardarRascunhoPendente,
+  INTERVALO_VIVO_MS,
+  largar,
+  lerRascunhoPendente,
+  marcarRecuperado,
+  marcarVivo,
+  registoDoSeparador,
+  retomar,
+  textoRascunhoNoutroSeparador,
+  textoRascunhoRecuperado,
+} from '../tempoReal/rascunhoPendente';
+import {
+  type ConflitoServidor,
+  ErroConflito,
+  ErroServidor,
+  ErroSessao,
+  guardarLote,
+  obterEstado,
+} from './api';
 
 export type Foco = { tipo: 'pessoa' | 'casa' | 'carrinha'; id: Id } | null;
 
@@ -52,6 +85,54 @@ function derivar(estado: Estado): Derivados {
   };
 }
 
+// --- Rascunho que não chegou ao servidor (sessão terminada) --------------------------------------
+
+/** Esta página aberta (muda a cada carregamento da página). */
+export const SEPARADOR = criarIdSeparador();
+
+function criarIdSeparador(): string {
+  try {
+    return globalThis.crypto.randomUUID();
+  } catch {
+    return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+  }
+}
+
+let temporizadorVivo: ReturnType<typeof setInterval> | null = null;
+
+function pararVivo(): void {
+  if (temporizadorVivo === null) return;
+  clearInterval(temporizadorVivo);
+  temporizadorVivo = null;
+}
+
+/** Enquanto o rascunho guardado for deste separador, vai dizendo que continua aberto. */
+function manterVivo(): void {
+  pararVivo();
+  temporizadorVivo = setInterval(() => {
+    if (!marcarVivo(armazenamentoLocal(), SEPARADOR, Date.now())) pararVivo();
+  }, INTERVALO_VIVO_MS);
+}
+
+/** O rascunho foi gravado ou deitado fora: o guardado (se for deste separador) já não serve. */
+function esquecerRascunhoDesteSeparador(): void {
+  pararVivo();
+  apagarSeForDeste(armazenamentoLocal(), SEPARADOR);
+}
+
+function utilizadorAtual(): string | null {
+  return useSessao.getState().utilizador?.chave ?? null;
+}
+
+/**
+ * Lotes deste separador até à versão do servidor. Os que estão acima já não existem no servidor (a base de
+ * dados foi restaurada de uma cópia) e a numeração vai voltar a dá-los a lotes de outras pessoas, que o
+ * tempo real tem de avisar. No dia a dia não sai nenhum: depois de gravar, o estado carregado já os tem.
+ */
+function lotesAte(lotes: ReadonlySet<number>, versao: number): ReadonlySet<number> {
+  return [...lotes].some((id) => id > versao) ? new Set([...lotes].filter((id) => id <= versao)) : lotes;
+}
+
 export interface Loja {
   /** Estado tal como está gravado no servidor. */
   estadoServidor: Estado | null;
@@ -64,7 +145,29 @@ export interface Loja {
   dormidas: Map<Id, Dormida> | null;
   erro: string | null;
   aCarregar: boolean;
+  /**
+   * Pede o estado ao servidor; o rascunho continua por cima. Se outro pedido feito depois já respondeu,
+   * a resposta deste é ignorada (nunca se troca um estado mais recente por um mais antigo).
+   */
   carregar: () => Promise<void>;
+  /** Lotes gravados por este separador (o tempo real não avisa nem recarrega por causa deles). */
+  lotesDesteSeparador: ReadonlySet<number>;
+  /**
+   * Aviso sobre o rascunho que não chegou ao servidor: "Recuperámos N alterações que não chegaram a ser
+   * guardadas…" (depois de voltar a entrar), ou que outro separador ficou com elas.
+   */
+  avisoRascunhoRecuperado: string | null;
+  dispensarAvisoRascunho: () => void;
+  /**
+   * A sessão começou ou voltou neste separador (ou mudou de conta). Se ele tinha deixado o rascunho no
+   * localStorage, o que está em memória passa a ser o que conta e o registo apaga-se.
+   */
+  aoEntrar: () => void;
+  /**
+   * Depois de Sair: volta ao estado inicial e ignora as respostas de pedidos do estado que ainda iam a
+   * meio (senão um GET /api/estado lento voltava a pôr os dados na loja já sem sessão).
+   */
+  limparDepoisDeSair: () => void;
 
   /** Cliente escolhido na legenda: só as pessoas desse cliente ficam acesas. */
   clienteDestacado: Id | null;
@@ -107,7 +210,10 @@ export interface Loja {
   erroGuardar: string | null;
   /** Conflitos devolvidos pelo servidor na última tentativa de guardar (nada foi gravado). */
   conflitos: ConflitoServidor[] | null;
-  /** Envia o rascunho. Se correr bem, recarrega o estado e sai do modo de edição. */
+  /**
+   * Envia o rascunho. Se correr bem, recarrega o estado e sai do modo de edição. Se a sessão tiver
+   * terminado, nada é gravado e o rascunho fica também no localStorage (ver rascunhoPendente.ts).
+   */
   guardar: (comentario?: string) => Promise<boolean>;
 
   /** Pessoas selecionadas (só no modo de edição). */
@@ -128,6 +234,80 @@ export const useLoja = create<Loja>()((set, get) => {
     return { passos, pendentes, ...derivar(aplicarOperacoes(estadoServidor, passos.flat())) };
   }
 
+  /** Fora do modo de edição, sem rascunho (o que o Cancelar deixa). */
+  function semEdicao() {
+    return {
+      modoEdicao: false,
+      passosDesfeitos: [],
+      erroGuardar: null,
+      conflitos: null,
+      selecao: new Set<Id>(),
+      ancoraSelecao: null,
+      ...recalcular([]),
+    };
+  }
+
+  // Número de cada pedido do estado: o último feito e o último cuja resposta se aplicou.
+  let ultimoPedido = 0;
+  let ultimoAplicado = 0;
+
+  /**
+   * O registo que ESTE separador deixou no localStorage quando a sessão terminou. Com a sessão de volta, o
+   * rascunho em memória é que conta (pode ter mudado desde então, ex.: desfeito) e o registo apaga-se. Se
+   * outro separador o recuperou entretanto (este esteve suspenso, ex.: no telemóvel), as alterações ficam
+   * lá e este larga a sua cópia, para não haver duas. O de outra conta fica (o AvisoSessaoTerminada decide).
+   */
+  function tratarRegistoDeste(): void {
+    // Sem sessão (um pedido que saiu antes de ela terminar respondeu agora), o registo ainda faz falta.
+    if (useSessao.getState().estado !== 'dentro') return;
+    const armazenamento = armazenamentoLocal();
+    const registo = registoDoSeparador(armazenamento, SEPARADOR);
+    if (!registo || !autorCompativel(registo.autor, utilizadorAtual())) return;
+    pararVivo();
+    apagarSeForDeste(armazenamento, SEPARADOR);
+    if (registo.recuperadoPor === undefined) return;
+    // Só se a cópia em memória é a mesma (com a sessão terminada não se pode mexer no rascunho).
+    const { modoEdicao, passos } = get();
+    if (!modoEdicao || JSON.stringify(passos) !== JSON.stringify(registo.passos)) return;
+    set({
+      ...semEdicao(),
+      avisoRascunhoRecuperado: textoRascunhoNoutroSeparador(compactarOperacoes(registo.passos.flat()).length),
+    });
+  }
+
+  /**
+   * Depois de carregar: põe outra vez no modo de edição o rascunho que não chegou ao servidor (o de uma
+   * página que fechou). Se este separador já tem um rascunho em memória, os guardados ficam para quando
+   * não estiver a editar. Com uma tranca entre separadores: dois que carreguem ao mesmo tempo não ficam
+   * ambos com o mesmo.
+   */
+  async function recuperarRascunho(): Promise<void> {
+    tratarRegistoDeste();
+    const editar = () => get().modoEdicao && get().passos.length > 0;
+    const armazenamento = armazenamentoLocal();
+    if (editar() || !armazenamento) return;
+    await comTrancaRascunhos(() => {
+      // Outra vez, já com a tranca: entretanto pode ter começado outra edição.
+      if (editar() || !get().estadoServidor) return;
+      const rascunho = lerRascunhoPendente(armazenamento, Date.now(), utilizadorAtual(), SEPARADOR);
+      if (!rascunho) return;
+      marcarRecuperado(armazenamento, rascunho.origem, SEPARADOR);
+      // As mudanças que se anulam umas às outras não contam (como na barra "N alterações por guardar").
+      const n = compactarOperacoes(rascunho.passos.flat()).length;
+      if (n === 0) return;
+      set({
+        modoEdicao: true,
+        passosDesfeitos: [],
+        erroGuardar: null,
+        conflitos: null,
+        selecao: new Set(),
+        ancoraSelecao: null,
+        ...recalcular(rascunho.passos),
+        avisoRascunhoRecuperado: textoRascunhoRecuperado(n),
+      });
+    });
+  }
+
   return {
     estadoServidor: null,
     contadoresServidor: null,
@@ -138,19 +318,39 @@ export const useLoja = create<Loja>()((set, get) => {
     erro: null,
     aCarregar: false,
     carregar: async () => {
+      const pedido = ++ultimoPedido;
       set({ aCarregar: true, erro: null });
       try {
         const estadoServidor = await obterEstado();
+        // Já se aplicou a resposta de um pedido feito depois deste: esta é mais antiga.
+        if (pedido <= ultimoAplicado) return;
+        ultimoAplicado = pedido;
         const servidor = derivar(estadoServidor);
         set({
           estadoServidor,
           contadoresServidor: servidor.contadores,
           ...recalcular(get().passos, estadoServidor),
-          aCarregar: false,
+          lotesDesteSeparador: lotesAte(get().lotesDesteSeparador, estadoServidor.versao),
+          // Os dados estão frescos: o erro de um pedido mais recente que falhou já não interessa.
+          erro: null,
+          // Com um pedido mais recente ainda a meio, continua "a carregar".
+          ...(pedido === ultimoPedido ? { aCarregar: false } : {}),
         });
+        await recuperarRascunho();
       } catch (e) {
+        // Há um pedido mais recente a meio: é ele que decide o que se mostra.
+        if (pedido !== ultimoPedido) return;
         set({ erro: e instanceof Error ? e.message : String(e), aCarregar: false });
       }
+    },
+    lotesDesteSeparador: new Set(),
+    avisoRascunhoRecuperado: null,
+    dispensarAvisoRascunho: () => set({ avisoRascunhoRecuperado: null }),
+    aoEntrar: () => tratarRegistoDeste(),
+    limparDepoisDeSair: () => {
+      ultimoPedido++;
+      ultimoAplicado = ultimoPedido;
+      set(useLoja.getInitialState(), true);
     },
 
     clienteDestacado: null,
@@ -181,16 +381,10 @@ export const useLoja = create<Loja>()((set, get) => {
     pendentes: [],
     entrarEdicao: () =>
       set({ modoEdicao: true, erroGuardar: null, conflitos: null, selecao: new Set(), ancoraSelecao: null }),
-    cancelarEdicao: () =>
-      set({
-        modoEdicao: false,
-        passosDesfeitos: [],
-        erroGuardar: null,
-        conflitos: null,
-        selecao: new Set(),
-        ancoraSelecao: null,
-        ...recalcular([]),
-      }),
+    cancelarEdicao: () => {
+      esquecerRascunhoDesteSeparador();
+      set({ ...semEdicao(), avisoRascunhoRecuperado: null });
+    },
     aplicar: (ops) => {
       if (!get().modoEdicao || ops.length === 0) return;
       const passo = ops.filter((op) => op.de !== op.para);
@@ -242,12 +436,26 @@ export const useLoja = create<Loja>()((set, get) => {
         get().cancelarEdicao();
         return true;
       }
+      // Lido já: num 401 a sessão passa a 'fora' (e sem utilizador) antes de o erro chegar aqui. Se já
+      // estava 'fora', o dono do rascunho é quem tinha a sessão.
+      const autor = utilizadorAtual() ?? useSessao.getState().contaAnterior?.chave ?? null;
       set({ aGuardar: true, erroGuardar: null, conflitos: null });
       try {
-        await guardarLote({ versaoBase: estadoServidor.versao, operacoes: pendentes, comentario });
+        const resposta = await guardarLote({
+          versaoBase: estadoServidor.versao,
+          operacoes: pendentes,
+          comentario,
+        });
         // O servidor aplicou estas operações com a mesma função: o estado gravado passa já a ser o que se
         // via, mesmo que o recarregar a seguir falhe (senão o próximo rascunho partia de um estado antigo).
-        const gravado = aplicarOperacoes(estadoServidor, pendentes);
+        // A versão nova só se adota se ninguém gravou pelo meio (versão seguida à de base): senão este
+        // estado não tem o lote dessa pessoa e tem de continuar a parecer antigo ao tempo real.
+        const versao =
+          resposta.versao === estadoServidor.versao + 1 ? resposta.versao : estadoServidor.versao;
+        const gravado = { ...aplicarOperacoes(estadoServidor, pendentes), versao };
+        // Um pedido do estado que ainda vá a meio saiu antes desta gravação: a resposta dele já não conta.
+        ultimoAplicado = ultimoPedido;
+        esquecerRascunhoDesteSeparador();
         set({
           modoEdicao: false,
           passosDesfeitos: [],
@@ -255,13 +463,33 @@ export const useLoja = create<Loja>()((set, get) => {
           ancoraSelecao: null,
           estadoServidor: gravado,
           contadoresServidor: calcularContadores(gravado),
+          lotesDesteSeparador: new Set([...get().lotesDesteSeparador, resposta.loteId]),
+          avisoRascunhoRecuperado: null,
           ...recalcular([], gravado),
         });
         await get().carregar();
         set({ aGuardar: false });
         return true;
       } catch (e) {
-        if (e instanceof ErroConflito) {
+        if (e instanceof ErroSessao) {
+          // Nada foi gravado. O rascunho continua em memória (o Portao mantém a app aberta e a entrada
+          // abre noutro separador); o localStorage serve para o caso de esta página fechar entretanto.
+          const guardado = guardarRascunhoPendente(armazenamentoLocal(), {
+            passos: get().passos,
+            versaoBase: estadoServidor.versao,
+            data: new Date().toISOString(),
+            autor,
+            separador: SEPARADOR,
+            vivoEm: Date.now(),
+          });
+          if (guardado) manterVivo();
+          set({
+            erroGuardar: guardado
+              ? 'A sessão terminou e nada foi gravado. Entra outra vez com a conta Microsoft e volta a carregar em Guardar: as tuas alterações não se perdem.'
+              : 'A sessão terminou e nada foi gravado. Entra outra vez com a conta Microsoft (num separador novo) e volta a carregar em Guardar. Não feches nem recarregues esta página, senão as alterações perdem-se.',
+            aGuardar: false,
+          });
+        } else if (e instanceof ErroConflito) {
           set({ conflitos: e.conflitos, erroGuardar: e.message, aGuardar: false });
           // Traz o que os outros gravaram: o rascunho passa a ver-se por cima do estado atual.
           await get().carregar();
@@ -301,3 +529,15 @@ export const useLoja = create<Loja>()((set, get) => {
     limparSelecao: () => set({ selecao: new Set(), ancoraSelecao: null }),
   };
 });
+
+if (typeof window !== 'undefined') {
+  // A página vai fechar ou recarregar: o rascunho fica livre para o próximo carregamento o recuperar.
+  window.addEventListener('pagehide', () => largar(armazenamentoLocal(), SEPARADOR));
+  // Voltou da cache do browser (bfcache) ainda com o rascunho em memória: volta a segurar o que largou.
+  window.addEventListener('pageshow', (e) => {
+    if (!e.persisted) return;
+    const { modoEdicao, passos } = useLoja.getState();
+    if (!modoEdicao || passos.length === 0) return;
+    if (retomar(armazenamentoLocal(), SEPARADOR, Date.now(), utilizadorAtual())) manterVivo();
+  });
+}

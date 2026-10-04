@@ -12,7 +12,7 @@ import {
 } from '../dominio/operacoes';
 import { estadoExemplo } from '../dominio/teste-fabrica';
 import type { Estado, Pessoa } from '../dominio/tipos';
-import { inserirDadosFicticios, inserirLotes } from './dados-de-teste';
+import { inserirDadosFicticios, inserirLotes, inserirUtilizador } from './dados-de-teste';
 import * as esquema from './db/esquema';
 import { abrirBd, type Bd } from './db/ligacao';
 import { carregarEstado } from './estado';
@@ -25,6 +25,7 @@ import {
   descreverConflito,
   gravarLote,
   lerHistorico,
+  nomeDoAutor,
 } from './lotes';
 
 const AGORA = new Date('2026-10-03T08:30:00.000Z');
@@ -407,7 +408,7 @@ describe('gravarLote e lerHistorico na base de dados', () => {
 
   it('grava e devolve a nova versão; o histórico mostra-o primeiro', () => {
     const r = gravarLote(bd, pedido([mover('p-alvaro', 'casaId', null, 'casa-monte')], 'Teste'));
-    expect(r).toStrictEqual({ tipo: 'gravado', loteId: 2, versao: 2, alteracoes: 2 });
+    expect(r).toStrictEqual({ tipo: 'gravado', loteId: 2, versao: 2, alteracoes: 2, operacoes: 1 });
     expect(carregarEstado(bd).pessoas.find((p) => p.id === 'p-alvaro')).toMatchObject({
       casaId: 'casa-monte',
       casaAConfirmar: false,
@@ -419,7 +420,7 @@ describe('gravarLote e lerHistorico na base de dados', () => {
     expect(historico[0]).toStrictEqual({
       loteId: 2,
       autor: 'local',
-      autorNome: 'local',
+      autorNome: 'Este computador',
       criadoEm: AGORA.toISOString(),
       efetivoEm: AGORA.toISOString(),
       tipo: 'mudanca',
@@ -556,7 +557,7 @@ describe('gravarLote e lerHistorico na base de dados', () => {
 
   it('condutor: grava a carrinha, uma linha no histórico e sobe a versão', () => {
     const r = gravarLote(bd, pedido([condutor('car-2', null, 'p-ze')]));
-    expect(r).toStrictEqual({ tipo: 'gravado', loteId: 2, versao: 2, alteracoes: 1 });
+    expect(r).toStrictEqual({ tipo: 'gravado', loteId: 2, versao: 2, alteracoes: 1, operacoes: 1 });
     expect(condutorDe('car-2')).toBe('p-ze');
     expect(lerHistorico(bd, 1)[0]?.alteracoes).toStrictEqual([
       {
@@ -883,7 +884,7 @@ describe('gravarLote e lerHistorico na base de dados', () => {
   it('onde dorme: grava as duas colunas, uma linha no histórico (a chave) e sobe a versão', () => {
     // car-2 dorme na Casa Monte; passa para o Parque (um estacionamento).
     const r = gravarLote(bd, pedido([dormida('car-2', 'casa:casa-monte', 'local:loc-parque')]));
-    expect(r).toStrictEqual({ tipo: 'gravado', loteId: 2, versao: 2, alteracoes: 1 });
+    expect(r).toStrictEqual({ tipo: 'gravado', loteId: 2, versao: 2, alteracoes: 1, operacoes: 1 });
     expect(dormidaDe('car-2')).toStrictEqual({ dormeCasaId: null, dormeLocalId: 'loc-parque' });
     expect(lerHistorico(bd, 1)[0]?.alteracoes).toStrictEqual([
       {
@@ -1027,5 +1028,43 @@ describe('gravarLote e lerHistorico na base de dados', () => {
     const vazia = abrirBd(':memory:');
     expect(lerHistorico(vazia, 50)).toStrictEqual([]);
     vazia.$client.close();
+  });
+});
+
+describe('nome do autor no histórico', () => {
+  it('rótulos fixos, nome do utilizador pelo e-mail, ou a própria chave', () => {
+    const nomes = new Map([['ana@exemplo.test', 'Ana Exemplo']]);
+    expect(nomeDoAutor('local', nomes)).toBe('Este computador');
+    expect(nomeDoAutor('importacao', nomes)).toBe('Importação dos Excel');
+    expect(nomeDoAutor('dados-iniciais', nomes)).toBe('Dados iniciais');
+    expect(nomeDoAutor('ana@exemplo.test', nomes)).toBe('Ana Exemplo');
+    expect(nomeDoAutor('rui@exemplo.test', nomes)).toBe('rui@exemplo.test');
+    // Nada do protótipo dos objetos.
+    expect(nomeDoAutor('constructor', nomes)).toBe('constructor');
+    expect(nomeDoAutor('toString', new Map())).toBe('toString');
+  });
+
+  it('lerHistorico usa a tabela utilizadores', () => {
+    const bd = abrirBd(':memory:');
+    inserirDadosFicticios(bd);
+    inserirLotes(bd, 1);
+    inserirUtilizador(bd, { id: 'oid-ana', email: 'ana@exemplo.test', nome: 'Ana Exemplo' });
+    const base = { comentario: null, agora: AGORA };
+    gravarLote(bd, {
+      ...base,
+      operacoes: [mover('p-ze', 'obraId', 'obra-vale', null)],
+      autor: 'ana@exemplo.test',
+    });
+    gravarLote(bd, {
+      ...base,
+      operacoes: [mover('p-ze', 'obraId', null, 'obra-vale')],
+      autor: 'eva@exemplo.test',
+    });
+    expect(lerHistorico(bd, 10).map((h) => [h.autor, h.autorNome])).toStrictEqual([
+      ['eva@exemplo.test', 'eva@exemplo.test'],
+      ['ana@exemplo.test', 'Ana Exemplo'],
+      ['teste', 'teste'],
+    ]);
+    bd.$client.close();
   });
 });

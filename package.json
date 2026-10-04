@@ -22,6 +22,7 @@
     "geocodificar": "tsx scripts/geocodificar.ts",
     "copias": "tsx scripts/copias.ts",
     "login-falso": "tsx scripts/login-falso.ts",
+    "sessoes": "tsx scripts/sessoes.ts",
     "publicar": "tsx scripts/publicar.ts",
     "start": "tsx src/servidor/index.ts"
   },

@@ -60,7 +60,10 @@ export interface EventoLote {
   /** Versão do estado depois deste lote. */
   versao: number;
   loteId: number;
-  /** Chave do autor (como Utilizador.chave): o browser de quem gravou não se avisa a si próprio. */
+  /**
+   * Chave do autor (como Utilizador.chave). O browser de quem gravou não se avisa a si próprio, mas
+   * reconhece-o pelo loteId (os lotes gravados por esse separador), não pelo autor.
+   */
   autor: string;
   autorNome: string;
   /** Quantas operações o lote tinha. */
@@ -82,6 +85,11 @@ export interface RespostaSaude {
   ok: boolean;
   versao?: number;
   copias?: EstadoCopiasPublico;
+  /**
+   * Commit da versão em produção (RENDER_GIT_COMMIT no Render; não é dado pessoal). Serve ao
+   * `npm run publicar -- --esperar` para reconhecer a versão nova. Ausente fora do Render.
+   */
+  commit?: string;
   geradoEm: string;
   erro?: string;
 }

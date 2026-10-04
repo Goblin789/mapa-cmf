@@ -22,6 +22,13 @@
       "when": 1791067575849,
       "tag": "0002_frota_tipo_e_marca",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1791099873099,
+      "tag": "0003_login",
+      "breakpoints": true
     }
   ]
 }

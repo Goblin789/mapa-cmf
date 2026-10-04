@@ -79,3 +79,14 @@ body {
   box-shadow: 0 0 0 2px #2563eb;
   background: #eff6ff;
 }
+
+/* --- Vistas: modo reunião (vistas/modoReuniao.ts) ----------------------------------------------- */
+/* Na reunião numa TV (vista de longe) tudo o que está em rem fica 25 % maior: cabeçalho, contadores,
+   legenda e avisos. Só em ecrãs grandes: num portátil o cabeçalho passava a três linhas e tirava o
+   espaço ao Quadro. O Quadro escolhe a sua própria letra (em px) para caber no ecrã; os cartões do
+   mapa estão em px e não mudam. */
+@media (min-width: 100rem) {
+  html.modo-reuniao {
+    font-size: 125%;
+  }
+}

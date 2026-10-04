@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+  dicaDoAutor,
   formatarDataHora,
+  nomeDoAutor,
   notaEstadoLote,
   partirDescricao,
   podeHaverMais,
@@ -32,6 +34,30 @@ describe('rótulos do lote', () => {
     expect(rotuloAutor('Rafael')).toBe('Rafael');
     expect(rotuloAutor('constructor')).toBe('constructor');
     expect(rotuloTipoLote('toString')).toBe('toString');
+  });
+});
+
+describe('nomeDoAutor', () => {
+  it('mostra o nome que o servidor resolveu', () => {
+    expect(nomeDoAutor({ autor: 'ana.exemplo@exemplo.lu', autorNome: 'Ana Exemplo' })).toBe('Ana Exemplo');
+    expect(nomeDoAutor({ autor: 'local', autorNome: 'Este computador' })).toBe('Este computador');
+    // O servidor manda sempre o nome: o dele ganha ao rótulo local.
+    expect(nomeDoAutor({ autor: 'importacao', autorNome: 'Importação inicial' })).toBe('Importação inicial');
+  });
+
+  it('sem nome (vazio, só espaços ou em falta), usa o rótulo da chave', () => {
+    expect(nomeDoAutor({ autor: 'importacao', autorNome: '' })).toBe('Importação dos Excel');
+    expect(nomeDoAutor({ autor: 'dados-iniciais', autorNome: '   ' })).toBe('Dados iniciais');
+    expect(nomeDoAutor({ autor: 'local' })).toBe('Este computador');
+    expect(nomeDoAutor({ autor: 'ze.ninguem@exemplo.lu', autorNome: null })).toBe('ze.ninguem@exemplo.lu');
+  });
+
+  it('a dica com o e-mail só aparece quando diz mais do que o nome', () => {
+    expect(dicaDoAutor({ autor: 'ana.exemplo@exemplo.lu', autorNome: 'Ana Exemplo' })).toBe(
+      'ana.exemplo@exemplo.lu',
+    );
+    expect(dicaDoAutor({ autor: 'ana.exemplo@exemplo.lu', autorNome: '' })).toBeNull();
+    expect(dicaDoAutor({ autor: 'local', autorNome: 'Este computador' })).toBeNull();
   });
 });
 

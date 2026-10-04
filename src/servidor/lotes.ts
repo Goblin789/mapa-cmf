@@ -345,7 +345,8 @@ export function conflitosDoCondutor(
 }
 
 export type ResultadoGravacao =
-  | { tipo: 'gravado'; loteId: number; versao: number; alteracoes: number }
+  /** `alteracoes`: linhas gravadas em `alteracoes`; `operacoes`: operações depois de compactar. */
+  | { tipo: 'gravado'; loteId: number; versao: number; alteracoes: number; operacoes: number }
   /** As operações anulam-se umas às outras (ex.: A → B → A): não se grava nada. */
   | { tipo: 'vazio' }
   | { tipo: 'invalido'; erros: string[] }
@@ -460,10 +461,36 @@ export function gravarLote(bd: Bd, pedido: PedidoLote): ResultadoGravacao {
       ];
       for (const b of blocos(linhas)) tx.insert(esquema.alteracoes).values(b).run();
 
-      return { tipo: 'gravado', loteId, versao: lerVersao(tx), alteracoes: linhas.length };
+      return {
+        tipo: 'gravado',
+        loteId,
+        versao: lerVersao(tx),
+        alteracoes: linhas.length,
+        operacoes: ops.length,
+      };
     },
     { behavior: 'immediate' },
   );
+}
+
+/**
+ * Nomes dos autores que não são pessoas (os mesmos rótulos que o browser usa em edicao/historico.ts).
+ * 'local' é o servidor no PC sem login.
+ */
+export const ROTULOS_AUTORES: Readonly<Record<string, string>> = {
+  local: 'Este computador',
+  importacao: 'Importação dos Excel',
+  'dados-iniciais': 'Dados iniciais',
+};
+
+/**
+ * Nome a mostrar de um autor (`lotes.autor`): o nome do utilizador com esse e-mail, o rótulo de um autor
+ * fixo, ou a própria chave (ex.: alguém que nunca entrou nesta base de dados).
+ */
+export function nomeDoAutor(autor: string, nomesPorEmail: ReadonlyMap<string, string>): string {
+  // Object.hasOwn: um autor como "constructor" não pode apanhar o protótipo.
+  if (Object.hasOwn(ROTULOS_AUTORES, autor)) return ROTULOS_AUTORES[autor] as string;
+  return nomesPorEmail.get(autor) ?? autor;
 }
 
 /** Os `limite` lotes mais recentes (o mais recente primeiro), cada um com as suas alterações por ordem. */
@@ -499,11 +526,20 @@ export function lerHistorico(bd: Bd, limite: number, agora: Date = new Date()): 
       else porLote.set(l.loteId, [alteracao]);
     }
 
+    const emails = [...new Set(lotes.map((l) => l.autor))];
+    const nomes = new Map(
+      tx
+        .select({ email: esquema.utilizadores.email, nome: esquema.utilizadores.nome })
+        .from(esquema.utilizadores)
+        .where(inArray(esquema.utilizadores.email, emails))
+        .all()
+        .map((u) => [u.email, u.nome]),
+    );
+
     return lotes.map((l) => ({
       loteId: l.id,
       autor: l.autor,
-      // M1 (contrato): passa a ser o nome do utilizador (tabela utilizadores) ou o rótulo dos autores fixos.
-      autorNome: l.autor,
+      autorNome: nomeDoAutor(l.autor, nomes),
       criadoEm: l.criadoEm,
       efetivoEm: l.efetivoEm,
       tipo: l.tipo,

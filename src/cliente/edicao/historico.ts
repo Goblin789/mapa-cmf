@@ -36,18 +36,35 @@ export function notaEstadoLote(estado: string): string | null {
   return estado === 'aplicado' ? null : estado;
 }
 
+// Recurso para quando o servidor não manda o nome (autorNome vazio): os autores que não são pessoas.
 const AUTORES: Record<string, string> = {
   importacao: 'Importação dos Excel',
-  // Enquanto não há login (M1), o servidor grava os lotes com o autor "local".
+  // No modo local (PC sem login) o servidor grava os lotes com o autor "local".
   local: 'Este computador',
   // Sincronização dos dados iniciais (npm run sincronizar): frota, cores, casas, locais.
   'dados-iniciais': 'Dados iniciais',
 };
 
-/** Autor a mostrar ("importacao" e "local" não são pessoas). */
+/** Autor a mostrar a partir da chave ("importacao" e "local" não são pessoas; um e-mail fica como veio). */
 export function rotuloAutor(autor: string): string {
   // Object.hasOwn: um autor como "constructor" não pode apanhar o protótipo.
   return Object.hasOwn(AUTORES, autor) ? (AUTORES[autor] as string) : autor;
+}
+
+/**
+ * Quem gravou: o nome que o servidor resolveu (autorNome, ex.: "Michael Exemplo"). Se vier vazio
+ * (servidor antigo, utilizador que já não existe), o rótulo da chave.
+ */
+export function nomeDoAutor(entrada: { autor: string; autorNome?: string | null }): string {
+  return entrada.autorNome?.trim() || rotuloAutor(entrada.autor);
+}
+
+/**
+ * Dica (title) com a chave do autor quando ela diz mais do que o nome (o e-mail de quem gravou).
+ * null quando a chave não é um e-mail ou já é o que se mostra.
+ */
+export function dicaDoAutor(entrada: { autor: string; autorNome?: string | null }): string | null {
+  return entrada.autor.includes('@') && nomeDoAutor(entrada) !== entrada.autor ? entrada.autor : null;
 }
 
 /** "Ana — casa: Casa Um → Casa Dois" → { quem: "Ana", oque: "casa: Casa Um → Casa Dois" }. */

@@ -2,6 +2,32 @@
 
 Registo das decisões do Rafael e das escolhas por omissão. Mais recentes primeiro.
 
+## 04/10/2026 — M1 construído (por publicar)
+
+- **Login**: openid-client (Entra ID, código + PKCE) em vez do Better Auth da proposta. Sessões no SQLite
+  (só o hash), 30 dias sem uso / 90 dias no máximo. Em produção `UTILIZADORES_PERMITIDOS` é obrigatória
+  (segunda barreira além da atribuição no Entra) e compara com o **UPN** (nome de utilizador Microsoft,
+  normalmente o e-mail @cmf-lux.lu). O autor dos lotes é esse UPN; o utilizador guarda-se pelo ID Microsoft
+  (oid). Sem papéis: os três podem tudo.
+- **Sessão que termina a meio**: aparece o ecrã de entrada por cima da app; o rascunho fica no browser e volta
+  depois de entrar ("Recuperámos N alterações…").
+- **Tempo real**: quando alguém grava, os outros recarregam e veem "Fulano gravou N alterações." (o próprio
+  separador não se avisa).
+- **Cópias**: de hora a hora, ao arrancar e antes de cada migração; cifradas; retenção 48 h / 30 dias /
+  12 meses. Em produção o servidor **não arranca sem cópias noutro fornecedor** (S3/R2). Fora de produção
+  o servidor nunca escreve no balde. Dois tokens R2: escrita (Render) e só leitura (PC).
+- **Render**: plano `0.5c-512mb` (o antigo Starter), disco de 1 GB, deploys automáticos desligados
+  (`npm run publicar`, Deploy Hook). Com disco, cada publicação deixa o mapa uns segundos em baixo: a janela
+  proibida é de terça 17:45 a quarta 12:00.
+- **Vigilância**: GitHub Actions de hora a hora à `/api/saude` (falha se o mapa não responde ou se não há
+  cópia há mais de 3 h; o GitHub manda e-mail).
+- **Vistas**: Mapa | Tabela | Quadro no cabeçalho (agora em 2 linhas); Quadro como as folhas do Michael
+  (França/Himeling com Forêt e Grotte, depois Luxemburgo, e "Fora das casas"); Excel com as folhas Pessoas,
+  Casas e Carrinhas; **modo reunião** em ecrã inteiro, só de leitura, Quadro por omissão.
+- *Por responder*: destino das cópias (R2 ou SharePoint); gestor de palavras-passe da empresa e 2.º sítio da
+  chave das cópias; UPN do Michael e do João; TV da reunião e PC que lhe liga; a partir de quando o mapa é a
+  fonte única (o Michael larga o Excel) — só depois do ensaio de recuperação.
+
 ## 04/10/2026 — preparação do M1
 
 - **Domínio**: o DNS de `cmf-lux.lu` está na **DonDominio** (o Rafael gere). O e-mail vai para o Microsoft 365

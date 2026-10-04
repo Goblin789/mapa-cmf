@@ -1,0 +1,71 @@
+# Vigilância do Mapa em produção: de hora a hora pergunta à /api/saude e FALHA se o servidor não responder
+# ok (ok !== true) ou se as cópias de segurança estiverem atrasadas (copias.atrasada === true). Quando um
+# workflow agendado falha, o GitHub manda um e-mail a quem mexeu por último no "cron" deste ficheiro (ver
+# docs/publicar.md, "Vigilância").
+#
+# Precisa da variável do repositório ENDERECO_PUBLICO (Settings > Secrets and variables > Actions >
+# Variables), ex.: https://mapa.cmf-lux.lu. Sem ela termina sem erro, só com uma nota.
+name: Vigiar
+
+on:
+  schedule:
+    # Ao minuto 17 de cada hora (UTC): na hora certa o GitHub tem mais carga e atrasa os agendamentos.
+    - cron: '17 * * * *'
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  saude:
+    name: Saúde do Mapa
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      ENDERECO_PUBLICO: ${{ vars.ENDERECO_PUBLICO }}
+    steps:
+      - name: Perguntar à /api/saude
+        shell: bash
+        run: |
+          if [ -z "$ENDERECO_PUBLICO" ]; then
+            echo "::notice title=Vigilância desligada::Falta a variável do repositório ENDERECO_PUBLICO (Settings > Secrets and variables > Actions > Variables). Nada foi verificado."
+            exit 0
+          fi
+          case "$ENDERECO_PUBLICO" in
+            https://*) ;;
+            *) echo "::error title=ENDERECO_PUBLICO inválido::Tem de começar por https:// (ex.: https://mapa.cmf-lux.lu)."; exit 1 ;;
+          esac
+          url="${ENDERECO_PUBLICO%/}/api/saude"
+          corpo="$RUNNER_TEMP/saude.json"
+
+          # Até 4 tentativas, com 20 s entre elas: durante uma publicação o mapa fica uns segundos em baixo.
+          set +e
+          codigo=$(curl --silent --show-error --max-time 20 --retry 3 --retry-delay 20 --retry-all-errors \
+            --output "$corpo" --write-out '%{http_code}' "$url")
+          estado_curl=$?
+          set -e
+          if [ "$estado_curl" -ne 0 ]; then
+            echo "::error title=Mapa sem resposta::Não consegui ligar a $url (curl terminou com o código $estado_curl)."
+            exit 1
+          fi
+
+          echo "HTTP $codigo de $url"
+          head -c 2000 "$corpo"; echo
+          if ! jq -e 'type == "object"' "$corpo" > /dev/null 2>&1; then
+            echo "::error title=Resposta inesperada::A /api/saude não devolveu o JSON esperado (HTTP $codigo)."
+            exit 1
+          fi
+
+          if [ "$codigo" != "200" ] || [ "$(jq -r '.ok == true' "$corpo")" != "true" ]; then
+            echo "::error title=Mapa com problemas::HTTP $codigo, ok = $(jq -c '.ok' "$corpo"). $(jq -r '.erro // ""' "$corpo")"
+            exit 1
+          fi
+          if [ "$(jq -r 'has("copias")' "$corpo")" != "true" ]; then
+            echo "::warning title=Sem estado das cópias::O Mapa responde, mas a /api/saude não diz nada das cópias de segurança."
+            exit 0
+          fi
+          if [ "$(jq -r '.copias.atrasada == true' "$corpo")" = "true" ]; then
+            if [ "$(jq -r '.copias.ativas == true' "$corpo")" = "true" ]; then ativas="sim"; else ativas="não"; fi
+            echo "::error title=Cópias atrasadas::Última cópia: $(jq -r '.copias.ultimaCopiaEm // "nunca"' "$corpo"); cópias automáticas ligadas: $ativas. Ver docs/recuperar.md."
+            exit 1
+          fi
+          echo "Tudo bem: o Mapa responde e as cópias estão em dia."

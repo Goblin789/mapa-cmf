@@ -3,7 +3,7 @@
 // Nunca editar uma migração já aplicada; criar sempre uma nova.
 
 import { sql } from 'drizzle-orm';
-import { type AnySQLiteColumn, integer, real, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import { type AnySQLiteColumn, index, integer, real, sqliteTable, text } from 'drizzle-orm/sqlite-core';
 import { PAISES, TIPOS_LOCAL, TIPOS_VEICULO } from '../../dominio/tipos';
 
 export const clientes = sqliteTable('clientes', {
@@ -127,3 +127,52 @@ export const alteracoes = sqliteTable('alteracoes', {
   antes: text('antes'),
   depois: text('depois'),
 });
+
+/** Quem já entrou com a conta Microsoft (Entra ID). Os lotes guardam o e-mail (`lotes.autor`). */
+export const utilizadores = sqliteTable('utilizadores', {
+  /** oid do Entra: não muda mesmo que o e-mail ou o nome mudem. */
+  id: text('id').primaryKey(),
+  /** Em minúsculas; é a chave do autor nos lotes. */
+  email: text('email').notNull().unique(),
+  nome: text('nome').notNull(),
+  criadoEm: text('criado_em').notNull(),
+  ultimaEntradaEm: text('ultima_entrada_em').notNull(),
+});
+
+/** Sessões abertas. O token só existe no cookie do browser: aqui fica o hash. */
+export const sessoes = sqliteTable(
+  'sessoes',
+  {
+    /** SHA-256 (hex) do token do cookie. */
+    id: text('id').primaryKey(),
+    utilizadorId: text('utilizador_id')
+      .notNull()
+      .references(() => utilizadores.id, { onDelete: 'cascade' }),
+    criadaEm: text('criada_em').notNull(),
+    /** Gravado no máximo uma vez por hora (a inatividade conta-se a partir daqui). */
+    ultimoUsoEm: text('ultimo_uso_em').notNull(),
+    /** Limite absoluto (criada_em + 90 dias), mesmo com uso. */
+    expiraEm: text('expira_em').notNull(),
+  },
+  (t) => [
+    index('sessoes_utilizador_idx').on(t.utilizadorId),
+    index('sessoes_expira_idx').on(t.expiraEm),
+    index('sessoes_ultimo_uso_idx').on(t.ultimoUsoEm),
+  ],
+);
+
+/** Pedidos de login à espera do regresso da Microsoft (no máximo 10 minutos, uso único). */
+export const pedidosLogin = sqliteTable(
+  'pedidos_login',
+  {
+    /** Parâmetro `state` do OpenID (também vai no cookie mapa-login). */
+    estado: text('estado').primaryKey(),
+    nonce: text('nonce').notNull(),
+    /** code_verifier do PKCE. */
+    verificador: text('verificador').notNull(),
+    /** Caminho para onde voltar depois de entrar. */
+    destino: text('destino').notNull(),
+    criadoEm: text('criado_em').notNull(),
+  },
+  (t) => [index('pedidos_login_criado_idx').on(t.criadoEm)],
+);

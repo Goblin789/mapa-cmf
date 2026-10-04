@@ -1,0 +1,40 @@
+# Verificação de cada push e pull request: tipos, lint e testes (o "npm run verificar" do PC) e o build do
+# browser (o mesmo que o Render faz). Não publica nada: publica-se com "npm run publicar" (docs/publicar.md).
+name: Verificar
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+# Um push novo no mesmo ramo cancela a verificação anterior, que já não interessa (poupa minutos).
+concurrency:
+  group: verificar-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verificar:
+    name: Tipos, lint, testes e build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # A mesma hora do PC do Rafael e do Luxemburgo, para nenhum teste depender do fuso do GitHub (UTC).
+      TZ: Europe/Luxembourg
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: npm
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Tipos, lint e testes
+        run: npm run verificar
+
+      - name: Build do browser
+        run: npm run build
