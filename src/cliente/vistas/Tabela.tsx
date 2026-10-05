@@ -7,14 +7,14 @@
 // horizontal) e a coluna do nome fica presa à esquerda. A ordem e os filtros mantêm-se ao mudar de vista.
 //
 // Só muda de vista com o botão "Ver no mapa" (docs/vistas-edicao.md). A linha já mostra tudo da pessoa:
-// clicar nela só a realça e na Tabela não há ficha da pessoa (pedido do Rafael, 04/10/2026: era inútil).
-// O botão a seguir ao nome é o "Ver no mapa" (navegar.verNoMapa), que muda para o Mapa e lá põe a pessoa
-// em foco. O nome da casa e a matrícula abrem a ficha da casa ou da carrinha (PainelFoco, por cima da
-// tabela; a da casa tem o aviso do contrato). Uma pessoa em foco (pesquisa, nomes da ficha de uma casa) só
-// realça a linha; as linhas da casa ou carrinha em foco ficam levemente realçadas. A pesquisa do cabeçalho
-// e as ligações da ficha mostram aqui (useAoMostrar): desliza até às linhas e acende-as, limpando os
-// filtros que as escondam. O realce por cliente da legenda do Mapa não conta aqui: a Tabela tem o filtro
-// Cliente.
+// clicar nela só a realça e, fora do modo de edição, na Tabela não há ficha da pessoa (pedido do Rafael,
+// 04/10/2026: era inútil). O botão a seguir ao nome é o "Ver no mapa" (navegar.verNoMapa), que muda para o
+// Mapa e lá põe a pessoa em foco. O nome da casa e a matrícula abrem a ficha da casa ou da carrinha
+// (PainelFoco, por cima da tabela; a da casa tem o aviso do contrato). Uma pessoa em foco (pesquisa, nomes
+// da ficha de uma casa) só realça a linha; as linhas da casa ou carrinha em foco ficam levemente realçadas.
+// A pesquisa do cabeçalho e as ligações da ficha mostram aqui (useAoMostrar): desliza até às linhas e
+// acende-as, limpando os filtros que as escondam. O realce por cliente da legenda do Mapa não conta aqui: a
+// Tabela tem o filtro Cliente.
 // O Excel da barra exporta o que se vê: com filtros, a folha Pessoas só tem as linhas filtradas.
 //
 // No modo de edição mostra a simulação (o rascunho) e edita como o mapa: coluna de caixas de seleção
@@ -23,6 +23,14 @@
 // alteradas a âmbar com "antes: …". Várias de uma vez: selecionar e "Mover para…" da barra âmbar. Ao lado
 // das listas Casa e Carrinha, um botão abre a ficha da casa/carrinha; na barra, "Confirmar todas as
 // sugestões (N)" (onde dormem as carrinhas), como no Quadro por carrinhas e na lista lateral.
+// Os dados da pessoa (nº, nomes, cliente, telefone, carta), "Marcar indisponível…", "Mudar…", o condutor e
+// "Saiu da empresa…" (o Rafael, 05/10/2026: "não aceito" que só se mudem no Mapa e no Quadro): no modo de
+// edição, a seguir ao nome, o botão "Editar…" (e o "Ver no mapa" só com o ícone, para a coluna presa não
+// crescer) abre a MESMA ficha editável do Mapa e do Quadro, posta como as da casa e da carrinha (no
+// telemóvel em baixo). Só esse botão a abre (useEstadoTabela.editar; linhasTabela.editarQueFica): a
+// pesquisa e os nomes continuam só a realçar a linha, e o clique na linha só a seleciona. ✕/Esc fecham-na e
+// devolvem o foco do teclado ao "Editar…"; Guardar e Cancelar fecham-na; depois de "Saiu da empresa…"
+// fecha e a linha esconde-se (salvo com "Mostrar quem saiu").
 //
 // M2 (docs/m2.md, "Indisponível"): coluna "Indisponível" ("até 12/10", "sem regresso"; ordenável; só as
 // datas, nunca o motivo) e o filtro "Indisponível" (Indisponíveis hoje, Disponíveis hoje, Com períodos
@@ -66,11 +74,13 @@ import {
 import { BOTAO_MINI } from '../edicao/classes';
 import { aplicarComAviso } from '../edicao/DialogoIndisponivel';
 import { ContornoEdicao } from '../edicao/Edicao';
+import { IconeLapis } from '../edicao/icones';
 import { operacoesConfirmarSugestoes } from '../edicao/ondeDorme';
 import { abrirIndisponivel, haDialogoAberto, useUiEdicao } from '../edicao/ui';
 import { useLoja } from '../estado/loja';
 import { IconeCarrinhaLado, IconeCarroLado, IconeCasa, IconeDormir, IconeLupa } from '../lista/icones';
 import { FOCO_VISIVEL } from '../paineis/classes';
+import { haFichaDaPessoa } from '../paineis/fichas';
 import { PainelFoco } from '../paineis/PainelFoco';
 import { MarcaAConfirmar, MarcaCliente } from '../paineis/pecas';
 import { ROTULO_FORA_DAS_CASAS } from '../paineis/textos';
@@ -95,16 +105,21 @@ import {
 import { exportarExcel } from './excel';
 import { IconeDescarregar, IconeMapa, IconeOrdem } from './icones';
 import {
+  acaoLinhaDaFicha,
   ariaSort,
-  botaoDaLinha,
+  type BotaoDaLinha,
+  botoesDaLinha,
   COLUNAS_TABELA,
   type ColunaTabela,
+  cliqueTiraOFoco,
   descricaoIndisponivel,
   deslocamentoParaVer,
+  editarQueFica,
   FILTROS_INICIAIS,
   type FiltrosTabela,
   filtrarLinhas,
   filtrosTabelaAtivos,
+  type LinhaDaFicha,
   type LinhaTabela,
   linhasDaTabela,
   marcadaDepoisDoClique,
@@ -118,6 +133,7 @@ import {
   type RealceLinha,
   realceDaLinha,
   reservaDaFicha,
+  seguirEditar,
   selecaoComVisiveis,
   textoAteCurto,
   textoContagem,
@@ -146,20 +162,36 @@ const useEstadoTabela = create<{
   marcada: Id | null;
   /** M2: "Mostrar quem saiu" (as pessoas com ativa = false). Não é um filtro: "Limpar filtros" não a tira. */
   comQuemSaiu: boolean;
+  /**
+   * A pessoa do último "Editar…" (só no modo de edição): a ficha dela abre na Tabela enquanto for o foco
+   * (linhasTabela.editarQueFica; esquece-se quando o foco muda ou se sai do modo de edição).
+   */
+  editar: Id | null;
   definirOrdem: (ordem: OrdemTabela) => void;
   definirFiltros: (filtros: FiltrosTabela) => void;
   definirMarcada: (marcada: Id | null) => void;
   definirComQuemSaiu: (comQuemSaiu: boolean) => void;
+  definirEditar: (editar: Id | null) => void;
 }>()((set) => ({
   ordem: ORDEM_INICIAL,
   filtros: FILTROS_INICIAIS,
   marcada: null,
   comQuemSaiu: false,
+  editar: null,
   definirOrdem: (ordem) => set({ ordem }),
   definirFiltros: (filtros) => set({ filtros }),
   definirMarcada: (marcada) => set({ marcada }),
   definirComQuemSaiu: (comQuemSaiu) => set({ comQuemSaiu }),
+  definirEditar: (editar) => set({ editar }),
 }));
+
+// O "Editar…" esquece-se quando o foco sai dessa pessoa ou se sai do modo de edição, também com a Tabela
+// noutra vista (desmontada): senão a ficha abria sozinha ao voltar à Tabela (linhasTabela.seguirEditar).
+seguirEditar(
+  useLoja,
+  () => useEstadoTabela.getState().editar,
+  (editar) => useEstadoTabela.getState().definirEditar(editar),
+);
 
 const CAMPO =
   'h-8 rounded-md border border-slate-300 bg-white px-2 text-base text-slate-800 sm:text-sm focus-visible:border-blue-700 focus-visible:outline-2 focus-visible:outline-blue-700';
@@ -182,6 +214,15 @@ const FILTRO = { className: 'min-w-0 sm:w-auto', classeBotao: 'sm:max-w-[10rem] 
 
 /** Ligação-botão dentro de uma célula (nome da casa, matrícula): abre a ficha. */
 const LIGACAO = `rounded text-left hover:underline hover:underline-offset-2 ${FOCO_VISIVEL}`;
+
+/**
+ * Botão com contorno a seguir ao nome ("Editar…", "Voltou à empresa…"): 28 px de altura, com o alvo de
+ * toque alargado sem sair da linha.
+ */
+const BOTAO_LINHA_CONTORNO = `relative ml-1 inline-flex h-7 shrink-0 items-center rounded border border-slate-300 bg-white text-xs whitespace-nowrap text-slate-700 before:absolute before:-inset-x-1 before:-inset-y-0.5 before:content-[''] hover:bg-slate-100 hover:text-slate-900 ${FOCO_VISIVEL}`;
+
+/** Marca o 1.º botão a seguir ao nome com o id da pessoa (para lhe devolver o foco do teclado). */
+const ATRIBUTO_BOTAO_LINHA = 'data-botao-da-linha';
 
 const AZUL_SELECAO = '#2563eb';
 const AZUL_FOCO = '#1d4ed8';
@@ -484,6 +525,8 @@ interface PropsLinha {
   /** Há obras no estado (sem obras e sem obra na pessoa, a célula fica "sem obra", como na ficha). */
   haObras: boolean;
   antes: AntesDaLinha | undefined;
+  /** A ficha desta pessoa está aberta na Tabela (pelo "Editar…"). */
+  comFicha: boolean;
   /** Ids das linhas visíveis pela ordem atual (para o Shift+clique); estável entre desenhos. */
   obterOrdem: () => readonly Id[];
 }
@@ -517,6 +560,7 @@ const LinhaPessoa = memo(function LinhaPessoa({
   realce,
   haObras,
   antes,
+  comFicha,
   obterOrdem,
 }: PropsLinha) {
   const id = l.pessoa.id;
@@ -530,17 +574,17 @@ const LinhaPessoa = memo(function LinhaPessoa({
     : '';
 
   // O clique na linha realça-a (no modo de edição, seleciona) e nunca abre ficha: a linha já mostra tudo
-  // (com a ficha de uma casa ou carrinha aberta, ela fica como está). Uma pessoa em foco (pesquisa, nome na
-  // ficha de uma casa) não tem ficha na Tabela, só o realce da linha: um clique numa linha tira-lhe o foco
-  // (não ficam duas realçadas; na linha dela fica só a marcada, e o clique seguinte tira o realce, como nas
-  // outras). Os controlos das células param o clique.
+  // (com a ficha de uma casa ou carrinha aberta, ou a da pessoa do "Editar…", ela fica como está). Uma pessoa
+  // em foco sem ficha (pesquisa, nome na ficha de uma casa) tem só o realce da linha: um clique numa linha
+  // tira-lhe o foco (não ficam duas realçadas; na linha dela fica só a marcada, e o clique seguinte tira o
+  // realce, como nas outras). Os controlos das células param o clique.
   const aoClicar = (e: MouseEvent<HTMLTableRowElement>) => {
     if (edita) useLoja.getState().selecionar(id, modoDoClique(e), obterOrdem());
-    const { marcada, definirMarcada } = useEstadoTabela.getState();
+    const { marcada, definirMarcada, editar } = useEstadoTabela.getState();
     const { foco, definirFoco } = useLoja.getState();
     const focoPessoaId = foco?.tipo === 'pessoa' ? foco.id : null;
     definirMarcada(marcadaDepoisDoClique(id, marcada, modoEdicao, focoPessoaId));
-    if (focoPessoaId !== null) definirFoco(null);
+    if (cliqueTiraOFoco(focoPessoaId, editarQueFica(editar, foco, modoEdicao))) definirFoco(null);
   };
   // Ao abrir a ficha da casa ou da carrinha, a linha fica à vista (no telemóvel a ficha abre em baixo, por
   // cima das linhas).
@@ -563,6 +607,81 @@ const LinhaPessoa = memo(function LinhaPessoa({
   const voltou = (e: MouseEvent<HTMLButtonElement>) => {
     e.stopPropagation();
     abrirVoltouAEmpresa(id);
+  };
+  // "Editar…" (só no modo de edição): abre a ficha editável da pessoa por cima da Tabela, como as da casa e
+  // da carrinha, e mantém a linha à vista (no telemóvel a ficha abre em baixo).
+  const editar = (e: MouseEvent<HTMLButtonElement>) => {
+    e.stopPropagation();
+    useEstadoTabela.getState().definirEditar(id);
+    useLoja.getState().definirFoco({ tipo: 'pessoa', id });
+    const tr = e.currentTarget.closest('tr');
+    if (tr) manterLinhaAVista(tr);
+  };
+  const botao = ({ tipo, comTexto }: BotaoDaLinha, i: number) => {
+    // O 1.º botão da linha recebe o foco do teclado quando a ficha da pessoa fecha (✕/Esc, "Saiu…").
+    const marca = i === 0 ? { [ATRIBUTO_BOTAO_LINHA]: id } : {};
+    if (tipo === 'voltou') {
+      return (
+        <button
+          key={tipo}
+          type="button"
+          {...marca}
+          onClick={voltou}
+          aria-label={`${l.nomeMostrado} voltou à empresa…`}
+          title={`${l.nomeMostrado} voltou à empresa (no modo de edição; fica por guardar)`}
+          className={`${BOTAO_LINHA_CONTORNO} px-1.5`}
+        >
+          <span aria-hidden="true" className="md:hidden">
+            Voltou…
+          </span>
+          <span aria-hidden="true" className="hidden md:inline">
+            Voltou à empresa…
+          </span>
+        </button>
+      );
+    }
+    if (tipo === 'editar') {
+      return (
+        <button
+          key={tipo}
+          type="button"
+          {...marca}
+          onClick={editar}
+          aria-label={`Editar ${l.nomeMostrado}`}
+          aria-expanded={comFicha}
+          title={`Editar ${l.nomeMostrado}`}
+          // Azul com a ficha aberta: pela variante aria-expanded, que ganha às cores do contorno (classes
+          // condicionais com a mesma especificidade perdiam conforme a ordem do CSS e ficava branco).
+          className={`${BOTAO_LINHA_CONTORNO} min-w-7 justify-center gap-1 md:px-1.5 aria-expanded:border-blue-700 aria-expanded:bg-blue-50 aria-expanded:text-blue-900`}
+        >
+          <IconeLapis className="size-3.5" />
+          <span aria-hidden="true" className="hidden md:inline">
+            Editar…
+          </span>
+        </button>
+      );
+    }
+    return (
+      <button
+        key={tipo}
+        type="button"
+        {...marca}
+        onClick={irAoMapa}
+        aria-label={`Ver ${l.nomeMostrado} no mapa`}
+        title={`Ver ${l.nomeMostrado} no mapa`}
+        // Alvo de toque maior do que o ícone (6 px de cada lado). A seguir ao "Editar…" (i > 0) só 2 px à
+        // esquerda: o espaço entre os dois é de 4 px (ml-1) e o alvo não pode entrar no lápis, que fica
+        // antes (um toque na ponta do lápis ia ao Mapa).
+        className={`relative ml-1 inline-flex h-7 min-w-7 shrink-0 items-center justify-center gap-1 rounded text-xs whitespace-nowrap text-slate-500 group-hover:text-slate-700 before:absolute before:-inset-y-0.5 ${i > 0 ? 'before:-right-1.5 before:-left-0.5' : 'before:-inset-x-1.5'} before:content-[''] hover:bg-slate-200 hover:text-slate-900 ${comTexto ? 'md:px-1.5' : ''} ${FOCO_VISIVEL}`}
+      >
+        <IconeMapa className="size-4" />
+        {comTexto && (
+          <span aria-hidden="true" className="hidden md:inline">
+            Ver no mapa
+          </span>
+        )}
+      </button>
+    );
   };
 
   const fundo =
@@ -641,40 +760,16 @@ const LinhaPessoa = memo(function LinhaPessoa({
             nome={l.nomeMostrado}
             semSigla
             saiu={l.saiu}
-            className={`${modoEdicao ? 'w-[9rem]' : 'w-[12rem]'} shrink-0 text-[13px] sm:w-[16rem] 2xl:w-[18.5rem]`}
+            // No telemóvel, a editar, mais estreita (8 rem): ao lado vão o "Editar…" e o "Ver no mapa" (dois
+            // ícones) e a coluna presa cresce só ~1 rem em relação ao "Ver no mapa" sozinho.
+            className={`${modoEdicao ? 'w-[8rem]' : 'w-[12rem]'} shrink-0 text-[13px] sm:w-[16rem] 2xl:w-[18.5rem]`}
           />
-          {/* Discreto (cinzento) mas sempre à vista: no PC com o texto "Ver no mapa", no telemóvel só o
-              ícone (a coluna presa não cresce); no toque o alvo é maior do que o ícone (40 × 32 px). Quem
-              saiu tem no mesmo sítio "Voltou à empresa…" (no telemóvel "Voltou…"). */}
-          {botaoDaLinha(l) === 'voltou' ? (
-            <button
-              type="button"
-              onClick={voltou}
-              aria-label={`${l.nomeMostrado} voltou à empresa…`}
-              title={`${l.nomeMostrado} voltou à empresa (no modo de edição; fica por guardar)`}
-              className={`relative ml-1 inline-flex h-7 shrink-0 items-center rounded border border-slate-300 bg-white px-1.5 text-xs whitespace-nowrap text-slate-700 before:absolute before:-inset-x-1 before:-inset-y-0.5 before:content-[''] hover:bg-slate-100 hover:text-slate-900 ${FOCO_VISIVEL}`}
-            >
-              <span aria-hidden="true" className="md:hidden">
-                Voltou…
-              </span>
-              <span aria-hidden="true" className="hidden md:inline">
-                Voltou à empresa…
-              </span>
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={irAoMapa}
-              aria-label={`Ver ${l.nomeMostrado} no mapa`}
-              title={`Ver ${l.nomeMostrado} no mapa`}
-              className={`relative ml-1 inline-flex h-7 min-w-7 shrink-0 items-center justify-center gap-1 rounded text-xs whitespace-nowrap text-slate-500 group-hover:text-slate-700 before:absolute before:-inset-x-1.5 before:-inset-y-0.5 before:content-[''] hover:bg-slate-200 hover:text-slate-900 md:px-1.5 ${FOCO_VISIVEL}`}
-            >
-              <IconeMapa className="size-4" />
-              <span aria-hidden="true" className="hidden md:inline">
-                Ver no mapa
-              </span>
-            </button>
-          )}
+          {/* "Ver no mapa" discreto (cinzento) mas sempre à vista: fora do modo de edição no PC com o texto,
+              no telemóvel só o ícone (a coluna presa não cresce); no toque o alvo é maior do que o ícone
+              (40 × 32 px). No modo de edição, antes dele, "Editar…" (com contorno; no telemóvel só o lápis)
+              e o "Ver no mapa" só com o ícone. Quem saiu tem no mesmo sítio só "Voltou à empresa…" (no
+              telemóvel "Voltou…"). botoesDaLinha diz quais. */}
+          {botoesDaLinha(l, modoEdicao).map(botao)}
         </span>
       </td>
       <td className={`${CELULA} text-xs whitespace-nowrap text-slate-700 tabular-nums ${fundo}`} style={meio}>
@@ -954,12 +1049,21 @@ export function Tabela() {
   const definirFiltros = useEstadoTabela((s) => s.definirFiltros);
   const marcada = useEstadoTabela((s) => s.marcada);
   const comQuemSaiu = useEstadoTabela((s) => s.comQuemSaiu);
+  const editar = useEstadoTabela((s) => s.editar);
   const raiz = useRef<HTMLElement>(null);
   const idFiltro = useId();
-  // A caixa onde a ficha está posta e se ela foi arrastada para fora do sítio de origem. Só as casas e as
-  // carrinhas têm ficha na Tabela (uma pessoa em foco só realça a linha).
+  // A pessoa com a ficha aberta na Tabela: a do "Editar…", no modo de edição, enquanto é o foco e está na
+  // empresa (o mesmo haFichaDaPessoa do PainelFoco). Uma pessoa em foco sem ela só realça a linha.
+  const editarAberto = editarQueFica(editar, foco, modoEdicao);
+  const pessoaEditada = editarAberto !== null ? indices?.pessoas.get(editarAberto) : undefined;
+  const comFicha =
+    pessoaEditada && haFichaDaPessoa('tabela', pessoaEditada, { modoEdicao, editar })
+      ? pessoaEditada.id
+      : null;
+  // A caixa onde a ficha está posta e se ela foi arrastada para fora do sítio de origem. As casas e as
+  // carrinhas têm ficha na Tabela; uma pessoa só a do "Editar…".
   const [areaFicha, setAreaFicha] = useState<HTMLDivElement | null>(null);
-  const haFicha = foco !== null && foco.tipo !== 'pessoa';
+  const haFicha = foco !== null && (foco.tipo !== 'pessoa' || comFicha !== null);
   const reserva = reservaDaFicha(haFicha, useFichaMovida(areaFicha, haFicha));
 
   const linhas = useMemo(
@@ -1001,6 +1105,57 @@ export function Tabela() {
   useEffect(() => {
     if (foco?.tipo === 'pessoa' && !modoEdicao) useEstadoTabela.getState().definirMarcada(foco.id);
   }, [foco, modoEdicao]);
+
+  // "Editar…": esquece-se quando o foco muda (✕, Esc, pesquisa, ligações da ficha) ou se sai do modo de
+  // edição (Guardar, Cancelar; seguirEditar fá-lo também com a Tabela noutra vista; aqui fica por
+  // segurança). Depois de "Saiu da empresa…" a ficha fecha (haFichaDaPessoa) e tira-se o
+  // foco à pessoa (com "Mostrar quem saiu" a linha dela fica, sem realce de foco).
+  useEffect(() => {
+    if (editar === null) return;
+    if (editarAberto === null) {
+      useEstadoTabela.getState().definirEditar(null);
+      return;
+    }
+    if (pessoaEditada && !pessoaEditada.ativa) useLoja.getState().definirFoco(null);
+  }, [editar, editarAberto, pessoaEditada]);
+
+  // A ficha da pessoa fechou (✕, Esc, "Saiu da empresa…") ainda no modo de edição: o foco do teclado, que
+  // ficou no vazio (o botão que o tinha saiu da página), volta ao "Editar…" da linha (ou ao "Voltou à
+  // empresa…" de quem acabou de sair). Se foi para outro sítio (a pesquisa), fica lá.
+  const fichaAntes = useRef<Id | null>(null);
+  useEffect(() => {
+    const antes = fichaAntes.current;
+    fichaAntes.current = comFicha;
+    if (antes === null || antes === comFicha || !modoEdicao) return;
+    const ativo = document.activeElement;
+    if (ativo && ativo !== document.body) return;
+    raiz.current
+      ?.querySelector<HTMLElement>(`[${ATRIBUTO_BOTAO_LINHA}="${CSS.escape(antes)}"]`)
+      ?.focus({ preventScroll: true });
+  }, [comFicha, modoEdicao]);
+
+  // A linha da pessoa com a ficha aberta fica à vista também quando a ficha muda o que ordena ou filtra a
+  // Tabela (o nome com a Tabela por Nome, a casa com o filtro Casa…): volta a pôr-se à vista, ou limpam-se
+  // os filtros que a passaram a esconder (linhasTabela.acaoLinhaDaFicha). Ao abrir, quem a põe à vista é o
+  // "Editar…".
+  const indiceFicha = comFicha === null ? -1 : idsVisiveis.indexOf(comFicha);
+  const nomeFicha =
+    comFicha === null ? '' : (linhas.find((l) => l.pessoa.id === comFicha)?.nomeMostrado ?? '');
+  const linhaDaFichaAntes = useRef<LinhaDaFicha>({ id: null, indice: -1, filtros });
+  useLayoutEffect(() => {
+    const antes = linhaDaFichaAntes.current;
+    const agora: LinhaDaFicha = { id: comFicha, indice: indiceFicha, filtros };
+    linhaDaFichaAntes.current = agora;
+    const acao = acaoLinhaDaFicha(antes, agora);
+    if (acao === 'limpar-filtros') {
+      useEstadoTabela.getState().definirFiltros(FILTROS_INICIAIS);
+      useUiEdicao.getState().avisar(`Filtros limpos para mostrar ${nomeFicha}.`);
+    } else if (acao === 'mostrar' && comFicha !== null) {
+      const chave = CSS.escape(chaveElemento({ tipo: 'pessoa', id: comFicha }));
+      const tr = raiz.current?.querySelector<HTMLTableRowElement>(`tr[data-elemento="${chave}"]`);
+      if (tr) manterLinhaAVista(tr);
+    }
+  }, [comFicha, indiceFicha, filtros, nomeFicha]);
 
   // As opções das listas das células calculam-se uma vez por estado (useOpcoesTabela); as que não mudaram
   // (ex.: mudou uma carrinha e não uma casa) ficam as mesmas e a lista aberta não se redesenha.
@@ -1205,7 +1360,9 @@ export function Tabela() {
             <caption className="sr-only">
               Pessoas ({contagem}). O botão a seguir a cada nome mostra a pessoa no mapa (na de quem saiu:
               Voltou à empresa)
-              {modoEdicao ? '; no modo de edição muda-se nas células e selecionam-se linhas.' : '.'}
+              {modoEdicao
+                ? '; no modo de edição, Editar abre a ficha da pessoa, muda-se nas células e selecionam-se linhas.'
+                : '.'}
             </caption>
             <thead>
               <tr>
@@ -1234,6 +1391,7 @@ export function Tabela() {
                     realce={realce}
                     haObras={haObras}
                     antes={antes.get(l.pessoa.id)}
+                    comFicha={comFicha === l.pessoa.id}
                     obterOrdem={obterOrdem}
                   />
                 );
@@ -1261,8 +1419,9 @@ export function Tabela() {
               (um espaçador e não padding, que faria a caixa crescer e a página deslizar). */}
           {haFicha && <div aria-hidden="true" className="h-[60vh] sm:hidden" />}
         </div>
-        {/* Na Tabela só há as fichas da casa e da carrinha (sem a da pessoa); lembra a sua posição. */}
-        <PainelFoco lugar="vista" vista="tabela" />
+        {/* Na Tabela há as fichas da casa e da carrinha e, no modo de edição, a da pessoa do "Editar…";
+            lembra a sua posição. */}
+        <PainelFoco lugar="vista" vista="tabela" editar={editar} />
       </div>
       <ContornoEdicao />
     </section>

@@ -34,14 +34,29 @@ import { deArtigoDoVeiculo, ROTULO_FORA_DAS_CASAS, ROTULO_SEM_OBRA, ROTULO_SEM_T
 /** A vista onde a ficha está aberta (PainelFoco): o Mapa, a Tabela ou o Quadro. */
 export type VistaFicha = 'mapa' | 'tabela' | 'quadro';
 
+/** Na Tabela: se se está no modo de edição e a pessoa cuja ficha se abriu pelo "Editar…" da linha. */
+export interface FichaNaTabela {
+  modoEdicao: boolean;
+  /** A pessoa do último "Editar…" (null = nenhum, ou já fechou). */
+  editar: Id | null;
+}
+
 /**
- * Na Tabela não há ficha da pessoa (pedido do Rafael, 04/10/2026: a linha já mostra tudo e a ficha que
- * abria era inútil; a única coisa útil, "Ver no mapa", é um botão a seguir ao nome). Uma pessoa em foco
- * na Tabela (pesquisa, nomes da ficha de uma casa) só realça a linha. No Mapa e no Quadro abre a ficha
- * completa. As fichas de casa e carrinha abrem em todas as vistas.
+ * A ficha da pessoa abre-se aqui? No Mapa e no Quadro sempre (a ficha completa). Na Tabela, fora do modo de
+ * edição, nunca (pedido do Rafael, 04/10/2026: a linha já mostra tudo e a ficha que abria era inútil; fica o
+ * "Ver no mapa"): uma pessoa em foco (pesquisa, nomes da ficha de uma casa) só realça a linha. No modo de
+ * edição, só a da pessoa do botão "Editar…" da linha (o Rafael, 05/10/2026: os dados dela e "Saiu da
+ * empresa…" também se mudam na Tabela), e só enquanto está na empresa: depois de "Saiu da empresa…" a
+ * ficha fecha (quem saiu volta pelo "Voltou à empresa…" da linha). As fichas de casa e carrinha abrem em
+ * todas as vistas.
  */
-export function haFichaDaPessoa(vista: VistaFicha): boolean {
-  return vista !== 'tabela';
+export function haFichaDaPessoa(
+  vista: VistaFicha,
+  pessoa: Pick<Pessoa, 'id' | 'ativa'>,
+  tabela: FichaNaTabela,
+): boolean {
+  if (vista !== 'tabela') return true;
+  return tabela.modoEdicao && pessoa.ativa && tabela.editar === pessoa.id;
 }
 
 export interface ElementoCadeia {
@@ -553,7 +568,8 @@ export function linhaDeTexto(texto: string): string {
 
 /**
  * O registo da pessoa nova, como o domínio o quer (validarRegisto): sem casa, carrinha nem obra, ativa, sem
- * marcas "a confirmar", sem nomes alternativos nem nº original; vazios = null; validade só com carta "Tem".
+ * marcas "a confirmar", sem nomes alternativos nem nº original; vazios = null (os apelidos, opcionais, ficam
+ * "": a coluna é NOT NULL); validade só com carta "Tem".
  */
 export function pessoaNova(dados: DadosNovaPessoa, id: Id): Pessoa {
   const temCarta = temCartaDaEscolha(dados.carta);
@@ -594,14 +610,14 @@ export function passoNovaPessoa(estado: Estado, dados: DadosNovaPessoa, id: Id):
 }
 
 /**
- * Erros do diálogo (frases prontas; [] = pode aplicar-se). Primeiro o que falta escrever (nome e apelidos
- * são os dois obrigatórios no domínio; o cliente), depois o domínio sobre o estado visível (nome no mapa e
- * nº únicos, tamanhos, validade…), sem o nome da pessoa à frente.
+ * Erros do diálogo (frases prontas; [] = pode aplicar-se). Primeiro o que falta escrever (o nome e o nome
+ * no mapa; o cliente), depois o domínio sobre o estado visível (nome no mapa e nº únicos, tamanhos,
+ * validade…), sem o nome da pessoa à frente. Os apelidos são opcionais (o Rafael, 05/10/2026): sem eles
+ * ficam "" (campos.ts) e o nome no mapa proposto é só o 1.º nome.
  */
 export function errosNovaPessoa(estado: Estado, dados: DadosNovaPessoa, id: Id): string[] {
   const faltam: string[] = [];
   if (!linhaDeTexto(dados.nome)) faltam.push('o nome');
-  if (!linhaDeTexto(dados.apelidos)) faltam.push('os apelidos');
   if (!linhaDeTexto(dados.nomeNoMapa)) faltam.push('o nome no mapa');
   const erros: string[] = [];
   if (faltam.length > 0) {

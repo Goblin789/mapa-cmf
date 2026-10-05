@@ -54,13 +54,25 @@ describe('validarValorCampo', () => {
     expect(validarValorCampo('pessoa', 'telefone', '')).toBe('Telefone: fica vazio com null, não com "".');
     expect(validarValorCampo('pessoa', 'telefone', '6'.repeat(LIMITES.telefone + 1))).not.toBeNull();
     expect(validarValorCampo('casa', 'equipamento', 'x'.repeat(LIMITES.textoLongo))).toBeNull();
-    // A morada de um local pode ficar vazia (obra escolhida só no mapa).
+    // A morada de um local pode ficar vazia (obra escolhida só no mapa), com "" (a coluna é NOT NULL).
     expect(validarValorCampo('local', 'morada', '')).toBeNull();
-    expect(validarValorCampo('local', 'morada', null)).toBe('Morada: não pode ficar vazio.');
+    expect(validarValorCampo('local', 'morada', null)).toBe('Morada: fica vazio com "", não com null.');
     expect(validarValorCampo('problema', 'texto', 'x'.repeat(LIMITES.textoProblema + 1))).toBe(
       'Problema: tem no máximo 120 caracteres.',
     );
     expect(validarValorCampo('pessoa', 'nome', 5 as never)).toBe('Nome: tem de ser um texto.');
+  });
+
+  it('apelidos opcionais (o Rafael, 05/10/2026): vazios com "" (coluna NOT NULL), como a morada do local', () => {
+    expect(validarValorCampo('pessoa', 'apelidos', '')).toBeNull();
+    expect(validarValorCampo('pessoa', 'apelidos', 'Teste Fictício')).toBeNull();
+    expect(validarValorCampo('pessoa', 'apelidos', null)).toBe('Apelidos: fica vazio com "", não com null.');
+    expect(validarValorCampo('pessoa', 'apelidos', ' Teste')).toBe('Apelidos: sem espaços nas pontas.');
+    expect(validarValorCampo('pessoa', 'apelidos', 'x'.repeat(LIMITES.textoCurto + 1))).toBe(
+      'Apelidos: tem no máximo 80 caracteres.',
+    );
+    // O nome e o nome no mapa continuam obrigatórios.
+    expect(validarValorCampo('pessoa', 'nome', '')).toBe('Nome: não pode ficar vazio.');
   });
 
   it('booleanos, sim/não/não sei e escolhas', () => {
@@ -193,6 +205,11 @@ describe('validarRegisto (registos novos)', () => {
   it('pessoa nova: sem casa, carrinha nem obra, ativa, sem marcas, sem nomes alternativos', () => {
     const nova = criarPessoa({ id: `pessoa-${ID}`, nomeCurto: 'Nova P.' });
     expect(validarRegisto('pessoa', nova)).toEqual([]);
+    // Sem apelidos (opcionais desde 05/10/2026): "" serve; null não.
+    expect(validarRegisto('pessoa', { ...nova, apelidos: '' })).toEqual([]);
+    expect(validarRegisto('pessoa', { ...nova, apelidos: null })).toEqual([
+      'Apelidos: fica vazio com "", não com null.',
+    ]);
     expect(validarRegisto('pessoa', { ...nova, casaId: 'casa-1' })).toEqual([
       'Uma pessoa nova entra sem casa, carrinha nem obra (põe-se lá a seguir).',
     ]);

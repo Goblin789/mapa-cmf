@@ -3,7 +3,9 @@
 
 import { describe, expect, it } from 'vitest';
 import { validarRegisto } from '../../dominio/campos';
+import { indexar } from '../../dominio/indices';
 import { aplicarOperacoes, compactarOperacoes, validarOperacoes } from '../../dominio/operacoes';
+import { pesquisar } from '../../dominio/pesquisa';
 import { estadoExemplo } from '../../dominio/teste-fabrica';
 import {
   type DadosNovaPessoa,
@@ -12,6 +14,8 @@ import {
   pessoaNova,
   proporNomeNoMapa,
 } from '../paineis/fichas';
+import { nomeCompleto } from '../paineis/textos';
+import { linhasDaTabela } from '../vistas/linhasTabela';
 
 const ID = 'pessoa-0000aaaa-1111-2222-3333-444455556666';
 
@@ -103,10 +107,13 @@ describe('passoNovaPessoa', () => {
 });
 
 describe('errosNovaPessoa', () => {
-  it('pede o que falta (nome e apelidos são os dois obrigatórios) e o cliente', () => {
+  it('pede o que falta (o nome e o nome no mapa; os apelidos são opcionais) e o cliente', () => {
     const estado = estadoExemplo();
     expect(errosNovaPessoa(estado, dados({ apelidos: ' ', nomeNoMapa: '' }), ID)).toEqual([
-      'Faltam os apelidos e o nome no mapa.',
+      'Falta o nome no mapa.',
+    ]);
+    expect(errosNovaPessoa(estado, dados({ nome: '', apelidos: '', nomeNoMapa: '' }), ID)).toEqual([
+      'Faltam o nome e o nome no mapa.',
     ]);
     expect(errosNovaPessoa(estado, dados({ clienteId: '' }), ID)).toEqual(['Falta escolher o cliente.']);
     // O nome no mapa repetido vê-se logo, junto com o que falta.
@@ -140,5 +147,30 @@ describe('errosNovaPessoa', () => {
     expect(
       errosNovaPessoa(estadoExemplo(), dados({ casaId: 'casa-3', carrinhaId: 'zz1001', carta: 'tem' }), ID),
     ).toEqual([]);
+  });
+});
+
+describe('pessoa nova sem apelidos (opcionais: o Rafael, 05/10/2026)', () => {
+  const semApelidos = dados({ nome: 'Zita', apelidos: '  ', nomeNoMapa: proporNomeNoMapa('Zita', '  ') });
+
+  it('o nome no mapa proposto é só o nome; o registo leva "" e o domínio aceita-o', () => {
+    expect(semApelidos.nomeNoMapa).toBe('Zita');
+    expect(errosNovaPessoa(estadoExemplo(), semApelidos, ID)).toEqual([]);
+    const p = pessoaNova(semApelidos, ID);
+    expect(p).toMatchObject({ nome: 'Zita', apelidos: '', nomeCurto: 'Zita' });
+    expect(validarRegisto('pessoa', p)).toEqual([]);
+  });
+
+  it('os nomes funcionam sem apelidos: nome completo, Tabela (e Excel), pesquisa', () => {
+    const estado = estadoExemplo();
+    const final = aplicarOperacoes(estado, passoNovaPessoa(estado, semApelidos, ID));
+    const p = final.pessoas.find((x) => x.id === ID);
+    if (!p) throw new Error('A pessoa nova não entrou');
+    // Sem espaço a mais no fim.
+    expect(nomeCompleto(p)).toBe('Zita');
+    const ind = indexar(final);
+    const linha = linhasDaTabela(final, ind).find((l) => l.pessoa.id === ID);
+    expect(linha).toMatchObject({ nome: 'Zita', nomeCompleto: 'Zita', nomeMostrado: 'Zita' });
+    expect(pesquisar(final, ind, 'zita')[0]).toMatchObject({ tipo: 'pessoa', id: ID });
   });
 });

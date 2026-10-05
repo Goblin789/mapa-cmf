@@ -2,6 +2,45 @@
 
 Registo das decisões do Rafael e das escolhas por omissão. Mais recentes primeiro.
 
+## 05/10/2026 — Respostas do Rafael ao M2
+
+Respostas do Rafael ("Perguntas para quando puderes", às perguntas "por confirmar" da entrada M2 abaixo):
+1. **Apelidos obrigatórios numa pessoa nova?** "não". Os apelidos passam a **opcionais** na pessoa nova e ao
+   editar a ficha. Sem migração: a coluna é NOT NULL e já havia pessoas importadas sem apelidos (só o nome
+   curto na lista), por isso ficam vazios com `""` e não com null — uma exceção aos opcionais, documentada em
+   `dominio/campos.ts`, como a morada do local (regra 'livre'; null é recusado: "fica vazio com "", não com
+   null"). O diálogo marca "Apelidos (opcional)" e, sem eles, propõe como nome no mapa só o nome ("Zita").
+   Os nomes funcionam sem apelidos em todo o lado: nome completo, Tabela, Excel, pesquisa, Quadro, Mapa e
+   Histórico (este pelo nome no mapa; apelidos apagados aparecem como "—"); o title dos nomes já não fica
+   com um espaço a mais. Ensaiado na cópia da BD (1920, 1366 e 375 px).
+2. **No Quadro por obras, ver de que casa vem cada pessoa?** "sim": fica como está.
+3. **Aceitas que os dados da pessoa e "Saiu da empresa…" só se mudem na ficha do Mapa e do Quadro, e não na
+   Tabela?** "não aceito". Das duas opções que lhe mostrámos escolheu o **botão "Editar…"**: só no modo de
+   edição, a seguir ao nome na Tabela, "Editar…" (lápis + "Editar…" a partir de md; só o lápis no
+   telemóvel; "Editar <nome>") abre a MESMA ficha editável da pessoa do Mapa e do Quadro (campos, Marcar
+   indisponível…, Mudar…, Tornar condutor, Saiu da empresa…), posta como as fichas da casa e da carrinha (no
+   telemóvel em baixo). Fora do modo de edição continua sem ficha da pessoa na Tabela (só "Ver no mapa", como
+   ele pediu a 04/10). No modo de edição o "Ver no mapa" fica só com o ícone; no telemóvel a etiqueta do nome
+   passa de 9 para 8 rem a editar, para a coluna presa crescer só ~1 rem. O clique na linha continua a só
+   selecionar e a pesquisa do cabeçalho a só realçar; ✕/Esc fecham a ficha e devolvem o foco ao "Editar…";
+   Guardar e Cancelar fecham-na; depois de "Saiu da empresa…" fecha e a linha esconde-se (salvo "Mostrar quem
+   saiu", com "Voltou à empresa…" como antes). Desenho em `docs/vistas-edicao.md` (Tabela).
+   Acertos depois da revisão: (a) o "Editar…" esquece-se também com a Tabela noutra vista (`seguirEditar`
+   segue a loja): antes, "Editar…", ir ao Quadro, ✕ e clicar no nome dela no Quadro reabria a ficha ao voltar
+   à Tabela sem o botão; se o foco fica nela (Editar… → Quadro → Tabela), a ficha continua. (b) A linha da
+   ficha aberta fica à vista também quando a ficha a muda de lugar (o nome com a Tabela por Nome ia para o
+   fim, fora do ecrã) e, se a ficha a faz deixar de passar os filtros (ex.: a casa com o filtro Casa),
+   limpam-se os filtros com o aviso "Filtros limpos para mostrar …", como na pesquisa do cabeçalho; quem
+   escreve no filtro com a ficha aberta fica com o filtro (`acaoLinhaDaFicha`). (c) O alvo de toque do "Ver
+   no mapa" já não entra nos últimos 2 px do lápis do "Editar…".
+4. **A partir de quando deixa de se manter o Excel do Michael?** "se tudo correr bem quarta-feira de manhã":
+   **quarta-feira, 07/10/2026, de manhã**. Daí em diante o mapa é a fonte única e não se volta a sincronizar a
+   partir do Excel (as pessoas, quem está onde e as fichas mudam-se só no programa). Só documentado; o código
+   não mudou por isto.
+5. **Experimentar num telemóvel verdadeiro e com o serviço de moradas real: fazemos juntos?** "sim".
+   **Pendente combinado**: um ensaio com o Rafael num telemóvel verdadeiro e com os serviços de moradas
+   ligados (geoportail.lu, IGN, Nominatim), na produção ou num servidor sem `MORADAS=desligadas`.
+
 ## 05/10/2026 — M2 construído (por juntar e publicar)
 
 Construído na worktree `C:/dev/mapa-cmf-m2` (branch m2), com o mapa do Rafael aberto na pasta principal.
@@ -20,6 +59,7 @@ servidor aplica a 0004 e faz a cópia automática em `dados/copias/`).
   partilhada avisa "Também muda para: …" e, no Histórico, a frase diz-se pelo local ("Himeling, Rue de la
   Forêt (4 casas) — morada: …").
 - *Pessoa nova*: nome **e** apelidos obrigatórios; o nome no mapa é proposto ("Nome A.") e não se repete.
+  (05/10/2026: o Rafael respondeu que não; os apelidos passaram a opcionais — entrada acima.)
 - *Saiu da empresa*: tira da casa, da carrinha (e de conduzir) e da obra num só passo; a pessoa fica na Tabela
   com "Mostrar quem saiu" (só de leitura) e volta com o botão "Voltou à empresa…" da linha dela. Tirar alguém que já saiu de uma
   casa, carrinha ou obra é válido; pô-lo numa é recusado.
@@ -82,24 +122,19 @@ e do ecrã de entrada e do ícone; as decisões dele mandam na interface e o M2 
   Com isto, na Tabela já não se mudam os campos da pessoa (nº, nome, apelidos, nome no mapa, cliente,
   telefone, carta) nem se dá "Saiu da empresa…": faz-se na ficha do Mapa ou do Quadro ("Ver no mapa"). Na
   Tabela editam-se as células (casa, carrinha, obra, indisponível) e as fichas da casa e da carrinha.
+  (05/10/2026: o Rafael não aceitou; no modo de edição há o botão "Editar…" na Tabela — entrada acima.)
 
-*Por confirmar com o Rafael*:
-- se os **apelidos** devem ser opcionais na pessoa nova (hoje são obrigatórios);
+*Por confirmar com o Rafael* (as respostas de 05/10 — apelidos, casa de onde vem no Quadro por obras, campos
+da pessoa na Tabela, Excel do Michael, ensaio no telemóvel e com as moradas verdadeiras — estão na entrada
+acima):
 - se uma casa pode ter uma **morada só sua criada no programa** (ex.: uma casa da Himeling que mude de rua;
   hoje o lápis da morada muda as 4 casas do mesmo local);
 - se lhe serve **confirmar o pino** quase sempre na Bélgica e na Alemanha;
 - se o **aviso do regresso** ao Guardar é útil ou é ruído;
 - se os botões só com ícone (barra de edição abaixo de 1900 px; "Ecrã inteiro" e "Histórico" na reunião) se
   percebem;
-- um ensaio pontual com os **serviços de moradas verdadeiros** (só foram ensaiados com respostas fictícias,
-  menos 2 pedidos feitos no ensaio das obras);
-- se lhe serve a casa de onde vem cada nome no Quadro por obras (ou se prefere os nomes sós, como nas casas);
 - se lhe serve a nota da lotação nas casas cujos lugares são os moradores (ou se prefere não poder mudar a
   lotação nessas casas, ou nada);
-- se aceita que na Tabela não se mudem os campos da pessoa nem se dê "Saiu da empresa…" (só na ficha do Mapa e
-  do Quadro, pelo "Ver no mapa");
-- continua por decidir a partir de quando o Excel do Michael deixa de ser mantido (agora já se criam pessoas
-  no programa).
 
 ## 04/10/2026 — Obras no Quadro, aviso do contrato, "sempre cheia" e "Ver no mapa" na Tabela
 

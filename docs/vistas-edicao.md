@@ -68,10 +68,12 @@ desaparece.
   "Recolher ⌄" volta a fechá-la. Recolhe quando o foco muda a partir da vista; as ligações e os nomes dentro da
   ficha não a recolhem. Medido a 375×667, a editar: ficam à vista uns 120–135 px de linhas/blocos (antes ~30);
   a ler, 284 px. No PC e no Mapa a ficha fica igual.
-  **Na Tabela não há ficha da pessoa** (04/10/2026, `haFichaDaPessoa`; antes era uma ficha compacta aberta
-  pelo ⓘ, que o Rafael achou inútil: só o "Ver no mapa" servia, e passou a ser o botão da linha). Uma pessoa
-  em foco na Tabela (pesquisa, nome na ficha de uma casa) só realça a linha. No Mapa e no Quadro a ficha da
-  pessoa é a completa; as fichas de casa e de carrinha abrem em todas as vistas. A vista decide-se no
+  **Na Tabela, fora do modo de edição, não há ficha da pessoa** (04/10/2026, `haFichaDaPessoa`; antes era uma
+  ficha compacta aberta pelo ⓘ, que o Rafael achou inútil: só o "Ver no mapa" servia, e passou a ser o botão
+  da linha). **No modo de edição, a do botão "Editar…" da linha** (05/10/2026; secção Tabela): a mesma ficha
+  editável do Mapa e do Quadro, só para essa pessoa (prop `editar` do `PainelFoco`). Uma pessoa em foco na
+  Tabela por outra via (pesquisa, nome na ficha de uma casa) só realça a linha. No Mapa e no Quadro a ficha
+  da pessoa é a completa; as fichas de casa e de carrinha abrem em todas as vistas. A vista decide-se no
   `PainelFoco` (prop `vista`, senão a vista ativa).
   **Aviso do contrato só na ficha da casa** (04/10/2026): no resumo (ficha recolhida) e no corpo. Não aparece
   nos cartões nem nas pastilhas de resumo do Mapa, na lista lateral, no Quadro (nem na reunião) nem na
@@ -205,19 +207,22 @@ desaparece.
 - **Nome**: uma só etiqueta `NomeVista nome=… semSigla` (fundo da cor do cliente, volante, "?", ponto âmbar)
   com o **nome completo com maiúsculas normais** (`dominio/nomes.ts`, só para mostrar; sem nome completo, o
   nome curto) e sem a sigla (a coluna Cliente está ao lado). A Tabela ordena por ele; o filtro encontra também
-  pelo nome curto e pelos nomes alternativos. Largura da etiqueta: 12 rem no telemóvel (9 rem a editar),
+  pelo nome curto e pelos nomes alternativos. Largura da etiqueta: 12 rem no telemóvel (8 rem a editar),
   16 rem no PC, 18,5 rem a partir de 1536 px; o nome inteiro está no title. A folha Pessoas do Excel segue a
   Tabela (uma só coluna Nome).
 - **Ler** (04/10/2026: a linha já mostra tudo): clicar numa linha **só a realça** (fundo azul claro e barra
-  à esquerda; outro clique tira o realce) e **nunca abre ficha**. **Na Tabela não há ficha da pessoa**
-  (pedido do Rafael, 04/10/2026: a ficha que o ⓘ abria era inútil, só o "Ver no mapa" servia). A seguir ao
-  nome (na célula presa à esquerda, à vista em qualquer largura e no modo de edição) está o botão **"Ver no
-  mapa"**: cinzento, sempre à vista; no PC o ícone do mapa e o texto "Ver no mapa", no telemóvel (< 768 px) só
-  o ícone, para a coluna presa não crescer (title e aria-label "Ver <nome> no mapa"; 28 px de altura, com o
-  alvo de toque alargado a 40 × 32 px sem sair da linha), que chama `verNoMapa` (muda para o Mapa e lá põe
+  à esquerda; outro clique tira o realce) e **nunca abre ficha**. **Fora do modo de edição, na Tabela não há
+  ficha da pessoa** (pedido do Rafael, 04/10/2026: a ficha que o ⓘ abria era inútil, só o "Ver no mapa"
+  servia; no modo de edição, ver "Editar…" abaixo). A seguir ao
+  nome (na célula presa à esquerda, à vista em qualquer largura e nos dois modos) está o botão **"Ver no
+  mapa"**: cinzento, sempre à vista; fora do modo de edição, no PC, o ícone do mapa e o texto "Ver no mapa",
+  no telemóvel (< 768 px) só o ícone, para a coluna presa não crescer (no modo de edição só o ícone em
+  qualquer largura, a seguir ao "Editar…": ver abaixo); title e aria-label "Ver <nome> no mapa"; 28 px de
+  altura, com o alvo de toque alargado a 40 × 32 px sem sair da linha (a seguir ao "Editar…" só 2 px para a
+  esquerda, para não entrar no lápis). Chama `verNoMapa` (muda para o Mapa e lá põe
   a pessoa em foco; fora do modo de edição a linha fica marcada para quando se voltar). Na linha de quem saiu
   da empresa (M2, "Mostrar quem saiu"; não está no mapa) o mesmo sítio tem "Voltou à empresa…" ("Voltou…" no
-  telemóvel; `botaoDaLinha`, `abrirVoltouAEmpresa`): entra no modo de edição, se preciso, e abre o diálogo de
+  telemóvel; `botoesDaLinha`, `abrirVoltouAEmpresa`): entra no modo de edição, se preciso, e abre o diálogo de
   quem volta. Uma pessoa em foco
   na Tabela (pesquisa do cabeçalho, nome na ficha de uma casa) só realça a linha (barra azul-escura,
   #1d4ed8); um clique numa linha tira-lhe o foco e fica só a linha marcada (barra mais clara, #60a5fa;
@@ -230,7 +235,32 @@ desaparece.
   Cliente): nem esbate linhas nem mostra "Só <cliente> · Todos". Nas fichas abertas na Tabela e no Quadro
   também não esbate os nomes (`NomeChip` só esbate no Mapa).
 - **Editar**: coluna de caixas de seleção (e "todas as visíveis" no cabeçalho); clique na linha = seleção
-  como nos nomes (Ctrl/⌘, Shift pela ordem visível), **sem abrir ficha**. Células **Casa, Carrinha, Obra** passam a listas
+  como nos nomes (Ctrl/⌘, Shift pela ordem visível), **sem abrir ficha**.
+- **"Editar…" (05/10/2026)**: o Rafael "não aceito" que os dados da pessoa e o "Saiu da empresa…" só se
+  mudassem na ficha do Mapa e do Quadro; das duas opções que lhe mostrámos escolheu o botão. **Só no modo de
+  edição**, a seguir ao nome (na célula presa), vem primeiro **"Editar…"** (com contorno; lápis e "Editar…"
+  a partir de md, só o lápis no telemóvel; title e aria-label "Editar <nome>", `aria-expanded` com a ficha
+  aberta) e depois o **"Ver no mapa" só com o ícone** (`botoesDaLinha`), para a coluna presa não crescer:
+  no PC a célula fica como antes com o "Ver no mapa" escrito (o "Editar…" ocupa o lugar do texto); no
+  telemóvel a etiqueta do nome passa a 8 rem a editar e a coluna cresce ~1 rem. "Editar…" abre a **mesma
+  ficha editável da pessoa** do Mapa e do Quadro (`PainelFoco`: lápis em cada campo — nº, nome, apelidos,
+  nome no mapa, cliente, telefone, carta —, "Marcar indisponível…", "Mudar casa/carrinha/obra…", "Tornar
+  condutor", "Saiu da empresa…"), posta como as da casa e da carrinha (no PC à direita, arrastável; no
+  telemóvel em baixo, recolhida), com a linha da pessoa realçada (barra azul-escura) e à vista
+  (`manterLinhaAVista`), também quando a ficha muda o que ordena ou filtra a Tabela (o nome com a Tabela por
+  Nome, a casa com o filtro Casa…): a linha volta a pôr-se à vista e, se deixou de passar os filtros sem
+  ninguém mexer neles, limpam-se com o aviso "Filtros limpos para mostrar …" (`acaoLinhaDaFicha`; quem
+  escreve no filtro fica com ele). Só esse botão a abre (`useEstadoTabela.editar`, `editarQueFica`,
+  `haFichaDaPessoa`): a pesquisa do cabeçalho e os nomes continuam só a realçar a linha, e o clique numa
+  linha só a seleciona (com a ficha aberta não lhe tira o foco: `cliqueTiraOFoco`). ✕ e Esc fecham-na e
+  devolvem o foco do teclado ao "Editar…" da linha; o foco ir para outra coisa (pesquisa, ligações da
+  ficha) esquece-a; Guardar e Cancelar (sair do modo de edição) fecham-na. Isto vale também com a Tabela
+  noutra vista (`seguirEditar` segue a loja): "Editar…", Quadro, ✕ e depois o nome dela no Quadro não
+  reabre a ficha ao voltar à Tabela; se o foco ficou nela (Editar… → Quadro → Tabela), a ficha continua.
+  Depois de "Saiu da empresa…" a
+  ficha fecha, a pessoa deixa de estar em foco e a linha esconde-se (salvo com "Mostrar quem saiu", onde tem
+  só "Voltou à empresa…", como antes; quem saiu não tem "Editar…"). Fora do modo de edição continua só o
+  "Ver no mapa", com o texto no PC. Células **Casa, Carrinha, Obra** passam a listas
   (`<select>` nativo: funciona no telemóvel e no teclado) com a lotação da simulação ("Casa 2 · 6/6"), e
   "Fora das casas CMF" / "Sem transporte da empresa" / "Sem obra"; mudar = `moverComAviso` (um passo, Ctrl+Z
   desfaz). **Condutor**: botão que liga/desliga (`definirCondutorComAviso`). Células alteradas a âmbar com
@@ -251,7 +281,8 @@ desaparece.
 ## M2 nas vistas (05/10/2026)
 
 Desenho em `docs/m2.md`; aqui só o que muda na Tabela, no Quadro e na reunião.
-- **Tabela**: coluna "Indisponível" ("até 12/10", "sem regresso"; "a partir de 20/10" a cinzento quando só
+- **Tabela**: no modo de edição, "Editar…" a seguir ao nome abre a ficha editável da pessoa (05/10/2026;
+  secção Tabela). Coluna "Indisponível" ("até 12/10", "sem regresso"; "a partir de 20/10" a cinzento quando só
   há um período futuro; ordena pela data de regresso) e filtro "Indisponível" (Indisponíveis hoje,
   Disponíveis hoje, Com períodos futuros). No modo de edição a célula tem "Marcar…" ou "Já voltou".
   "Mostrar quem saiu" (não é um filtro: "Limpar filtros" não a tira) junta quem saiu da empresa, esbatido e

@@ -163,10 +163,32 @@ function pessoa(id: string) {
 }
 
 describe('ficha da pessoa por vista', () => {
-  it('na Tabela não há ficha da pessoa (só "Ver no mapa" na linha); no Mapa e no Quadro há', () => {
-    expect(haFichaDaPessoa('tabela')).toBe(false);
-    expect(haFichaDaPessoa('quadro')).toBe(true);
-    expect(haFichaDaPessoa('mapa')).toBe(true);
+  const ana = { id: 'p1', ativa: true };
+  const fora = { modoEdicao: false, editar: null };
+  const aEditar = { modoEdicao: true, editar: 'p1' };
+
+  it('no Mapa e no Quadro há sempre, em qualquer modo', () => {
+    for (const vista of ['mapa', 'quadro'] as const) {
+      expect(haFichaDaPessoa(vista, ana, fora)).toBe(true);
+      expect(haFichaDaPessoa(vista, ana, { modoEdicao: true, editar: null })).toBe(true);
+    }
+  });
+
+  it('na Tabela, fora do modo de edição, nunca (só "Ver no mapa" na linha), mesmo com um "Editar…" esquecido', () => {
+    expect(haFichaDaPessoa('tabela', ana, fora)).toBe(false);
+    expect(haFichaDaPessoa('tabela', ana, { modoEdicao: false, editar: 'p1' })).toBe(false);
+  });
+
+  it('na Tabela, no modo de edição, só a da pessoa do "Editar…" (a pesquisa e os nomes só realçam)', () => {
+    expect(haFichaDaPessoa('tabela', ana, aEditar)).toBe(true);
+    expect(haFichaDaPessoa('tabela', ana, { modoEdicao: true, editar: null })).toBe(false);
+    expect(haFichaDaPessoa('tabela', { id: 'p2', ativa: true }, aEditar)).toBe(false);
+  });
+
+  it('na Tabela, depois de "Saiu da empresa…", a ficha fecha', () => {
+    expect(haFichaDaPessoa('tabela', { id: 'p1', ativa: false }, aEditar)).toBe(false);
+    // No Mapa e no Quadro fica (com a marca "saiu").
+    expect(haFichaDaPessoa('quadro', { id: 'p1', ativa: false }, aEditar)).toBe(true);
   });
 });
 

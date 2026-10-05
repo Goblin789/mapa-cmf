@@ -80,9 +80,18 @@ camadas, lista lateral, **modo de edição** (rascunho, arrastar, Mover para…,
 **login Microsoft** (aplicação "Mapa CMF" no Entra), **tempo real**, **vistas Tabela e Quadro**, **Excel**,
 **modo reunião** e **cópias de segurança**.
 - A Tabela e o Quadro editam como o mapa (ficha, pesquisa, seleção, arrastar, células) e nada muda de vista
-  sozinho: só o "Ver no mapa" da ficha e o botão "Ver no mapa" de cada linha da Tabela levam ao Mapa (na
-  Tabela não há ficha da pessoa). O Quadro agrupa por Casas | Carrinhas | Obras e filtra só por clientes
-  (`docs/vistas-edicao.md`, `vistas/mostrar.ts`).
+  sozinho: só o "Ver no mapa" da ficha e o botão "Ver no mapa" de cada linha da Tabela levam ao Mapa. Na
+  Tabela, fora do modo de edição, não há ficha da pessoa; no modo de edição o botão "Editar…" a seguir ao nome
+  (com o "Ver no mapa" só em ícone) abre a mesma ficha editável do Mapa e do Quadro (05/10/2026, na main e
+  por publicar; `haFichaDaPessoa`, `botoesDaLinha`, `editarQueFica`, `seguirEditar`); a pesquisa e o clique
+  na linha só realçam/selecionam.
+  O Quadro agrupa por Casas | Carrinhas | Obras (nas obras, cada nome com a casa de onde vem) e filtra só por
+  clientes (`docs/vistas-edicao.md`, `vistas/mostrar.ts`).
+- Apelidos opcionais (05/10/2026, na main e por publicar): vazios com `""` (coluna NOT NULL, sem migração; exceção em `campos.ts`,
+  como a morada do local).
+- **O Excel do Michael deixa de ser mantido, se tudo correr bem, na quarta-feira 07/10/2026 de manhã**: daí em
+  diante o mapa é a fonte única e não se volta a sincronizar a partir do Excel. Pendente combinado com o Rafael:
+  ensaio juntos num telemóvel verdadeiro e com os serviços de moradas ligados (`docs/decisoes.md`).
 - `POST /api/lotes` grava tudo ou nada (409 se alguém mudou as mesmas coisas; cada frase diz quem e quando); operações
   `mover`, `condutor` e `dormida`. Autor = e-mail (UPN) de quem tem sessão; 'local' no modo local.
   O histórico mostra o nome (`autorNome`).
@@ -92,7 +101,7 @@ camadas, lista lateral, **modo de edição** (rascunho, arrastar, Mover para…,
 - Todos os nomes têm o mesmo texto (`COR_TEXTO_NOMES`); as cores dos clientes são claras (ver `docs/cores.md`).
 - Tipos da API em `src/dominio/api.ts`; formato das matrículas em `src/dominio/matricula.ts`.
 
-**M2 na main desde 05/10/2026 (0e8bb72), ensaiado; publica-se com o próximo deploy** (`docs/m2.md`; decisões em `docs/decisoes.md`, "M2"): domínio (`campos.ts`, `operacoes.ts` com 'campo' e
+**M2 publicado a 05/10/2026 em https://mapa.cmf-lux.lu** (`docs/m2.md`; decisões em `docs/decisoes.md`, "M2"): domínio (`campos.ts`, `operacoes.ts` com 'campo' e
 'registo', `reverter.ts`, `indisponibilidade.ts`, `problemas.ts`, `datas.ts`), migração 0004
 (`indisponibilidades`, `problemas`, `lotes.reverte`), `POST /api/lotes` com as operações novas e `reverte`,
 `POST /api/geocodificar(/inverso)`, sincronizar sem desfazer edições, e a loja (`hoje`, `reverte`). As
@@ -104,6 +113,8 @@ servidor com `MORADAS=desligadas`** (503, nada sai para os serviços). O `GET /a
 e problemas dos últimos 30 dias. Construído na worktree `C:/dev/mapa-cmf-m2` e juntado à main com as
 decisões de 04–05/10 (Quadro Casas | Carrinhas | Obras sem filtro "Obra", contrato só na ficha da casa, sem
 "sempre cheia", Tabela sem ficha da pessoa e com "Voltou à empresa…" para quem saiu).
+**Na main, por publicar** (respostas do Rafael de 05/10/2026, depois do deploy do M2): o "Editar…" da Tabela
+no modo de edição e os apelidos opcionais (ver "Estado atual" acima); publicam-se com o próximo deploy.
 No compactar, `resolvidoEm` de um problema e `ativa`/marcas "a confirmar" de uma pessoa NÃO se dobram na
 criação: ficam 'campo' a seguir (criar e resolver no mesmo rascunho grava-se). As reversões do rascunho saem
 por `reversoesDoRascunho()` (loja) para o registo do localStorage (também no `protegerRascunho`, quando a

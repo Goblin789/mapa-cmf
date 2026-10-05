@@ -298,7 +298,10 @@ const REGRAS: { readonly [E in EntidadeEditavel]: Readonly<Record<CampoEditavel<
   pessoa: {
     numero: { tipo: 'texto', max: LIMITES.numero, vazio: 'opcional' },
     nome: textoCurto('obrigatorio'),
-    apelidos: textoCurto('obrigatorio'),
+    // Exceção aos opcionais (que ficam vazios com null): os apelidos podem faltar (o Rafael, 05/10/2026:
+    // "não" são obrigatórios numa pessoa nova), mas a coluna é NOT NULL e há pessoas importadas com "" (só
+    // o nome curto na lista). Sem migração, ficam vazios com "", como a morada do local; null é recusado.
+    apelidos: { tipo: 'texto', max: LIMITES.textoCurto, vazio: 'livre' },
     nomeCurto: textoCurto('obrigatorio'),
     clienteId: { tipo: 'id', nulo: false },
     telefone: { tipo: 'texto', max: LIMITES.telefone, vazio: 'opcional' },
@@ -374,7 +377,10 @@ export function chaveMatricula(matricula: string): string {
 function erroDaRegra(regra: Regra, valor: ValorCampo): string | null {
   switch (regra.tipo) {
     case 'texto': {
-      if (valor === null) return regra.vazio === 'opcional' ? null : 'não pode ficar vazio.';
+      if (valor === null) {
+        if (regra.vazio === 'opcional') return null;
+        return regra.vazio === 'livre' ? 'fica vazio com "", não com null.' : 'não pode ficar vazio.';
+      }
       if (typeof valor !== 'string') return 'tem de ser um texto.';
       if (valor === '') {
         if (regra.vazio === 'livre') return null;
@@ -434,7 +440,8 @@ function erroDaRegra(regra: Regra, valor: ValorCampo): string | null {
  * Erro (frase pronta a mostrar, ex.: "Lotação: tem de ser um número inteiro de 0 a 60.") se o valor não
  * serve para o campo: tipo, obrigatório, tamanho (LIMITES), textos aparados e sem quebras de linha, dia
  * AAAA-MM-DD que exista, país conhecido, coordenadas dentro de REGIAO_MAPA, matrícula no formato (até
- * LIMITES.matriculasAlternativas outras, sem repetidas). Os opcionais vazios são null (nunca "").
+ * LIMITES.matriculasAlternativas outras, sem repetidas). Os opcionais vazios são null (nunca ""), menos
+ * os textos 'livre' (a morada do local e os apelidos da pessoa), que ficam vazios com "" (colunas NOT NULL).
  * NÃO verifica referências (cliente, local) nem unicidade: isso vê-se no estado final (validarOperacoes).
  * null = serve.
  */

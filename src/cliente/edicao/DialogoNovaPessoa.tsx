@@ -1,6 +1,6 @@
-// Nova pessoa (M2, docs/m2.md, "Fichas"): nome e apelidos, nome no mapa (proposto como "Nome A.", a partir
-// do 1.º nome e da inicial do último apelido; único), nº (opcional, único), cliente, telefone e carta
-// (opcionais) e, se se quiser, a casa e a carrinha. Entra como UM passo do rascunho: a operação 'registo'
+// Nova pessoa (M2, docs/m2.md, "Fichas"): nome e apelidos (opcionais: o Rafael, 05/10/2026), nome no mapa
+// (proposto como "Nome A.", a partir do 1.º nome e da inicial do último apelido; sem apelidos, só o nome;
+// único), nº (opcional, único), cliente, telefone e carta (opcionais) e, se se quiser, a casa e a carrinha. Entra como UM passo do rascunho: a operação 'registo'
 // (novoId('pessoa'); sem casa, carrinha nem obra, ativa, sem marcas) e, no mesmo passo, os 'mover' para a
 // casa e a carrinha escolhidas. Valida-se o passo com o domínio (validarOperacoes) antes de aplicar. No fim,
 // a pessoa nova fica em foco. Abre por abrirNovaPessoa() (o "Novo…" da barra), só no modo de edição.
@@ -154,7 +154,7 @@ export function DialogoNovaPessoa({ aoFechar }: { aoFechar: () => void }) {
             className={CLASSE_CAMPO}
           />
         </Campo>
-        <Campo rotulo="Apelidos" id={ids.apelidos}>
+        <Campo rotulo="Apelidos" id={ids.apelidos} opcional>
           <input
             id={ids.apelidos}
             type="text"

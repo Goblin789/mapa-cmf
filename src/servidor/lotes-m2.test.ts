@@ -478,6 +478,62 @@ describe('POST /api/lotes (M2)', () => {
     expect(estado().casas.find((c) => c.id === 'casa-monte')?.lotacao).toBe(4);
   });
 
+  it('apelidos opcionais (05/10/2026): pessoa nova sem apelidos e apelidos apagados gravam-se com ""; null → 400', async () => {
+    const semApelidos: Pessoa = {
+      id: `pessoa-${ID}09`,
+      numero: null,
+      numeroOriginal: null,
+      apelidos: '',
+      nome: 'Iva',
+      nomeCurto: 'Iva',
+      nomesAlternativos: [],
+      clienteId: 'cli-beta',
+      obraId: null,
+      casaId: null,
+      carrinhaId: null,
+      casaAConfirmar: false,
+      carrinhaAConfirmar: false,
+      telefone: null,
+      temCarta: null,
+      cartaValidade: null,
+      ativa: true,
+    };
+    const outra = completo().pessoas.find((p) => p.ativa && p.apelidos !== '');
+    if (!outra) throw new Error('Faltam pessoas com apelidos nos dados fictícios');
+    const r = await postar({
+      versaoBase: estado().versao,
+      operacoes: [
+        operacaoCriar('pessoa', semApelidos),
+        mover(semApelidos.id, 'casaId', null, 'casa-monte'),
+        campo('pessoa', outra.id, 'apelidos', outra.apelidos, ''),
+      ],
+    });
+    expect(r.status).toBe(201);
+    const e = estado();
+    expect(e.pessoas.find((p) => p.id === semApelidos.id)).toMatchObject({
+      apelidos: '',
+      casaId: 'casa-monte',
+    });
+    expect(e.pessoas.find((p) => p.id === outra.id)?.apelidos).toBe('');
+    // No Histórico (pela ordem das fases da gravação), pelo nome no mapa; os apelidos apagados são "—".
+    expect(lerHistorico(bd, 1)[0]?.alteracoes.map((a) => a.descricao)).toEqual([
+      'Iva — entrou (Construtora Beta)',
+      `${outra.nomeCurto} — apelidos: ${outra.apelidos} → —`,
+      'Iva — casa: Fora das casas CMF → Casa Monte',
+    ]);
+    // Vazio é "" (a coluna é NOT NULL): null é recusado e nada se grava.
+    const versao = estado().versao;
+    const r2 = await postar({
+      versaoBase: versao,
+      operacoes: [campo('pessoa', semApelidos.id, 'apelidos', '', null)],
+    });
+    expect(r2.status).toBe(400);
+    expect(((await r2.json()) as { erros: string[] }).erros).toEqual([
+      'operacoes[0].para: Apelidos: fica vazio com "", não com null.',
+    ]);
+    expect(estado().versao).toBe(versao);
+  });
+
   it('local "oficina", campo que não se edita e valor fora dos limites → 400 com frases em português', async () => {
     const r1 = await postar({
       versaoBase: 1,

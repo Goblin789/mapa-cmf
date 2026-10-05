@@ -21,9 +21,11 @@
 // copiam-se). No mapa, arrastada, continua a acabar por cima da legenda. No telemóvel fica como estava.
 // Cada vista (Mapa, Tabela, Quadro) lembra a sua posição: na Tabela a ficha arrastada para a esquerda tapa
 // a coluna dos nomes, no Quadro não.
-// Na Tabela não há ficha da PESSOA (fichas.ts, haFichaDaPessoa): a linha já mostra tudo e tem o seu botão
-// "Ver no mapa"; uma pessoa em foco na Tabela só realça a linha. As fichas de casa e carrinha abrem em
-// todas as vistas. A vista sai da loja da vista (ou da prop `vista`).
+// Na Tabela a ficha da PESSOA só abre no modo de edição, pelo botão "Editar…" da linha (fichas.ts,
+// haFichaDaPessoa; prop `editar`): é a mesma ficha editável do Mapa e do Quadro. Fora disso a linha já
+// mostra tudo e tem o seu botão "Ver no mapa"; uma pessoa em foco na Tabela (pesquisa, nomes) só realça a
+// linha. As fichas de casa e carrinha abrem em todas as vistas. A vista sai da loja da vista (ou da prop
+// `vista`).
 // O aviso do contrato de uma casa só aparece aqui, na ficha da casa (fora dela, só no diálogo Guardar).
 // M2 (docs/m2.md): a moldura e as peças do corpo estão em MolduraFicha.tsx; a ficha da obra (FichaObra.tsx),
 // a secção Indisponível da pessoa (SeccaoIndisponivel.tsx) e a dos problemas da casa/carrinha
@@ -158,6 +160,8 @@ function CamposDaPessoa({ pessoa, indices }: { pessoa: Pessoa; indices: Indices 
         editor={{ tipo: 'texto', opcional: true, max: LIMITES.numero }}
       />
       <CampoFicha entidade="pessoa" id={pessoa.id} campo="nome" valor={pessoa.nome} editor={TEXTO_CURTO} />
+      {/* Os apelidos podem ficar vazios, mas com "" e não null (campos.ts): por isso o editor não é o
+          dos opcionais. */}
       <CampoFicha
         entidade="pessoa"
         id={pessoa.id}
@@ -768,15 +772,19 @@ function FichaCarrinha({
 
 /**
  * @param lugar 'mapa' (sobre o mapa, no App) ou 'vista' (a Tabela e o Quadro montam-na por cima da sua área).
- * @param vista na vista, qual delas é ('tabela' = sem ficha da pessoa). Por omissão, a vista ativa
- *   (vistas/vista.ts): cada vista só está montada enquanto é a ativa.
+ * @param vista na vista, qual delas é ('tabela' = sem ficha da pessoa, salvo a do `editar`). Por omissão, a
+ *   vista ativa (vistas/vista.ts): cada vista só está montada enquanto é a ativa.
+ * @param editar na Tabela, a pessoa do último "Editar…" da linha (só abre no modo de edição e enquanto for
+ *   o foco; vistas/linhasTabela.ts, editarQueFica).
  */
 export function PainelFoco({
   lugar = 'mapa',
   vista,
+  editar = null,
 }: {
   lugar?: LugarFicha;
   vista?: Exclude<VistaFicha, 'mapa'>;
+  editar?: Id | null;
 }) {
   const vistaAtiva = useVista((s) => s.vista);
   const vistaFicha: VistaFicha =
@@ -791,7 +799,7 @@ export function PainelFoco({
       <ContextoVistaFicha.Provider value={vistaFicha}>
         <ContextoRecolher.Provider value={recolher}>
           <ContextoPosicao.Provider value={posicao}>
-            <Ficha />
+            <Ficha editar={editar} />
           </ContextoPosicao.Provider>
         </ContextoRecolher.Provider>
       </ContextoVistaFicha.Provider>
@@ -832,12 +840,13 @@ function useRecolher(ativo: boolean): Recolher | null {
   );
 }
 
-function Ficha() {
+function Ficha({ editar }: { editar: Id | null }) {
   const foco = useLoja((s) => s.foco);
   const indices = useLoja((s) => s.indices);
   const dormidas = useLoja((s) => s.dormidas);
   const definirFoco = useLoja((s) => s.definirFoco);
-  const comFichaDaPessoa = haFichaDaPessoa(useContext(ContextoVistaFicha));
+  const modoEdicao = useLoja((s) => s.modoEdicao);
+  const vistaFicha = useContext(ContextoVistaFicha);
   const temFoco = foco !== null;
 
   // Esc fecha a ficha, a não ser que outro elemento já o tenha tratado (pesquisa, popovers).
@@ -854,8 +863,9 @@ function Ficha() {
 
   if (foco.tipo === 'pessoa') {
     const pessoa = indices.pessoas.get(foco.id);
-    // Na Tabela, nada: a linha da pessoa fica realçada (e tem o seu "Ver no mapa").
-    if (!pessoa || !comFichaDaPessoa) return null;
+    // Na Tabela, salvo a do "Editar…" no modo de edição, nada: a linha da pessoa fica realçada (e tem o seu
+    // "Ver no mapa").
+    if (!pessoa || !haFichaDaPessoa(vistaFicha, pessoa, { modoEdicao, editar })) return null;
     return <FichaPessoa key={pessoa.id} pessoa={pessoa} indices={indices} />;
   }
   if (foco.tipo === 'casa') {

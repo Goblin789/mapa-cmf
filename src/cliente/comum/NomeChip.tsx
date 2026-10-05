@@ -69,7 +69,8 @@ export function NomeChip({
   const apagado = noMapa && clienteDestacado !== null && clienteDestacado !== clienteId && !selecionado;
   const aConfirmar = pessoa.casaAConfirmar || pessoa.carrinhaAConfirmar;
   const titulo = [
-    `${pessoa.nome} ${pessoa.apelidos}`,
+    // Sem apelidos (opcionais desde 05/10/2026) fica só o nome, sem espaço a mais.
+    `${pessoa.nome} ${pessoa.apelidos}`.trim() || pessoa.nomeCurto,
     condutor ? 'condutor' : null,
     cliente?.nome,
     aConfirmar ? 'a confirmar' : null,

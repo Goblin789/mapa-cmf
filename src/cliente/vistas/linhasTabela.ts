@@ -439,8 +439,8 @@ export function textoContagem(mostradas: number, total: number, comFiltros: bool
 // --- Foco e "mostrar" -----------------------------------------------------------------------------
 
 /**
- * O que está em foco: uma pessoa (na Tabela, sem ficha: só o realce da linha), casa, carrinha ou (M2)
- * obra.
+ * O que está em foco: uma pessoa (na Tabela só o realce da linha, salvo a ficha aberta pelo "Editar…" no
+ * modo de edição), casa, carrinha ou (M2) obra.
  */
 export type FocoTabela = { tipo: 'pessoa' | 'casa' | 'carrinha' | 'obra'; id: Id } | null;
 
@@ -466,13 +466,107 @@ export function realceDaLinha(
 
 export type RealceLinha = 'foco' | 'marcada' | 'ligada' | null;
 
+/** Um botão a seguir ao nome, na célula presa da Tabela. */
+export interface BotaoDaLinha {
+  /**
+   * 'editar' = "Editar…" (só no modo de edição): abre a ficha editável da pessoa (a mesma do Mapa e do
+   * Quadro); 'ver-no-mapa' = verNoMapa; 'voltou' = "Voltou à empresa…" (abrirVoltouAEmpresa).
+   */
+  tipo: 'editar' | 'ver-no-mapa' | 'voltou';
+  /**
+   * Com o texto a partir de md ("Editar…", "Ver no mapa", "Voltou à empresa…"); no telemóvel só o ícone
+   * ("Voltou…" no de quem saiu). false = só o ícone em qualquer largura.
+   */
+  comTexto: boolean;
+}
+
 /**
- * O botão a seguir ao nome (na célula presa): "Ver no mapa" (verNoMapa) ou, na linha de quem saiu da empresa
- * (só com "Mostrar quem saiu"; não está no mapa), "Voltou à empresa…" (abrirVoltouAEmpresa). Na Tabela não
- * há ficha da pessoa: é por aqui que quem saiu volta.
+ * Os botões a seguir ao nome, por ordem (docs/vistas-edicao.md, Tabela):
+ * - fora do modo de edição: "Ver no mapa" (pedido do Rafael, 04/10/2026; na Tabela não há ficha da pessoa);
+ * - no modo de edição: "Editar…" (o Rafael, 05/10/2026: os dados da pessoa e "Saiu da empresa…" também se
+ *   mudam na Tabela, na mesma ficha do Mapa e do Quadro) e "Ver no mapa" só com o ícone, para a coluna presa
+ *   do nome não crescer;
+ * - na linha de quem saiu (só com "Mostrar quem saiu"; não está no mapa), nos dois modos, só "Voltou à
+ *   empresa…": é por aqui que volta; os dados dela mudam-se depois de voltar.
  */
-export function botaoDaLinha(linha: Pick<LinhaTabela, 'saiu'>): 'ver-no-mapa' | 'voltou' {
-  return linha.saiu ? 'voltou' : 'ver-no-mapa';
+export function botoesDaLinha(linha: Pick<LinhaTabela, 'saiu'>, modoEdicao: boolean): BotaoDaLinha[] {
+  if (linha.saiu) return [{ tipo: 'voltou', comTexto: true }];
+  if (!modoEdicao) return [{ tipo: 'ver-no-mapa', comTexto: true }];
+  return [
+    { tipo: 'editar', comTexto: true },
+    { tipo: 'ver-no-mapa', comTexto: false },
+  ];
+}
+
+/**
+ * A pessoa do "Editar…" que continua com a ficha aberta na Tabela (useEstadoTabela.editar): só no modo de
+ * edição (Guardar e Cancelar fecham-na) e enquanto ela for o foco. O foco muda para outra coisa (✕, Esc,
+ * a pesquisa do cabeçalho, um nome ou a casa da ficha): esquece-se, e a pessoa só volta a ter ficha na
+ * Tabela com outro "Editar…" (a pesquisa e os nomes só realçam a linha). null = nenhuma.
+ */
+export function editarQueFica(editar: Id | null, foco: FocoTabela, modoEdicao: boolean): Id | null {
+  if (editar === null || !modoEdicao) return null;
+  return foco?.tipo === 'pessoa' && foco.id === editar ? editar : null;
+}
+
+/**
+ * O clique numa linha tira o foco à pessoa em foco? Sim quando ela só tem a linha realçada (pesquisa, nome
+ * na ficha de uma casa: não ficam duas realçadas); não quando tem a ficha aberta pelo "Editar…"
+ * (`comFicha`): clicar noutras linhas só as seleciona, como com a ficha de uma casa aberta.
+ */
+export function cliqueTiraOFoco(focoPessoaId: Id | null, comFicha: Id | null): boolean {
+  return focoPessoaId !== null && focoPessoaId !== comFicha;
+}
+
+/** O que a loja da Tabela segue da loja da app para esquecer o "Editar…" (editarQueFica). */
+export interface EstadoParaEditar {
+  foco: FocoTabela;
+  modoEdicao: boolean;
+}
+
+/**
+ * Esquece o "Editar…" (useEstadoTabela.editar) logo que o foco deixa de ser essa pessoa ou se sai do modo de
+ * edição, também com a Tabela desmontada (noutra vista): senão, a pessoa voltava a ficar em foco no Mapa ou
+ * no Quadro (pesquisa, nome) e, ao voltar à Tabela, a ficha dela abria sem o botão. Enquanto o foco fica
+ * nela (Editar… → Quadro → Tabela), a ficha continua. Devolve a função que desliga.
+ */
+export function seguirEditar(
+  loja: { subscribe: (ouvir: (estado: EstadoParaEditar) => void) => () => void },
+  obterEditar: () => Id | null,
+  definirEditar: (editar: Id | null) => void,
+): () => void {
+  return loja.subscribe(({ foco, modoEdicao }) => {
+    const editar = obterEditar();
+    if (editar !== null && editarQueFica(editar, foco, modoEdicao) === null) definirEditar(null);
+  });
+}
+
+/** Onde estava (e está) a linha da pessoa com a ficha aberta na Tabela. */
+export interface LinhaDaFicha {
+  /** A pessoa com a ficha aberta (pelo "Editar…"); null = nenhuma. */
+  id: Id | null;
+  /** O lugar da linha dela nas linhas visíveis (pela ordem atual); -1 = escondida pelos filtros. */
+  indice: number;
+  /** Os filtros (a mesma referência enquanto não mudam). */
+  filtros: FiltrosTabela;
+}
+
+/**
+ * A linha da pessoa com a ficha aberta fica realçada e à vista (o Rafael, 05/10/2026), também quando a
+ * ficha muda o que ordena ou filtra a Tabela (o nome com a Tabela por Nome, a casa com o filtro Casa…):
+ * - 'mostrar': a linha mudou de lugar (ou voltou a ver-se): volta a pôr-se à vista;
+ * - 'limpar-filtros': a linha deixou de passar os filtros sem os filtros mudarem (foi a ficha, ou alguém
+ *   noutro computador, que mudou a pessoa): limpam-se, com aviso, como na pesquisa do cabeçalho;
+ * - 'nada': a ficha acabou de abrir (o "Editar…" já põe a linha à vista) ou fechou, a linha não mudou de
+ *   lugar, ou foi quem mexeu nos filtros que a escondeu (a escrever no filtro: não se lhe tira o texto).
+ */
+export function acaoLinhaDaFicha(
+  antes: LinhaDaFicha,
+  agora: LinhaDaFicha,
+): 'mostrar' | 'limpar-filtros' | 'nada' {
+  if (agora.id === null || agora.id !== antes.id || agora.indice === antes.indice) return 'nada';
+  if (agora.indice >= 0) return 'mostrar';
+  return antes.indice >= 0 && agora.filtros === antes.filtros ? 'limpar-filtros' : 'nada';
 }
 
 /**
