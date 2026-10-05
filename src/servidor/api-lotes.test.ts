@@ -356,7 +356,7 @@ describe('POST /api/lotes — onde dorme', () => {
     expect(resposta.status).toBe(400);
     expect(await resposta.json()).toStrictEqual({
       erro: 'Há mudanças que não se podem gravar. Nada foi gravado.',
-      erros: ['O sítio onde dormir "local:nada" não existe.'],
+      erros: ['ZZ 0001 — o sítio onde dormir escolhido já não existe.'],
     });
     expect(fotografia()).toStrictEqual(antes);
   });
@@ -508,7 +508,7 @@ describe('POST /api/lotes — pedidos inválidos (400)', () => {
     [
       'destino inexistente',
       [mover('p-ze', 'casaId', 'casa-ribeira', 'casa-nada')],
-      ['Zé Teste: o destino casa-nada não existe.'],
+      ['Zé Teste: a casa escolhida já não existe.'],
     ],
     [
       'carrinha inexistente',
@@ -518,7 +518,7 @@ describe('POST /api/lotes — pedidos inválidos (400)', () => {
     [
       'obra inexistente',
       [mover('p-ze', 'obraId', 'obra-vale', 'obra-nada')],
-      ['Zé Teste: o destino obra-nada não existe.'],
+      ['Zé Teste: a obra escolhida já não existe.'],
     ],
     [
       'pessoa inativa',

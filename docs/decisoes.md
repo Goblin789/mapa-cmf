@@ -2,6 +2,105 @@
 
 Registo das decisões do Rafael e das escolhas por omissão. Mais recentes primeiro.
 
+## 05/10/2026 — Pedidos do Rafael depois do telemóvel
+
+Depois de experimentar o M2 publicado no telemóvel, o Rafael pediu (palavras dele entre aspas). Desenho em
+`docs/vistas-edicao.md` (Quadro, Tabela). Ensaiado numa cópia da BD (137 pessoas) a 1920, 1366 e 375 px
+(toque) e na reunião a 1920 e 1280.
+1. **"em 'novo' devia ter nova casa e nova obra também e haver maneira de as remover também"**: no menu
+   "Novo…" da barra de edição, Nova pessoa, **Nova casa** e Nova obra (PC e telemóvel); **"Apagar casa…"** no
+   fim da ficha da casa, só no modo de edição (no telemóvel, no fim da ficha aberta). "Apagar obra…" já existia
+   na ficha da obra: ensaiado, funciona e encontra-se no PC e no telemóvel (na ficha recolhida). Regras em
+   `docs/m2.md` ("Casas novas e apagadas"); sem migração. *Escolhas*:
+   - **Criada no programa** sem coluna nova: id "casa-<UUID>" (as dos dados iniciais também começam por
+     "casa-", como "casa-1-puttelange", por isso conta o UUID inteiro); o local 'casa' de uma morada nova é
+     "local-<UUID>" e é o único local de casas que se apaga no programa.
+   - **Nova casa**: nome (único, sem acentos nem maiúsculas), morada = uma que já existe (os locais de casas,
+     com as casas que lá estão: "Himeling, Rue de la Grotte · Casa 1 Puttelange, …") ou uma morada nova com o
+     CampoMorada das obras (procurar e/ou pino; com o serviço de moradas desligado o pino chega e fica "só o
+     sítio no mapa"), apartamento (opcional), lotação (1 a 60), máx. do contrato e tolerado (opcionais, com o
+     aviso do tolerado abaixo do máximo, que também impede criar). Os "lugares iguais aos moradores" não se
+     mostram (falso numa casa nova). Fica no fim da ordem: no Quadro por casas aparece com as outras casas da
+     mesma morada, na zona dos vizinhos (a menos de 500 m) ou no fim da grelha do país da morada. Um passo
+     (Desfazer desfaz o local e a casa); fica em foco.
+   - **Apagar casa…**: serve para as casas dos dados iniciais e para as do programa. A confirmação diz o que
+     impede ("Tem 8 moradores e as carrinhas CF 5011 e LT 4701 dormem lá.") e, como o "Apagar obra…", o botão
+     "Tirar e apagar a casa" faz um só passo: moradores → "Fora das casas CMF" (também quem saiu da empresa e
+     ainda a tinha), carrinhas que lá dormem → onde dorme "por definir", a casa apagada e a morada se foi criada
+     no programa e mais nada a usa (a dos dados iniciais fica). Com problemas por resolver não apaga: diz para
+     os resolver antes. Os problemas resolvidos apagam-se com ela (chave estrangeira): os que o browser conhece
+     no passo, os antigos (mais de 30 dias) no servidor, cada um com a sua linha no Histórico.
+   - **Histórico e Reverter**: "Casa X — criada (morada)" / "Casa X — apagada". Reverter a criação apaga a casa
+     (com moradores entretanto não se reverte: fica nos erros se a morada também foi criada, como a obra que
+     ganhou pessoas, ou em "já não se pode reverter" numa morada que já existia); reverter a apagada volta a pôr a
+     casa com o mesmo id, os moradores, onde dormem as carrinhas e os problemas resolvidos (o que a forma de
+     criar não aceita, como os "lugares iguais aos moradores" ou um problema resolvido, vai a seguir como
+     campo). Quem entretanto saiu da empresa não volta para a casa (fica em "já não se pode reverter").
+   - **Sincronizar**: uma casa criada no programa não sai por não estar em casas.json e aparece no relatório;
+     uma casa dos JSON com o nome de uma do programa é recusada (o nome é único); a apagada no programa não
+     volta.
+   - **Guardar**: secção "Casas novas e apagadas" (a morada criada ou apagada com a casa não se repete).
+   Ensaiado numa cópia da BD a 1920 e a 375 px (toque): Nova casa em Himeling e numa morada nova só com o
+   pino, Guardar, a casa no Mapa, na lista, no Quadro, na Tabela e no "Mover para…", uma pessoa mudada para lá,
+   "Apagar casa…" com o morador → Guardar, Reverter no Histórico → Guardar; Nova obra e "Apagar obra…".
+2. **Telemóvel sem Excel nem dica**: no Quadro saem o botão Excel e a frase "Toque longo num nome para o
+   arrastar."; na Tabela sai o Excel. No PC (a partir de 640 px) o Excel fica. No Quadro do telemóvel, no modo
+   de edição, só aparece a linha de baixo da barra quando há "Confirmar todas as sugestões (N)".
+3. **"na tabela era melhor que os filtros não aparecessem sempre, arranjar maneira de só os abrir quando
+   quisermos"**: o campo "Filtrar por nome, Nº, casa…" fica sempre à vista e, ao lado, o botão **"Filtros"**
+   (com o nº de ligados: "Filtros · 2", azul) abre e fecha o painel com Cliente, Casa, Carrinha, Obra,
+   Indisponível, "Só a confirmar" e "Mostrar quem saiu". **Fechado por omissão**, no telemóvel e no PC; o
+   browser lembra-se (localStorage `mapa-cmf:tabela-filtros`; sem localStorage fica fechado). Com algum filtro
+   ligado, a linha compacta diz "N de M pessoas" e tem "Limpar filtros", também com o painel fechado (um
+   filtro escondido nunca engana). "Mostrar quem saiu" conta no nº do botão (está no painel e muda o que se
+   vê), mas continua a não ser um filtro ("Limpar filtros" não a tira). A dica do modo de edição ("Muda nas
+   células ou seleciona linhas e usa Mover para…") foi para dentro do painel, só no PC; "Confirmar sugestões
+   (N)" fica na linha compacta, no modo de edição, com N > 0. No telemóvel a barra fechada tem 45 px (o campo e
+   "Filtros"); antes tinha sempre os cinco filtros, as caixas e a dica.
+4. **"no quadro casas carrinhas e obras podia ter clientes também dessa maneira e removíamos o que dá para
+   selecionar vários clientes, tanto no telemóvel como no PC"**: o alternador do Quadro passa a **Casas |
+   Carrinhas | Obras | Clientes** (barra do Quadro, telemóvel, cabeçalho da reunião; lembrado no browser) e
+   **sai o filtro dos clientes do Quadro** (as pastilhas no PC, a lista "Cliente" no telemóvel, os filtros no
+   cabeçalho da reunião, "N de M pessoas", "Limpar filtros", os blocos recolhidos e o código que ficou sem
+   uso). Os filtros da Tabela e a legenda do Mapa ficam. No telemóvel o alternador ocupa a 1.ª linha da barra,
+   onde estava "137 pessoas" (a contagem sai no telemóvel: não cabia ao lado das quatro opções).
+   **Por clientes**: um bloco por cliente, pela ordem dos clientes (também os que não têm ninguém, como a lista
+   lateral; "Cliente desconhecido" no fim, se houver), com o cliente efetivo (o da obra, se tiver: o mesmo da
+   lista lateral "Clientes"); a pastilha é o nº de pessoas. *Escolha*: dentro de cada cliente, os nomes vêm
+   agrupados pela casa onde moram, com o nome da casa pequeno por cima de cada grupo ("Fora das casas CMF" no
+   fim), em colunas de cima para baixo; uma casa com mais de 6 nomes parte-se em pedaços iguais, cada um com o
+   nome da casa (senão a coluna seguinte começava com nomes sem casa); os nomes vão sem a sigla (é a do
+   bloco); os blocos pequenos ficam lado a lado. Os blocos dos clientes **não são alvos de largar** (o cliente
+   muda-se na ficha da pessoa) e os nomes não se arrastam (não há para onde); a dica do modo de edição, só no
+   PC, diz "Nos clientes não se larga: o cliente muda-se na ficha da pessoa.". Uma casa ou carrinha em foco
+   realça os moradores/passageiros, como no Quadro por obras (a casa também o nome dela por cima do grupo).
+   Na reunião, a 1920, cabe a 16 px (o Quadro por casas fica a 14 px); o cabeçalho da reunião, sem os
+   filtros, passa de 94 para 84 px a 1920 e de 75 para 67 px a 1280.
+5. **Dois pormenores do último ensaio**: (a) no telemóvel, na Tabela, com a ficha aberta pelo "Editar…",
+   "Ver tudo" fazia a ficha crescer e tapar a linha da pessoa: agora a linha volta a pôr-se à vista por cima
+   da ficha sempre que ela muda de tamanho (`useLinhaAVistaComAFicha`; medido a 375×667: linha a 354–395 px,
+   ficha a partir de 403 px). (b) A carta diz o mesmo em todo o lado: no Guardar, no Histórico e no "antes:"
+   as palavras da ficha — "Tem", "Não tem", "sem dados ainda" (ex.: "carta: sem dados ainda → Tem"; antes
+   "→ sim"); a validade continua "carta válida até: — → 01/03/2027" (`TEXTO_CARTA` em `dominio/operacoes.ts`).
+
+*Acertos depois da revisão* (mesmo dia, ensaiados numa cópia da BD a 1366, 640 e 375 px e por API):
+- Tabela: com o painel fechado, "Mostrar quem saiu" (que conta no "Filtros · N") aparece na linha compacta
+  como a pastilha "Com quem saiu ✕", que a desliga; uma casa ou obra escolhida num filtro que deixa de existir
+  sai do filtro (antes ficava "Casa: 1 escolhida" com a Tabela vazia e sem a opção na lista); no telemóvel o
+  campo diz "Nome, Nº, casa…"; os filtros do painel quebram linha a 640 px (a página deslizava de lado); a
+  linha do "Editar…" só volta à vista quando a ficha a tapa (antes, quem tinha deslizado a tabela para longe
+  e mudava um campo era levado de volta à linha).
+- "Apagar casa…": o título já não repete "casa" ("Apagar a Casa 2 Puttelange?", "Apagar o Apartamento E
+  Puttelange?", "Apagar a casa Eischen?").
+- Frases: uma casa ou obra que já não existe aparece como "uma casa apagada"/"uma obra apagada" e nunca pelo
+  id (Guardar, Histórico, "a casa escolhida já não existe.", "CF 5001 — o sítio onde dormir escolhido já não
+  existe."); nos conflitos (409) o servidor diz o nome que ela tinha ("esperavas Casa X (apagada), mas agora
+  está fora das casas CMF (…)").
+- Servidor: uma casa nova só fica num local do tipo 'casa' ("a morada escolhida não é de casas.") e só com o
+  id "casa-<UUID>" ou o de uma casa apagada no programa (o Reverter); um id inventado deixava o `sincronizar`
+  tratá-la como uma casa dos dados iniciais que saiu de casas.json.
+- `sincronizar`: "Casa X foi apagada no programa" (antes "apagado").
+
 ## 05/10/2026 — Respostas do Rafael ao M2
 
 Respostas do Rafael ("Perguntas para quando puderes", às perguntas "por confirmar" da entrada M2 abaixo):

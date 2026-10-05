@@ -14,9 +14,11 @@ import {
   type OperacaoRegisto,
   operacaoApagar,
   operacaoCriar,
+  separarCriacao,
   validarOperacoes,
 } from './operacoes';
 import {
+  criarCasa,
   criarIndisponibilidade,
   criarLocal,
   criarObra,
@@ -312,7 +314,12 @@ describe('nomes e frases do histórico (M2)', () => {
     expect(d(campo('pessoa', 'p-gil', 'carrinhaAConfirmar', false, true))).toBe(
       'Gil N. — carrinha a confirmar',
     );
-    expect(d(campo('pessoa', 'p-ana', 'temCarta', null, true))).toBe('Ana T. — carta: sem dados ainda → sim');
+    // A carta com as palavras da ficha (05/10/2026), não "sim"/"não".
+    expect(d(campo('pessoa', 'p-ana', 'temCarta', null, true))).toBe('Ana T. — carta: sem dados ainda → Tem');
+    expect(d(campo('pessoa', 'p-ana', 'temCarta', true, false))).toBe('Ana T. — carta: Tem → Não tem');
+    expect(d(campo('pessoa', 'p-ana', 'temCarta', false, null))).toBe(
+      'Ana T. — carta: Não tem → sem dados ainda',
+    );
     expect(d(campo('pessoa', 'p-ana', 'cartaValidade', null, '2027-03-01'))).toBe(
       'Ana T. — carta válida até: — → 01/03/2027',
     );
@@ -406,6 +413,22 @@ describe('nomes e frases do histórico (M2)', () => {
     expect(d(operacaoApagar(estado, 'local', localNovo.id) as Operacao)).toBe('Obra Nova — local apagado');
   });
 
+  it('casas novas e apagadas (05/10/2026)', () => {
+    const nova = criarCasa({ id: `casa-${ID}21`, nome: 'Casa Nova', localId: 'local-a', lotacao: 5 });
+    expect(d(operacaoCriar('casa', nova))).toBe('Casa Nova — criada (1 Rue Fictícia, L-0000 Lugar local-a)');
+    expect(d(operacaoCriar('casa', { ...nova, localId: 'nao-existe' }))).toBe(
+      'Casa Nova — criada (nao-existe)',
+    );
+    const soPino = {
+      ...estado,
+      locais: estado.locais.map((l) => (l.id === 'local-a' ? { ...l, morada: '' } : l)),
+    };
+    expect(descreverOperacao(soPino, operacaoCriar('casa', nova))).toBe(
+      'Casa Nova — criada (só o sítio no mapa)',
+    );
+    expect(d(operacaoApagar(estado, 'casa', 'casa-2') as Operacao)).toBe('Casa Dois — apagada');
+  });
+
   it('registo criado: o nome atual se ainda existe; o gravado se já não existe', () => {
     const renomeada: Estado = {
       ...estado,
@@ -418,5 +441,38 @@ describe('nomes e frases do histórico (M2)', () => {
     expect(descreverOperacao(semObra, operacaoCriar('obra', obraNova))).toBe(
       'Obra Nova — criada (Alfa Construções, Rue X, Luxembourg)',
     );
+  });
+});
+
+describe('separarCriacao (o Reverter de um registo apagado)', () => {
+  it('os campos que a forma de criar não aceita vão a seguir, como "campo"', () => {
+    const casa = criarCasa({ id: 'walferdange', nome: 'Walferdange', sempreCheia: true });
+    expect(separarCriacao(operacaoCriar('casa', casa))).toEqual([
+      operacaoCriar('casa', { ...casa, sempreCheia: false }),
+      { tipo: 'campo', entidade: 'casa', id: 'walferdange', campo: 'sempreCheia', de: false, para: true },
+    ]);
+    const problema = criarProblema({ id: `problema-${ID}22`, casaId: 'casa-1', resolvidoEm: '2026-10-02' });
+    expect(separarCriacao(operacaoCriar('problema', problema))).toEqual([
+      operacaoCriar('problema', { ...problema, resolvidoEm: null }),
+      {
+        tipo: 'campo',
+        entidade: 'problema',
+        id: problema.id,
+        campo: 'resolvidoEm',
+        de: null,
+        para: '2026-10-02',
+      },
+    ]);
+    // Já com a forma certa: fica como estava; apagar também.
+    const outra = criarCasa({ id: 'eischen', nome: 'Eischen' });
+    expect(separarCriacao(operacaoCriar('casa', outra))).toEqual([operacaoCriar('casa', outra)]);
+    const apagar = operacaoApagar(estadoExemplo(), 'casa', 'casa-1') as OperacaoRegisto;
+    expect(separarCriacao(apagar)).toEqual([apagar]);
+  });
+
+  it('o compactar não volta a dobrar esses campos na criação (validam-se e gravam-se a seguir)', () => {
+    const casa = criarCasa({ id: 'walferdange', nome: 'Walferdange', sempreCheia: true });
+    const ops = separarCriacao(operacaoCriar('casa', casa));
+    expect(compactarOperacoes(ops)).toEqual(ops);
   });
 });

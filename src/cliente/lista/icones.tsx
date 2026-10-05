@@ -88,6 +88,18 @@ export function IconeDormir(props: Props) {
   );
 }
 
+/** Cliente (uma empresa): um prédio de escritórios com janelas (alternador do Quadro). */
+export function IconeCliente(props: Props) {
+  return (
+    <Svg {...props}>
+      <path d="M1.5 14.5h13" />
+      <path d="M3 14.5V2.5h7v12" />
+      <path d="M10 6.5h3v8" />
+      <path d="M5.2 5h2.6M5.2 7.8h2.6M5.2 10.6h2.6" />
+    </Svg>
+  );
+}
+
 /** Capacete de obra. */
 export function IconeObra(props: Props) {
   return (

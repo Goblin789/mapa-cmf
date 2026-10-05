@@ -2,13 +2,14 @@
 // As regras (compactar, validar, conflitos, aplicar) são as de src/dominio/operacoes.ts, as mesmas que o
 // browser usa na simulação; aqui só se acrescenta a gravação atómica. As frases são funções puras.
 // Um lote pode mudar pessoas (casa, carrinha, obra), o condutor das carrinhas e onde elas dormem e, no M2,
-// os campos das fichas ('campo') e criar/apagar registos ('registo': pessoas novas, obras e os seus locais,
-// períodos de indisponibilidade, problemas): cada campo que muda fica numa linha de `alteracoes`; um registo
+// os campos das fichas ('campo') e criar/apagar registos ('registo': pessoas novas, casas e obras e os seus
+// locais, períodos de indisponibilidade, problemas): cada campo que muda fica numa linha de `alteracoes`; um registo
 // criado ou apagado fica numa só linha (CAMPO_REGISTO) com o registo inteiro em JSON.
 
-import { and, asc, desc, eq, gt, inArray, isNotNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import type { AlteracaoHistorico, ConflitoServidor, EntradaHistorico } from '../dominio/api';
 import {
+  casaCriadaNoPrograma,
   type EntidadeApagavel,
   type EntidadeCriavel,
   type EntidadeEditavel,
@@ -466,15 +467,16 @@ const CAMPOS_UNICOS_FICHAS: Readonly<Partial<Record<EntidadeEditavel, readonly s
   carrinha: ['matricula'],
 };
 
-/** Inserts com os locais antes das obras e as pessoas antes dos períodos; deletes ao contrário. */
+/** Inserts com os locais antes das casas e das obras e as pessoas antes dos períodos; deletes ao contrário. */
 const ORDEM_INSERTS: readonly EntidadeCriavel[] = [
   'local',
+  'casa',
   'obra',
   'pessoa',
   'indisponibilidade',
   'problema',
 ];
-const ORDEM_DELETES: readonly EntidadeApagavel[] = ['problema', 'indisponibilidade', 'obra', 'local'];
+const ORDEM_DELETES: readonly EntidadeApagavel[] = ['problema', 'indisponibilidade', 'obra', 'casa', 'local'];
 
 /** Separador dos valores provisórios (nunca aparece num valor escrito à mão). */
 const SEPARADOR_PROVISORIO = String.fromCharCode(1);
@@ -602,14 +604,18 @@ function revertidoPorEmVigor(tx: Leitor): Map<number, number[]> {
  * Os conflitos vêm antes da validação: se alguém mudou entretanto as mesmas coisas, a
  * resposta certa é "recarrega" (409), mesmo que o rascunho, sobre o estado novo, também deixasse de ser
  * válido (ex.: o condutor escolhido já não vai naquela carrinha). Com `versaoBase`, contam também os
- * conflitos escondidos pela regra do condutor (conflitosDoCondutor). Depois, cada lote de `reverte` tem de
+ * conflitos escondidos pela regra do condutor (conflitosDoCondutor); as frases dizem o nome das casas e obras
+ * apagadas entretanto (comApagadasParaFrases). A validação junta ao validarOperacoes o id das casas novas
+ * (errosIdsDeCasas). Depois, cada lote de `reverte` tem de
  * existir, de se poder reverter (podeReverter) e de ter alguma linha que o pedido desfaz; um lote que ainda
  * não existe (o próprio) nunca passa.
  *
  * As FK só se verificam no COMMIT (PRAGMA defer_foreign_keys) e, mesmo assim, escreve-se pelas fases do
  * domínio, nunca pela ordem do pedido: 1) inserts (locais antes das obras, pessoas antes dos períodos);
  * 2) 'campo' (os campos únicos em dois passos; os dos registos novos entram provisórios na fase 1); 3) mover, condutor e onde dorme; 4) deletes (problemas e
- * períodos, depois as obras, depois os locais). Uma linha de `alteracoes` por campo mudado; 'registo' numa só
+ * períodos, depois as obras, depois as casas, depois os locais). Uma casa apagada leva antes os problemas
+ * resolvidos dela que o pedido não trouxe (os antigos não chegam ao browser; o validarOperacoes já recusou os
+ * por resolver), cada um com a sua linha CAMPO_REGISTO, como os do sincronizar. Uma linha de `alteracoes` por campo mudado; 'registo' numa só
  * linha (CAMPO_REGISTO) com o registo inteiro na forma do Estado. O lote é 'ficha' se só tiver 'campo' e
  * 'registo'; senão 'mudanca'.
  */
@@ -639,16 +645,18 @@ export function gravarLote(bd: Bd, pedido: PedidoLote): ResultadoGravacao {
         ...(pedido.versaoBase === undefined ? [] : conflitosDoCondutor(tx, estado, ops, pedido.versaoBase)),
       ];
       if (conflitos.length > 0) {
+        // As frases com o nome das casas e obras apagadas entretanto (e não "uma casa apagada").
+        const paraFrases = comApagadasParaFrases(tx, estado);
         return {
           tipo: 'conflito',
           conflitos: conflitos.map((c) => ({
             ...c,
-            descricao: descreverConflito(estado, c, autoriaDoConflito(tx, c)),
+            descricao: descreverConflito(paraFrases, c, autoriaDoConflito(tx, c)),
           })),
         };
       }
 
-      const erros = validarOperacoes(estado, ops);
+      const erros = [...validarOperacoes(estado, ops), ...errosIdsDeCasas(tx, ops)];
       if (erros.length > 0) return { tipo: 'invalido', erros: limitarErros(erros) };
 
       const chaves = new Set(ops.map(chaveOperacao));
@@ -777,11 +785,32 @@ export function gravarLote(bd: Bd, pedido: PedidoLote): ResultadoGravacao {
         linha('carrinha', d.carrinhaId, CAMPO_DORMIDA, d.antes, d.depois);
       }
 
-      // 4. Registos apagados (já ninguém aponta para eles): problemas e períodos, obras, locais.
+      // 4. Registos apagados (já ninguém aponta para eles): problemas e períodos, obras, casas, locais.
+      const problemasApagados = new Set(
+        ops.flatMap((op) =>
+          op.tipo === 'registo' && op.entidade === 'problema' && op.para === null ? [op.id] : [],
+        ),
+      );
+      const problemasNoFim = new Map(aplicarOperacoes(estado, ops).problemas.map((p) => [p.id, p]));
       for (const entidade of ORDEM_DELETES) {
         for (const op of ops) {
           if (op.tipo !== 'registo' || op.entidade !== entidade || op.para !== null || op.de === null)
             continue;
+          if (entidade === 'casa') {
+            // Os problemas resolvidos da casa que o pedido não apagou (chave estrangeira).
+            for (const p of estado.problemas) {
+              if (p.casaId !== op.id || problemasApagados.has(p.id)) continue;
+              tx.delete(esquema.problemas).where(eq(esquema.problemas.id, p.id)).run();
+              const comoFicou = problemasNoFim.get(p.id) ?? p;
+              linha(
+                'problema',
+                p.id,
+                CAMPO_REGISTO,
+                registoNaFormaDoEstado('problema', comoFicou),
+                undefined,
+              );
+            }
+          }
           const atual = encontrarRegisto(estado, entidade, op.id) ?? op.de;
           const tabela = tabelaDe(entidade);
           tx.delete(tabela).where(eq(tabela.id, op.id)).run();
@@ -826,6 +855,7 @@ export function nomeDoAutor(autor: string, nomesPorEmail: ReadonlyMap<string, st
 /** A lista do Estado de cada entidade que se cria ou apaga no programa. */
 const LISTA_DO_ESTADO = {
   pessoa: 'pessoas',
+  casa: 'casas',
   obra: 'obras',
   local: 'locais',
   indisponibilidade: 'indisponibilidades',
@@ -854,6 +884,75 @@ function comRegistosDoHistorico(estado: Estado, linhas: readonly LinhaAlteracao[
     resultado = { ...resultado, [lista]: [...atuais, registo] };
   }
   return resultado;
+}
+
+/**
+ * Uma casa nova tem o id gerado pelo programa ("casa-<UUID>", casaCriadaNoPrograma). Outro id (o validarRegisto
+ * aceita os dos dados iniciais, "eischen") só serve para voltar a pôr uma casa apagada no programa (o Reverter
+ * de "Casa X — apagada"), ou seja, se há a linha CAMPO_REGISTO desse apagar. Senão o sincronizar tratava a casa
+ * como uma dos dados iniciais que saiu de casas.json.
+ */
+function errosIdsDeCasas(tx: Leitor, ops: readonly Operacao[]): string[] {
+  const erros: string[] = [];
+  for (const op of ops) {
+    if (op.tipo !== 'registo' || op.entidade !== 'casa' || op.de !== null || op.para === null) continue;
+    if (casaCriadaNoPrograma({ id: op.id })) continue;
+    const apagada = tx
+      .select({ id: esquema.alteracoes.id })
+      .from(esquema.alteracoes)
+      .where(
+        and(
+          eq(esquema.alteracoes.entidade, 'casa'),
+          eq(esquema.alteracoes.entidadeId, op.id),
+          eq(esquema.alteracoes.campo, CAMPO_REGISTO),
+          isNotNull(esquema.alteracoes.antes),
+          isNull(esquema.alteracoes.depois),
+        ),
+      )
+      .limit(1)
+      .get();
+    if (apagada) continue;
+    const nome = typeof op.para.nome === 'string' && op.para.nome !== '' ? op.para.nome : 'A casa';
+    erros.push(
+      `${nome} — identificador inválido: uma casa nova tem o identificador gerado pelo programa ("casa-…").`,
+    );
+  }
+  return erros;
+}
+
+/**
+ * Só para as frases dos conflitos: o estado com as casas e obras apagadas no programa (a linha CAMPO_REGISTO
+ * do apagar tem o registo inteiro), com "(apagada)" a seguir ao nome. Ex.: "Ana T. — casa: esperavas Casa
+ * Ensaio (apagada), mas agora está fora das casas CMF (Michael Exemplo, 05/10 09:57)". Nunca para validar.
+ */
+function comApagadasParaFrases(tx: Leitor, estado: Estado): Estado {
+  const linhas = tx
+    .select({
+      entidade: esquema.alteracoes.entidade,
+      entidadeId: esquema.alteracoes.entidadeId,
+      campo: esquema.alteracoes.campo,
+      antes: esquema.alteracoes.antes,
+      depois: esquema.alteracoes.depois,
+    })
+    .from(esquema.alteracoes)
+    .where(
+      and(
+        eq(esquema.alteracoes.campo, CAMPO_REGISTO),
+        inArray(esquema.alteracoes.entidade, ['casa', 'obra']),
+        isNotNull(esquema.alteracoes.antes),
+        isNull(esquema.alteracoes.depois),
+      ),
+    )
+    .orderBy(desc(esquema.alteracoes.id))
+    .all();
+  const marcadas = linhas.map((l) => {
+    const registo = lerJson(l.antes);
+    if (registo === null || typeof registo !== 'object') return l;
+    const nome = (registo as { nome?: unknown }).nome;
+    if (typeof nome !== 'string') return l;
+    return { ...l, antes: JSON.stringify({ ...registo, nome: `${nome} (apagada)` }) };
+  });
+  return comRegistosDoHistorico(estado, marcadas);
 }
 
 /** Lista de ids de lotes guardada em JSON (lotes.reverte); qualquer outra coisa é []. */

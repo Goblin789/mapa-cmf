@@ -6,6 +6,7 @@ import { useLoja } from '../estado/loja';
 import { FOCO_VISIVEL } from '../paineis/classes';
 import { entrarEdicaoComAviso } from './acoes';
 import { DialogoCancelar } from './DialogoCancelar';
+import { DialogoNovaCasa } from './DialogoCasa';
 import { DialogoConfirmarSugestoes } from './DialogoConfirmarSugestoes';
 import { DialogoDormida } from './DialogoDormida';
 import { DialogoGuardar } from './DialogoGuardar';
@@ -112,13 +113,14 @@ export function Edicao() {
   useFocoAoMudarModo(modoEdicao, dialogo !== null);
 
   // Fora do modo de edição não há nada para mover, para cancelar nem onde dormir para mudar; nem (M2)
-  // fichas novas, obras, indisponíveis ou problemas para mudar. O Reverter abre fora dele (pré-visualização).
+  // fichas novas, casas, obras, indisponíveis ou problemas para mudar. O Reverter abre fora dele (pré-visualização).
   const soEmEdicao =
     dialogo?.tipo === 'mover' ||
     dialogo?.tipo === 'cancelar' ||
     dialogo?.tipo === 'dormida' ||
     dialogo?.tipo === 'confirmar-sugestoes' ||
     dialogo?.tipo === 'nova-pessoa' ||
+    dialogo?.tipo === 'nova-casa' ||
     dialogo?.tipo === 'saida' ||
     dialogo?.tipo === 'obra' ||
     dialogo?.tipo === 'indisponivel' ||
@@ -140,6 +142,7 @@ export function Edicao() {
         <DialogoConfirmarSugestoes aoFechar={fecharDialogo} />
       )}
       {modoEdicao && dialogo?.tipo === 'nova-pessoa' && <DialogoNovaPessoa aoFechar={fecharDialogo} />}
+      {modoEdicao && dialogo?.tipo === 'nova-casa' && <DialogoNovaCasa aoFechar={fecharDialogo} />}
       {modoEdicao && dialogo?.tipo === 'saida' && (
         <DialogoSaida pessoaId={dialogo.pessoaId} aoFechar={fecharDialogo} />
       )}

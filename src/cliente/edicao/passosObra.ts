@@ -338,3 +338,16 @@ export function passoApagarObra(estado: Estado, obraId: Id): Operacao[] | null {
   }
   return ops;
 }
+
+/** Título da confirmação de apagar: "Apagar a Obra Ensaio?" e não "Apagar a obra Obra Ensaio?" (como nas casas). */
+export function tituloApagarObra(nome: string): string {
+  return normalizarTexto(nome).split(' ')[0] === 'obra' ? `Apagar a ${nome}?` : `Apagar a obra ${nome}?`;
+}
+
+/**
+ * Como se diz um local na confirmação de apagar: a morada, ou, numa obra escolhida só no mapa (sem morada),
+ * "o sítio no mapa" (o nome do local é o da obra e não diz nada).
+ */
+export function descreverLocalApagar(local: Pick<Local, 'morada' | 'nome'>): string {
+  return local.morada.trim() ? `a morada ${local.morada.trim()}` : `o sítio no mapa (${local.nome})`;
+}

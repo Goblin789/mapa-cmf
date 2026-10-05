@@ -5,7 +5,7 @@
 // M2 (docs/m2.md): além de 'mover', 'condutor' e 'dormida', há
 // - 'campo': muda um campo de uma ficha (pessoa, casa, carrinha, obra, local, indisponibilidade, problema);
 // - 'registo': cria (`de` = null) ou apaga (`para` = null) um registo inteiro, com o id gerado no browser
-//   (novoId): pessoas novas, obras e os seus locais, períodos de indisponibilidade e problemas.
+//   (novoId): pessoas novas, casas e obras (e os seus locais), períodos de indisponibilidade e problemas.
 // Todas têm `de` (o que se esperava encontrar: os conflitos vêm daí) e `para`. CONTRATO DO M2: os tipos e as
 // assinaturas estão fechados. Compactar dobra os 'campo' de um registo criado/apagado no 'registo';
 // validarOperacoes vê as regras de docs/m2.md ("Validar") no estado final; descreverOperacao dá as frases do
@@ -433,15 +433,52 @@ function chaveDoRegisto(entidade: EntidadeEditavel, id: Id): string {
 }
 
 /**
- * Campos que NÃO se dobram no `para` de um registo criado no rascunho: a forma de criar recusa-os com outro
- * valor (validarRegisto: problema aberto; pessoa ativa e sem marcas). Ficam como 'campo' a seguir à criação,
- * que o aplicar, o validar e o servidor tratam pelas fases (ex.: abrir e resolver um problema no mesmo
- * rascunho; uma pessoa nova que sai logo da empresa ou fica com a casa a confirmar).
+ * Campos que NÃO se dobram no `para` de um registo criado no rascunho, com o valor que um registo acabado de
+ * criar tem de ter: a forma de criar recusa-os com outro valor (validarRegisto: problema aberto; pessoa ativa
+ * e sem marcas; casa sem "lugares iguais aos moradores"). Ficam como 'campo' a seguir à criação, que o
+ * aplicar, o validar e o servidor tratam pelas fases (ex.: abrir e resolver um problema no mesmo rascunho;
+ * uma pessoa nova que sai logo da empresa ou fica com a casa a confirmar; o Reverter de uma casa apagada que
+ * tinha esses lugares, ou de um problema resolvido apagado com a casa: separarCriacao).
  */
-const CAMPOS_FORA_DA_CRIACAO: Readonly<Partial<Record<EntidadeEditavel, readonly string[]>>> = {
-  problema: ['resolvidoEm'],
-  pessoa: ['ativa', 'casaAConfirmar', 'carrinhaAConfirmar'],
+const CAMPOS_FORA_DA_CRIACAO: Readonly<
+  Partial<Record<EntidadeEditavel, Readonly<Record<string, ValorCampo>>>>
+> = {
+  problema: { resolvidoEm: null },
+  pessoa: { ativa: true, casaAConfirmar: false, carrinhaAConfirmar: false },
+  casa: { sempreCheia: false },
 };
+
+function foraDaCriacao(entidade: EntidadeEditavel, campo: string): boolean {
+  const campos = CAMPOS_FORA_DA_CRIACAO[entidade];
+  return campos !== undefined && Object.hasOwn(campos, campo);
+}
+
+/**
+ * Criar um registo que já existiu (o Reverter de um apagado) com a forma de um registo novo: os campos de
+ * CAMPOS_FORA_DA_CRIACAO que tinham outro valor vão a seguir, como 'campo' (ex.: um problema resolvido volta
+ * aberto + "resolvido: — → 06/10/2026"). Sem esses campos, devolve a operação como veio.
+ */
+export function separarCriacao(op: OperacaoRegisto): Operacao[] {
+  const campos = CAMPOS_FORA_DA_CRIACAO[op.entidade];
+  if (op.de !== null || op.para === null || !campos) return [op];
+  const registo = op.para as unknown as Record<string, ValorCampo>;
+  const novo: Record<string, ValorCampo> = { ...registo };
+  const depois: Operacao[] = [];
+  for (const [campo, valorNovo] of Object.entries(campos)) {
+    const valor = registo[campo] ?? null;
+    if (valoresIguais(valor, valorNovo)) continue;
+    novo[campo] = valorNovo;
+    depois.push({
+      tipo: 'campo',
+      entidade: op.entidade,
+      id: op.id,
+      campo: campo as CampoEditavel,
+      de: valorNovo,
+      para: valor,
+    });
+  }
+  return depois.length === 0 ? [op] : [{ ...op, para: novo } as unknown as OperacaoRegisto, ...depois];
+}
 
 /**
  * Junta os movimentos da mesma pessoa no mesmo campo num só (o `de` do primeiro, o `para` do último)
@@ -463,7 +500,7 @@ export function compactarOperacoes(ops: readonly Operacao[]): Operacao[] {
         registo?.tipo === 'registo' &&
         registo.de === null &&
         registo.para !== null &&
-        !CAMPOS_FORA_DA_CRIACAO[op.entidade]?.includes(op.campo)
+        !foraDaCriacao(op.entidade, op.campo)
       ) {
         juntas.set(chaveRegisto, {
           ...registo,
@@ -638,7 +675,9 @@ function dia(valor: unknown): string {
  * - só nos registos mexidos ('campo' e criados): nome no mapa (sem acentos nem maiúsculas) entre TODAS as
  *   pessoas, nº, matrícula e nome da casa únicos; períodos da mesma pessoa sem sobreposição e fim ≥ início;
  *   resolvido ≥ aberto; tolerado ≥ máx. do contrato; sem carta (ou "não sei") não há validade;
- * - apagar: a obra sem pessoas no fim; o local só se foi criado no programa e sem nada que o use;
+ * - a casa criada ou mudada de morada fica num local do tipo 'casa';
+ * - apagar: a obra sem pessoas no fim; a casa sem moradores, sem carrinhas a dormir lá e sem problemas por
+ *   resolver (errosApagarCasa); o local só se foi criado no programa e sem nada que o use;
  * - quem sai da empresa fica sem casa, carrinha, obra e sem conduzir; e a regra do condutor de sempre (o
  *   condutor de cada carrinha mexida vai nela), vista só quando o resto está certo.
  */
@@ -737,7 +776,11 @@ export function validarOperacoes(estado: Estado, ops: readonly Operacao[]): stri
           (lida.tipo === 'casa'
             ? final.casas.some((c) => c.id === lida.id)
             : final.locais.some((l) => l.id === lida.id));
-        if (!existe) erros.push(`O sítio onde dormir "${op.para}" não existe.`);
+        if (!existe) {
+          const carrinha = carrinhasIniciais.get(op.carrinhaId);
+          const quem = carrinha ? formatarMatricula(carrinha.matricula) : op.carrinhaId;
+          erros.push(`${quem} — o sítio onde dormir escolhido já não existe.`);
+        }
       }
       continue;
     }
@@ -766,7 +809,12 @@ export function validarOperacoes(estado: Estado, ops: readonly Operacao[]): stri
     // O `ativa` vê-se depois dos 'campo' do lote: tirar alguém que saiu da empresa (para null) é sempre válido.
     if (op.para !== null && !p.ativa) erros.push(`${p.nomeCurto} não está ativa.`);
     if (op.para !== null && !existeNoFim[op.campo].has(op.para)) {
-      erros.push(`${p.nomeCurto}: o destino ${op.para} não existe.`);
+      // As carrinhas não se apagam no programa: um id que não existe só vem de um pedido feito à mão.
+      erros.push(
+        op.campo === 'carrinhaId'
+          ? `${p.nomeCurto}: o destino ${op.para} não existe.`
+          : `${p.nomeCurto}: ${DESTINO_QUE_NAO_EXISTE[op.campo]}`,
+      );
     }
   }
 
@@ -861,9 +909,14 @@ function errosDosRegistos(
   // --- Casas e carrinhas ---------------------------------------------------------------------------
   const nomesCasas = new Map<string, Casa[]>();
   for (const c of final.casas) juntar(nomesCasas, normalizarTexto(c.nome ?? ''), c);
+  const tipoDoLocal = new Map(final.locais.map((l) => [l.id, l.tipo]));
   for (const c of mexido('casa')) {
     if (mudou('casa', c.id, 'localId') && !locais.has(c.localId)) {
       erros.push(`${c.nome} — a morada escolhida não existe.`);
+    } else if (mudou('casa', c.id, 'localId') && tipoDoLocal.get(c.localId) !== 'casa') {
+      // Uma casa só num local de casas (a interface só oferece esses): senão o local de uma obra ou de um
+      // estacionamento passava a ser "usado" pela casa, ou saía com ela.
+      erros.push(`${c.nome} — a morada escolhida não é de casas.`);
     }
     if (mudou('casa', c.id, 'nome') && (nomesCasas.get(normalizarTexto(c.nome ?? ''))?.length ?? 0) > 1) {
       erros.push(`${c.nome} — já há outra casa com este nome.`);
@@ -974,6 +1027,8 @@ function errosDosRegistos(
           `${quem} — ainda tem ${n === 1 ? '1 pessoa' : `${n} pessoas`}: muda-as para outra obra antes de a apagar.`,
         );
       }
+    } else if (op.entidade === 'casa') {
+      erros.push(...errosApagarCasa(final, op.id, quem));
     } else if (op.entidade === 'local') {
       const usos = [
         ...final.casas.filter((c) => c.localId === op.id).map((c) => c.nome),
@@ -989,6 +1044,41 @@ function errosDosRegistos(
     }
   }
   return erros;
+}
+
+/**
+ * O que impede apagar uma casa, no estado final do lote: moradores (também quem saiu da empresa e ainda a
+ * tivesse), carrinhas que lá dormem (o que está gravado; a sugestão não conta) e problemas por resolver. Os
+ * problemas resolvidos não impedem: o servidor apaga-os antes da casa (chave estrangeira; ficam no histórico).
+ */
+function errosApagarCasa(final: Estado, casaId: Id, quem: string): string[] {
+  const erros: string[] = [];
+  const moradores = final.pessoas.filter((p) => p.casaId === casaId).length;
+  if (moradores > 0) {
+    erros.push(
+      `${quem} — ainda tem ${moradores === 1 ? '1 morador' : `${moradores} moradores`}: muda-os para outra casa (ou para "Fora das casas CMF") antes de a apagar.`,
+    );
+  }
+  const dormem = final.carrinhas
+    .filter((c) => c.dormeCasaId === casaId)
+    .map((c) => formatarMatricula(c.matricula));
+  if (dormem.length > 0) {
+    erros.push(
+      `${quem} — ${dormem.length === 1 ? `a ${dormem[0]} dorme lá` : `as carrinhas ${listaComE(dormem)} dormem lá`}: muda onde dorme antes de a apagar.`,
+    );
+  }
+  const abertos = final.problemas.filter((p) => p.casaId === casaId && p.resolvidoEm === null).length;
+  if (abertos > 0) {
+    erros.push(
+      `${quem} — tem ${abertos === 1 ? '1 problema por resolver: resolve-o' : `${abertos} problemas por resolver: resolve-os`} antes de a apagar.`,
+    );
+  }
+  return erros;
+}
+
+/** "A, B e C". */
+function listaComE(itens: readonly string[]): string {
+  return itens.length <= 1 ? (itens[0] ?? '') : `${itens.slice(0, -1).join(', ')} e ${itens.at(-1)}`;
 }
 
 /** Dois períodos têm pelo menos um dia em comum (o mesmo que periodosSobrepoem, em indisponibilidade.ts). */
@@ -1011,16 +1101,32 @@ function textoDoPeriodo(p: Pick<Indisponibilidade, 'inicio' | 'fim'>): string {
 
 const NOME_CAMPO: Record<CampoMovivel, string> = { casaId: 'casa', carrinhaId: 'carrinha', obraId: 'obra' };
 
+/**
+ * Uma casa ou obra que já não está no estado (apagada entretanto, por outra pessoa ou noutro passo): as frases
+ * dizem isto em vez do id ("casa-1b2c…"). O servidor, nos conflitos, junta ao estado as apagadas com o nome
+ * que tinham (lotes.ts), e aí a frase diz o nome.
+ */
+export const CASA_APAGADA = 'uma casa apagada';
+export const OBRA_APAGADA = 'uma obra apagada';
+
+/** validarOperacoes: o destino de um 'mover' não existe no fim (uma casa ou obra apagada entretanto). */
+const DESTINO_QUE_NAO_EXISTE: Record<'casaId' | 'obraId', string> = {
+  casaId: 'a casa escolhida já não existe.',
+  obraId: 'a obra escolhida já não existe.',
+};
+
 export function nomeDoValor(estado: Estado, campo: CampoMovivel, valor: Id | null): string {
   if (campo === 'casaId') {
-    return valor === null ? 'Fora das casas CMF' : (estado.casas.find((c) => c.id === valor)?.nome ?? valor);
+    return valor === null
+      ? 'Fora das casas CMF'
+      : (estado.casas.find((c) => c.id === valor)?.nome ?? CASA_APAGADA);
   }
   if (campo === 'carrinhaId') {
     if (valor === null) return 'Sem transporte da empresa';
     const carrinha = estado.carrinhas.find((c) => c.id === valor);
     return carrinha ? formatarMatricula(carrinha.matricula) : valor;
   }
-  return valor === null ? 'sem obra' : (estado.obras.find((o) => o.id === valor)?.nome ?? valor);
+  return valor === null ? 'sem obra' : (estado.obras.find((o) => o.id === valor)?.nome ?? OBRA_APAGADA);
 }
 
 function nomePessoa(estado: Estado, id: Id | null): string {
@@ -1033,7 +1139,7 @@ export function nomeDaDormida(estado: Estado, chave: ChaveDormida | null): strin
   if (chave === null) return 'por definir';
   const lida = lerChaveDormida(chave);
   if (!lida) return chave;
-  if (lida.tipo === 'casa') return estado.casas.find((c) => c.id === lida.id)?.nome ?? lida.id;
+  if (lida.tipo === 'casa') return estado.casas.find((c) => c.id === lida.id)?.nome ?? CASA_APAGADA;
   return estado.locais.find((l) => l.id === lida.id)?.nome ?? lida.id;
 }
 
@@ -1111,8 +1217,14 @@ function moradaDoLocal(estado: Estado, id: unknown): string {
 export const SEM_DADOS_AINDA = 'sem dados ainda';
 
 /**
- * Um valor de um campo, legível: "—", sim/não (a carta desconhecida: "sem dados ainda"), dias dd/mm/aaaa,
- * matrículas, nomes em vez de ids.
+ * A carta com as palavras da ficha (o Rafael, 05/10/2026: a ficha dizia "Tem"/"Não tem" e o Guardar e o
+ * Histórico "sim"/"não"): "Tem", "Não tem" ou "sem dados ainda".
+ */
+export const TEXTO_CARTA = { tem: 'Tem', naoTem: 'Não tem' } as const;
+
+/**
+ * Um valor de um campo, legível: "—", sim/não (a carta como na ficha: "Tem", "Não tem", "sem dados
+ * ainda"), dias dd/mm/aaaa, matrículas, nomes em vez de ids.
  */
 export function valorLegivel(
   estado: Estado,
@@ -1120,7 +1232,8 @@ export function valorLegivel(
   campo: string,
   v: ValorCampo,
 ): string {
-  if (campo === 'temCarta') return v === true ? 'sim' : v === false ? 'não' : SEM_DADOS_AINDA;
+  if (campo === 'temCarta')
+    return v === true ? TEXTO_CARTA.tem : v === false ? TEXTO_CARTA.naoTem : SEM_DADOS_AINDA;
   if (campo === 'fim' && entidade === 'indisponibilidade' && v === null) return 'sem data de regresso';
   if (campo === 'estacionamentoLocalId' && v === null) return 'sem estacionamento';
   if (v === null || v === '') return '—';
@@ -1166,6 +1279,14 @@ function fraseDoRegisto(estado: Estado, op: OperacaoRegisto): string {
       const cliente = estado.clientes.find((c) => c.id === r.clienteId)?.nome;
       return criado ? `entrou${cliente ? ` (${cliente})` : ''}` : 'apagada';
     }
+    case 'casa': {
+      if (!criado) return 'apagada';
+      const local = estado.locais.find((l) => l.id === r.localId);
+      // Uma morada nova escolhida só com o pino (o serviço de moradas não respondeu) não tem texto.
+      if (local && !local.morada.trim()) return 'criada (só o sítio no mapa)';
+      const morada = moradaDoLocal(estado, r.localId);
+      return morada !== '—' ? `criada (${morada})` : 'criada';
+    }
     case 'obra': {
       if (!criado) return 'apagada';
       const partes = [
@@ -1196,7 +1317,8 @@ function fraseDoRegisto(estado: Estado, op: OperacaoRegisto): string {
  * "Ana T. — saiu da empresa"; "Ana T. — casa confirmada"; "Ana T. — entrou (Costantini)";
  * "Ana T. — indisponível de 06/10/2026 a 10/10/2026"; "Ana T. — indisponível até: 10/10/2026 → 08/10/2026";
  * "Casa Um — problema aberto: «esquentador avariado»"; "Obra Nova — criada (Costantini, Rue X)";
- * "Obra Nova — pino mudado de sítio"; "Obra Nova — apagada" (docs/m2.md, "Frases do histórico").
+ * "Obra Nova — pino mudado de sítio"; "Obra Nova — apagada"; "Casa Nova — criada (Rue X, Luxembourg)";
+ * "Casa Nova — apagada" (docs/m2.md, "Frases do histórico").
  */
 export function descreverOperacao(estado: Estado, op: Operacao): string {
   if (op.tipo === 'campo') {

@@ -30,7 +30,7 @@ import {
   type OperacaoRegisto,
 } from '../../dominio/operacoes';
 import { AVISO_COMENTARIO_SEM_MOTIVO, avisoTextoSaude } from '../../dominio/problemas';
-import type { Estado, Id, Indisponibilidade, Obra, Pessoa } from '../../dominio/tipos';
+import type { Casa, Estado, Id, Indisponibilidade, Obra, Pessoa } from '../../dominio/tipos';
 import { formatarMatricula } from '../comum/Matricula';
 import { condutorDaCarrinha } from '../paineis/condutor';
 import { comPlural, formatarData, textoContrato } from '../paineis/textos';
@@ -244,11 +244,12 @@ export function agruparDormidas(
 // --- M2: fichas, pessoas novas e saídas, indisponível, problemas e obras ---------------------------------
 
 /** As secções novas do Guardar, por esta ordem. */
-export type SeccaoAlteracoes = 'fichas' | 'pessoas' | 'indisponivel' | 'problemas' | 'obras';
+export type SeccaoAlteracoes = 'fichas' | 'pessoas' | 'casas' | 'indisponivel' | 'problemas' | 'obras';
 
 export const TITULO_SECCAO: Readonly<Record<SeccaoAlteracoes, string>> = {
   fichas: 'Fichas',
   pessoas: 'Pessoas novas e saídas',
+  casas: 'Casas novas e apagadas',
   indisponivel: 'Indisponível',
   problemas: 'Problemas',
   obras: 'Obras',
@@ -257,6 +258,7 @@ export const TITULO_SECCAO: Readonly<Record<SeccaoAlteracoes, string>> = {
 const ORDEM_SECCOES: readonly SeccaoAlteracoes[] = [
   'fichas',
   'pessoas',
+  'casas',
   'indisponivel',
   'problemas',
   'obras',
@@ -293,6 +295,8 @@ function seccaoDe(op: OperacaoM2, estados: readonly Estado[]): SeccaoAlteracoes 
     case 'pessoa':
       return op.tipo === 'registo' || op.campo === 'ativa' ? 'pessoas' : 'fichas';
     case 'casa':
+      // Uma casa criada ou apagada (05/10/2026) tem a sua secção; os campos de uma casa são uma ficha.
+      return op.tipo === 'registo' ? 'casas' : 'fichas';
     case 'carrinha':
       return 'fichas';
     case 'indisponibilidade':
@@ -314,7 +318,7 @@ function locaisDaObra(obra: Partial<Obra> | null): Id[] {
 
 /**
  * As alterações do M2 por guardar ('campo' e 'registo'), agrupadas para o Guardar: Fichas (por pessoa, casa,
- * carrinha), Pessoas novas e saídas, Indisponível, Problemas e Obras. Frases de descreverOperacao com os nomes
+ * carrinha), Pessoas novas e saídas, Casas novas e apagadas, Indisponível, Problemas e Obras. Frases de descreverOperacao com os nomes
  * do estado VISÍVEL (as coisas novas só existem nele). A obra criada (ou apagada) e os seus locais dão uma só
  * frase ("Obra Nova — criada (Alfa, Rue X)"); as frases repetidas do mesmo registo juntam-se ("pino mudado de
  * sítio" da lat e da lng). Os 'mover', 'condutor' e 'dormida' ficam nos grupos de sempre.
@@ -343,10 +347,18 @@ export function agruparAlteracoesM2(
       if (typeof op.de === 'string') estacionamentosTirados.add(op.de);
     }
   }
+  // O local de uma casa criada (ou apagada) com ela: a frase da casa já diz a morada.
+  const locaisDeCasas = new Map<Id, boolean>();
+  for (const op of ops) {
+    if (op.tipo !== 'registo' || op.entidade !== 'casa') continue;
+    const localId = (op.para ?? op.de)?.localId;
+    if (localId) locaisDeCasas.set(localId, op.de === null);
+  }
   const ehJunto = (op: OperacaoM2) =>
     op.tipo === 'registo' &&
     op.entidade === 'local' &&
-    ((op.para === null && estacionamentosTirados.has(op.id)) ||
+    (locaisDeCasas.get(op.id) === (op.de === null) ||
+      (op.para === null && estacionamentosTirados.has(op.id)) ||
       (locaisJuntos.has(op.id) &&
         ops.some(
           (o) =>
@@ -364,6 +376,7 @@ export function agruparAlteracoesM2(
     ...estadoVisivel,
     locais: comApagados(estadoVisivel.locais, estadoServidor.locais) as Estado['locais'],
     obras: comApagados(estadoVisivel.obras, estadoServidor.obras) as Estado['obras'],
+    casas: comApagados(estadoVisivel.casas, estadoServidor.casas) as Estado['casas'],
   };
 
   const grupos = new Map<SeccaoAlteracoes, Map<string, FrasesDeQuem>>();
@@ -915,6 +928,12 @@ function resumirPassoM2(estado: Estado, passo: readonly Operacao[]): string | nu
   if (pessoaNova) return descreverOperacao(estado, pessoaNova);
   const saida = m2.find((op) => op.tipo === 'campo' && op.entidade === 'pessoa' && op.campo === 'ativa');
   if (saida) return descreverOperacao(estado, saida);
+  const casa = m2.find((op) => op.tipo === 'registo' && op.entidade === 'casa');
+  if (casa?.tipo === 'registo') {
+    return casa.para !== null && casa.de === null
+      ? `Nova casa: ${(casa.para as Casa).nome}`
+      : `Casa apagada: ${(casa.de as Casa).nome}`;
+  }
   const obra = m2.find((op) => op.tipo === 'registo' && op.entidade === 'obra');
   if (obra?.tipo === 'registo') {
     return obra.para !== null && obra.de === null
@@ -954,7 +973,7 @@ function resumirPassoM2(estado: Estado, passo: readonly Operacao[]): string | nu
  * "Ana — carrinha: ZZ 1001 → ZZ 1002 · ZZ 1001 fica sem condutor". Onde dorme uma carrinha:
  * "ZZ 1001 — onde dorme: por definir → Casa Um"; de várias: "onde dormem 3 carrinhas".
  * Outros casos: "4 alterações".
- * M2: "Nova obra: Obra X"; "Ana T. indisponível até 12/10" (várias: "3 pessoas indisponíveis até 12/10");
+ * M2: "Nova obra: Obra X"; "Nova casa: Casa X"; "Casa apagada: Casa X"; "Ana T. indisponível até 12/10" (várias: "3 pessoas indisponíveis até 12/10");
  * "Ana T. — entrou (Alfa)"; "Ana T. — saiu da empresa"; uma ficha: "Casa Um — lotação: 8 → 9" (o pino, com a
  * lat e a lng, dá uma frase); `opcoes.reversao` (o passo do "Reverter"): "Reversão: 5 alterações".
  */

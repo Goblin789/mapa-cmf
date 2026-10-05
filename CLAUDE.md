@@ -31,8 +31,9 @@ M1 (login, tempo real, cópias, vistas, publicação): desenho e variáveis em `
   para trabalhar numa cópia. É assim que se aplicam dados novos depois de haver edições no programa.
   **Não desfaz campos editados no programa** (M2): esses ficam e aparecem na secção "Ficou o valor do
   programa" do relatório; daí em diante mudam-se no programa, ou, de propósito, com
-  `--aplicar --usar-json casa:<id>:lotacao` (repetível). Um registo apagado no programa não volta. Recusa se
-  uma casa ou um veículo que sai dos JSON tiver problemas por resolver (os resolvidos apagam-se antes).
+  `--aplicar --usar-json casa:<id>:lotacao` (repetível). Um registo apagado no programa não volta; uma casa
+  criada no programa fica. Recusa se uma casa ou um veículo que sai dos JSON tiver problemas por resolver (os
+  resolvidos apagam-se antes).
   Nunca migra: com migrações por aplicar recusa (também com `--aplicar`) e manda arrancar o servidor uma
   vez, que faz a cópia antes de migrar.
 - `npm run geocodificar` — coordenadas das moradas de `dados-iniciais/locais.json`.
@@ -82,12 +83,14 @@ camadas, lista lateral, **modo de edição** (rascunho, arrastar, Mover para…,
 - A Tabela e o Quadro editam como o mapa (ficha, pesquisa, seleção, arrastar, células) e nada muda de vista
   sozinho: só o "Ver no mapa" da ficha e o botão "Ver no mapa" de cada linha da Tabela levam ao Mapa. Na
   Tabela, fora do modo de edição, não há ficha da pessoa; no modo de edição o botão "Editar…" a seguir ao nome
-  (com o "Ver no mapa" só em ícone) abre a mesma ficha editável do Mapa e do Quadro (05/10/2026, na main e
-  por publicar; `haFichaDaPessoa`, `botoesDaLinha`, `editarQueFica`, `seguirEditar`); a pesquisa e o clique
+  (com o "Ver no mapa" só em ícone) abre a mesma ficha editável do Mapa e do Quadro (05/10/2026;
+  `haFichaDaPessoa`, `botoesDaLinha`, `editarQueFica`, `seguirEditar`); a pesquisa e o clique
   na linha só realçam/selecionam.
   O Quadro agrupa por Casas | Carrinhas | Obras (nas obras, cada nome com a casa de onde vem) e filtra só por
-  clientes (`docs/vistas-edicao.md`, `vistas/mostrar.ts`).
-- Apelidos opcionais (05/10/2026, na main e por publicar): vazios com `""` (coluna NOT NULL, sem migração; exceção em `campos.ts`,
+  clientes. **Por publicar** (05/10/2026, ver abaixo): o Quadro também por Clientes (os nomes pela casa onde
+  moram) e sem o filtro dos clientes; a Tabela com os filtros atrás do botão "Filtros"
+  (`docs/vistas-edicao.md`, `vistas/mostrar.ts`).
+- Apelidos opcionais (05/10/2026): vazios com `""` (coluna NOT NULL, sem migração; exceção em `campos.ts`,
   como a morada do local).
 - **O Excel do Michael deixa de ser mantido, se tudo correr bem, na quarta-feira 07/10/2026 de manhã**: daí em
   diante o mapa é a fonte única e não se volta a sincronizar a partir do Excel. Pendente combinado com o Rafael:
@@ -101,22 +104,34 @@ camadas, lista lateral, **modo de edição** (rascunho, arrastar, Mover para…,
 - Todos os nomes têm o mesmo texto (`COR_TEXTO_NOMES`); as cores dos clientes são claras (ver `docs/cores.md`).
 - Tipos da API em `src/dominio/api.ts`; formato das matrículas em `src/dominio/matricula.ts`.
 
-**M2 publicado a 05/10/2026 em https://mapa.cmf-lux.lu** (`docs/m2.md`; decisões em `docs/decisoes.md`, "M2"): domínio (`campos.ts`, `operacoes.ts` com 'campo' e
-'registo', `reverter.ts`, `indisponibilidade.ts`, `problemas.ts`, `datas.ts`), migração 0004
-(`indisponibilidades`, `problemas`, `lotes.reverte`), `POST /api/lotes` com as operações novas e `reverte`,
-`POST /api/geocodificar(/inverso)`, sincronizar sem desfazer edições, e a loja (`hoje`, `reverte`). As
-interfaces estão feitas (fichas editáveis, nova pessoa e saída, indisponível e problemas, obras com o
-`CampoMorada` e o Quadro por obras, histórico com Reverter, Guardar com os grupos novos, barra com "Novo…").
-Os serviços de moradas estão ligados (geoportail.lu, IGN e Nominatim com 1 pedido/s, em
-`src/servidor/geocodificacao.ts`) e o `npm run geocodificar` usa o mesmo módulo; **nos ensaios arrancar o
-servidor com `MORADAS=desligadas`** (503, nada sai para os serviços). O `GET /api/estado` leva só os períodos
-e problemas dos últimos 30 dias. Construído na worktree `C:/dev/mapa-cmf-m2` e juntado à main com as
+**M2 publicado a 05/10/2026 em https://mapa.cmf-lux.lu** (`docs/m2.md`; decisões em `docs/decisoes.md`, "M2"):
+domínio (`campos.ts`, `operacoes.ts` com 'campo' e 'registo', `reverter.ts`, `indisponibilidade.ts`,
+`problemas.ts`, `datas.ts`), migração 0004 (`indisponibilidades`, `problemas`, `lotes.reverte`),
+`POST /api/lotes` com as operações novas e `reverte`, `POST /api/geocodificar(/inverso)`, sincronizar sem desfazer
+edições, e a loja (`hoje`, `reverte`). As interfaces estão feitas (fichas editáveis, nova pessoa e saída,
+indisponível e problemas, obras com o `CampoMorada` e o Quadro por obras, histórico com Reverter, Guardar com os
+grupos novos, barra com "Novo…"). Os serviços de moradas estão ligados (geoportail.lu, IGN e Nominatim com 1
+pedido/s, em `src/servidor/geocodificacao.ts`) e o `npm run geocodificar` usa o mesmo módulo; **nos ensaios
+arrancar o servidor com `MORADAS=desligadas`** (503, nada sai para os serviços). O `GET /api/estado` leva só os
+períodos e problemas dos últimos 30 dias. Construído na worktree `C:/dev/mapa-cmf-m2` e juntado à main com as
 decisões de 04–05/10 (Quadro Casas | Carrinhas | Obras sem filtro "Obra", contrato só na ficha da casa, sem
 "sempre cheia", Tabela sem ficha da pessoa e com "Voltou à empresa…" para quem saiu).
-**Na main, por publicar** (respostas do Rafael de 05/10/2026, depois do deploy do M2): o "Editar…" da Tabela
-no modo de edição e os apelidos opcionais (ver "Estado atual" acima); publicam-se com o próximo deploy.
-No compactar, `resolvidoEm` de um problema e `ativa`/marcas "a confirmar" de uma pessoa NÃO se dobram na
-criação: ficam 'campo' a seguir (criar e resolver no mesmo rascunho grava-se). As reversões do rascunho saem
-por `reversoesDoRascunho()` (loja) para o registo do localStorage (também no `protegerRascunho`, quando a
-sessão termina). `importar`, `sessoes` e `sincronizar` nunca migram uma BD que já existe
-(`recusaPorMigracoesPendentes`): só o arranque do servidor migra, com a cópia antes.
+Foram com ele o "Editar…" da Tabela no modo de edição e os apelidos opcionais (respostas do Rafael de
+05/10/2026; ver "Estado atual" acima).
+**Por publicar** (pedidos do Rafael de 05/10/2026 depois do telemóvel, `docs/decisoes.md`): Quadro por clientes
+sem o filtro dos clientes, painel "Filtros" na Tabela, telemóvel sem Excel, a linha do "Editar…" à vista com
+"Ver tudo", a carta com as palavras da ficha no Guardar/Histórico e **casas criadas e apagadas no programa** (o
+pedido 1, `docs/m2.md` "Casas novas e apagadas"): "Novo…" → Nova casa (`edicao/DialogoCasa.tsx`,
+`edicao/passosCasa.ts`) e "Apagar casa…" no fim da ficha da casa (modo de edição). Sem migração: criada no
+programa = id "casa-<UUID>" (`casaCriadaNoPrograma`; as dos dados iniciais também começam por "casa-"), e o
+local 'casa' de uma morada nova = "local-<UUID>" (só esse local de casas se apaga); o servidor só aceita outro
+id numa casa nova se for o de uma casa apagada no programa (o Reverter; `errosIdsDeCasas`) e uma casa só fica
+num local do tipo 'casa'. Apagar só sem moradores, sem carrinhas a dormir lá e sem problemas por resolver (a
+confirmação tira os moradores e onde dorme no mesmo passo); os problemas resolvidos apagam-se com a casa (os
+antigos no servidor, no `gravarLote`). O `sincronizar` nunca tira uma casa do programa e recusa uma casa dos
+JSON com o nome de uma delas. O Reverter de um registo apagado usa `separarCriacao` (o que a forma de criar não
+aceita vai a seguir como 'campo'). No compactar, `resolvidoEm` de um problema e `ativa`/marcas "a confirmar" de
+uma pessoa NÃO se dobram na criação: ficam 'campo' a seguir (criar e resolver no mesmo rascunho grava-se). As
+reversões do rascunho saem por `reversoesDoRascunho()` (loja) para o registo do localStorage (também no
+`protegerRascunho`, quando a sessão termina). `importar`, `sessoes` e `sincronizar` nunca migram uma BD que já
+existe (`recusaPorMigracoesPendentes`): só o arranque do servidor migra, com a cópia antes.

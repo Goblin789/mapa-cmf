@@ -26,6 +26,7 @@
 // mostra tudo e tem o seu botão "Ver no mapa"; uma pessoa em foco na Tabela (pesquisa, nomes) só realça a
 // linha. As fichas de casa e carrinha abrem em todas as vistas. A vista sai da loja da vista (ou da prop
 // `vista`).
+// No modo de edição, a ficha da casa acaba com "Apagar casa…" (05/10/2026; AcoesCasa).
 // O aviso do contrato de uma casa só aparece aqui, na ficha da casa (fora dela, só no diálogo Guardar).
 // M2 (docs/m2.md): a moldura e as peças do corpo estão em MolduraFicha.tsx; a ficha da obra (FichaObra.tsx),
 // a secção Indisponível da pessoa (SeccaoIndisponivel.tsx) e a dos problemas da casa/carrinha
@@ -61,6 +62,8 @@ import {
 import { IconeVolante } from '../comum/IconeVolante';
 import { ESTILO_AVISO_CONTRATO } from '../comum/lotacao';
 import { formatarMatricula } from '../comum/Matricula';
+import { BOTAO_PEQUENO } from '../edicao/classes';
+import { ConfirmarApagarCasa } from '../edicao/DialogoCasa';
 import {
   AcoesDormida,
   AcoesPessoa,
@@ -547,7 +550,29 @@ function FichaCasa({
           </ul>
         </Secao>
       )}
+      {modoEdicao && <AcoesCasa casa={casa} />}
     </Moldura>
+  );
+}
+
+/**
+ * Modo de edição, no fim da ficha da casa: "Apagar casa…" (pedido do Rafael, 05/10/2026). A confirmação
+ * (edicao/DialogoCasa.tsx, ConfirmarApagarCasa) diz o que impede e tira, no mesmo passo, os moradores e as
+ * carrinhas que lá dormem. No telemóvel está no fim da ficha aberta ("Ver tudo"), como os campos da casa.
+ */
+function AcoesCasa({ casa }: { casa: Casa }) {
+  const [apagar, setApagar] = useState(false);
+  return (
+    <div className="mt-3 border-t border-slate-200 pt-2">
+      <button
+        type="button"
+        onClick={() => setApagar(true)}
+        className={`${BOTAO_PEQUENO} text-red-800 hover:bg-red-50`}
+      >
+        Apagar casa…
+      </button>
+      {apagar && <ConfirmarApagarCasa casaId={casa.id} aoFechar={() => setApagar(false)} />}
+    </div>
   );
 }
 

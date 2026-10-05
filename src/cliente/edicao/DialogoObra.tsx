@@ -12,7 +12,7 @@
 
 import { type FormEvent, useId, useMemo, useState } from 'react';
 import { validarOperacoes } from '../../dominio/operacoes';
-import type { Id } from '../../dominio/tipos';
+import type { Id, Local } from '../../dominio/tipos';
 import { CampoMorada } from '../comum/CampoMorada';
 import { MORADA_VAZIA, type ValorMorada } from '../comum/morada';
 import { useLoja } from '../estado/loja';
@@ -25,11 +25,13 @@ import {
   clientesDeObras,
   type DadosObra,
   dadosDaObra,
+  descreverLocalApagar,
   limparNome,
   passoApagarObra,
   passoCriarObra,
   passoEditarObra,
   resumoApagarObra,
+  tituloApagarObra,
   usosDoLocal,
 } from './passosObra';
 import { type PosicaoMapa, useUiEdicao } from './ui';
@@ -277,11 +279,10 @@ export function ConfirmarApagarObra({ obraId, aoFechar }: { obraId: Id; aoFechar
     useUiEdicao.getState().avisar(`Obra apagada: ${obra.nome} (por guardar). Ctrl+Z desfaz.`);
   };
 
-  const moradas = (locais: readonly { morada: string; nome: string }[]) =>
-    locais.map((l) => l.morada || l.nome).join(' e ');
+  const descrever = (locais: readonly Local[]) => locais.map(descreverLocalApagar).join(' e ');
   return (
     <Dialogo
-      titulo={`Apagar a obra ${obra.nome}?`}
+      titulo={tituloApagarObra(obra.nome)}
       alerta
       largura="estreito"
       aoFechar={aoFechar}
@@ -304,14 +305,14 @@ export function ConfirmarApagarObra({ obraId, aoFechar }: { obraId: Id; aoFechar
         </li>
         {resumo.locaisApagados.length > 0 && (
           <li>
-            {resumo.locaisApagados.length === 1 ? 'Apaga-se também a morada' : 'Apagam-se também as moradas'}{' '}
-            {moradas(resumo.locaisApagados)}.
+            {resumo.locaisApagados.length === 1 ? 'Apaga-se também' : 'Apagam-se também'}{' '}
+            {descrever(resumo.locaisApagados)}.
           </li>
         )}
         {resumo.locaisQueFicam.length > 0 && (
           <li>
-            {resumo.locaisQueFicam.length === 1 ? 'Fica a morada' : 'Ficam as moradas'}{' '}
-            {moradas(resumo.locaisQueFicam)} (veio dos dados iniciais ou tem outros usos).
+            {resumo.locaisQueFicam.length === 1 ? 'Fica' : 'Ficam'} {descrever(resumo.locaisQueFicam)} (veio
+            dos dados iniciais ou tem outros usos).
           </li>
         )}
         <li>Fica no rascunho até carregares em Guardar; Ctrl+Z desfaz.</li>

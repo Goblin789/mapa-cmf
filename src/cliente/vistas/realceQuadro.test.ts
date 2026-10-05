@@ -9,10 +9,8 @@ import {
   avisoSemNadaNoQuadro,
   blocoTemAlteracoes,
   chavesNoQuadro,
-  filtroEscondeTudo,
   obraTemAlteracoes,
   pessoasDoFocoSemBloco,
-  selecaoSemEscondidos,
 } from './realceQuadro';
 
 const ind = indexar(estadoVistas());
@@ -336,35 +334,41 @@ describe('obras no Quadro (M2)', () => {
   });
 });
 
-describe('filtroEscondeTudo', () => {
-  const passa = (id: string) => id === 'p-2';
-  it('só quando tudo o que se ia acender são pessoas escondidas pelo filtro', () => {
-    expect(filtroEscondeTudo(['pessoa:p-1'], passa)).toBe(true);
-    expect(filtroEscondeTudo(['pessoa:p-1', 'pessoa:p-4'], passa)).toBe(true);
-    // Uma à vista: acende-se essa, o filtro fica.
-    expect(filtroEscondeTudo(['pessoa:p-1', 'pessoa:p-2'], passa)).toBe(false);
-    // Os blocos ficam sempre (recolhidos, se for preciso).
-    expect(filtroEscondeTudo(['casa:casa-l1'], passa)).toBe(false);
-    expect(filtroEscondeTudo(['carrinha:XX1001', 'pessoa:p-1'], passa)).toBe(false);
-    expect(filtroEscondeTudo([], passa)).toBe(false);
-  });
-});
-
-describe('selecaoSemEscondidos', () => {
-  const passa = (id: string) => id !== 'p-1' && id !== 'p-4';
-  it('tira da seleção quem o filtro esconde, com o aviso no singular ou no plural', () => {
-    expect(selecaoSemEscondidos(new Set(['p-2', 'p-1']), passa)).toEqual({
-      fica: ['p-2'],
-      aviso: '1 pessoa escondida pelo filtro saiu da seleção.',
-    });
-    expect(selecaoSemEscondidos(new Set(['p-1', 'p-3', 'p-4']), passa)).toEqual({
-      fica: ['p-3'],
-      aviso: '2 pessoas escondidas pelo filtro saíram da seleção.',
-    });
+describe('Quadro por clientes (05/10/2026): sem blocos de casas, carrinhas nem obras', () => {
+  it('a casa ou a carrinha em foco realça os moradores ou os passageiros, como no Quadro por obras', () => {
+    expect([...pessoasDoFocoSemBloco({ tipo: 'casa', id: 'casa-l1' }, 'clientes', ind)].sort()).toEqual([
+      'p-1',
+      'p-2',
+    ]);
+    expect([...pessoasDoFocoSemBloco({ tipo: 'carrinha', id: 'XX1002' }, 'clientes', ind)].sort()).toEqual([
+      'p-4',
+      'p-5',
+    ]);
+    // Uma pessoa em foco tem o anel no nome: nada a realçar levemente.
+    expect(pessoasDoFocoSemBloco({ tipo: 'pessoa', id: 'p-1' }, 'clientes', ind).size).toBe(0);
   });
 
-  it('ninguém sai (ou seleção vazia): null, a seleção fica igual', () => {
-    expect(selecaoSemEscondidos(new Set(['p-2', 'p-3']), passa)).toBeNull();
-    expect(selecaoSemEscondidos(new Set(), passa)).toBeNull();
+  it('mostrar uma casa ou carrinha acende os nomes; sem ninguém, o aviso curto (sem mudar de agrupamento)', () => {
+    expect(chavesNoQuadro({ tipo: 'casa', id: 'casa-a' }, 'clientes', ind, dorm).sort()).toEqual([
+      'pessoa:p-4',
+      'pessoa:p-5',
+    ]);
+    expect(chavesNoQuadro({ tipo: 'carrinha', id: 'XX1001' }, 'clientes', ind, dorm).sort()).toEqual([
+      'pessoa:p-1',
+      'pessoa:p-2',
+    ]);
+    expect(chavesNoQuadro({ tipo: 'pessoa', id: 'p-7' }, 'clientes', ind, dorm)).toEqual(['pessoa:p-7']);
+    expect(chavesNoQuadro({ tipo: 'casa', id: 'casa-l2' }, 'clientes', ind, dorm)).toEqual([]);
+    expect(avisoSemNadaNoQuadro({ tipo: 'casa', id: 'casa-l2' }, 'clientes', ind, dorm)).toBe(
+      'Casa L2: ninguém mora lá.',
+    );
+    expect(avisoSemNadaNoQuadro({ tipo: 'carrinha', id: 'XX1004' }, 'clientes', ind, dorm)).toBe(
+      'Carrinha XX 1004: ninguém vai nela.',
+    );
+  });
+
+  it('os blocos dos clientes nunca têm o contorno de alterado (não são alvos; os nomes têm o ponto)', () => {
+    const mover: Operacao[] = [{ tipo: 'mover', pessoaId: 'p-2', campo: 'obraId', de: null, para: 'obra-x' }];
+    expect(blocoTemAlteracoes(mover, { tipo: 'cliente', id: 'alfa' }, estadoVistas())).toBe(false);
   });
 });

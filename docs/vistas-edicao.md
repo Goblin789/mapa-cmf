@@ -7,6 +7,12 @@ Pedidos seguintes do Rafael, no mesmo dia (decisões em `docs/decisoes.md`): con
 Tabela sem informação repetida, filtros de escolha múltipla (Tabela e Quadro, com Obra), nomes do Quadro numa
 só linha e ficha arrastável. Estão descritos abaixo, cada um no seu sítio.
 
+Pedidos do Rafael de 05/10/2026, depois de experimentar no telemóvel (decisões em `docs/decisoes.md`): o
+Quadro passa a **Casas | Carrinhas | Obras | Clientes** e perde o filtro dos clientes; no telemóvel sem o
+Excel nem a dica do arrastar; na Tabela os filtros só aparecem com o botão **"Filtros"**; a ficha aberta
+pelo "Editar…" deixa a linha à vista quando muda de tamanho; a carta com as palavras da ficha no Guardar e
+no Histórico. Descritos abaixo (Quadro, Tabela).
+
 ## Diagnóstico (antes)
 
 - `vistas/navegar.ts`: `verNoMapa` (linha da Tabela, título de bloco do Quadro) muda para o Mapa.
@@ -104,7 +110,7 @@ desaparece.
   nome de sempre (reunião). `nome` = o texto a mostrar (e o início do title) e `semSigla` = sem a sigla do cliente: a Tabela
   usa-os para o nome completo; por omissão é o nome curto com a sigla (Quadro, reunião).
 - **`FiltroMultiplo`** (`comum/FiltroMultiplo.tsx`, lógica pura em `comum/escolhaMultipla.ts`): filtro de
-  escolha múltipla da Tabela e do Quadro. Botão "Casa: todas" / "Casa: Casa 1 …" / "Casa" com a pastilha do
+  escolha múltipla da Tabela (o Quadro já não tem filtros: 05/10/2026). Botão "Casa: todas" / "Casa: Casa 1 …" / "Casa" com a pastilha do
   número de escolhas; painel fixo no ecrã com Todas/Limpar/✕, procura (com mais de 8 opções), caixas de
   seleção, secções (ex.: obras por cliente) e opções especiais separadas por uma linha. Conjunto vazio = sem
   filtro; dentro do mesmo filtro é OU (`passaFiltro`), entre filtros diferentes é E. Sem nenhuma opção fica
@@ -114,16 +120,17 @@ desaparece.
   reunião; `paineis/Contadores.tsx` foi apagado. Os números continuam calculados (`dominio/contadores.ts`,
   `loja.contadores`): a legenda do Mapa usa `pessoasPorCliente`. A partir de 1024 px o cabeçalho principal é
   uma só linha (51 px; 76 px a partir de 1680 px, com o logótipo inteiro); a reunião fica numa linha em xl
-  (com os filtros do Quadro, ver Quadro > Reunião).
-- A legenda da barra do Quadro (`Legenda lugar="barra"`) saiu: o Quadro tem os seus filtros. A `Legenda` é
+  (sem filtros desde 05/10/2026: 84 px a 1920, 67 px a 1280).
+- A legenda da barra do Quadro (`Legenda lugar="barra"`) saiu (o Quadro tem o agrupamento por clientes). A `Legenda` é
   só a do Mapa (`data-legenda-mapa`, que a ficha arrastada usa para acabar por cima dela).
 - `NotaEdicao` (com "Ir para o mapa") saiu; cada vista mostra uma dica curta no modo de edição.
 
 ## Quadro
 
-- **Casas | Carrinhas | Obras** (04/10/2026, pedido do Rafael: "Obras" ao lado de Casas e Carrinhas, e não à
-  parte): o alternador da barra (e do cabeçalho da reunião) tem as três opções, lembradas no browser
-  (`mapa-cmf:quadro`). **Por obras** (`agrupamentoQuadro.ts`, `seccoesObras`): uma secção por cliente (pela
+- **Casas | Carrinhas | Obras | Clientes** (04/10/2026, pedido do Rafael: "Obras" ao lado de Casas e
+  Carrinhas, e não à parte; 05/10/2026: "Clientes" também, em vez do filtro dos clientes): o alternador da
+  barra (e do cabeçalho da reunião) tem as quatro opções, lembradas no browser (`mapa-cmf:quadro`,
+  `lerAgrupamento`). **Por obras** (`agrupamentoQuadro.ts`, `seccoesObras`): uma secção por cliente (pela
   ordem dos clientes; "Cliente desconhecido" no fim), um bloco por obra pelo nome (título = nome da obra; por
   baixo, fora da reunião, a morada do local ou, sem ela, o nome do local quando não é o da obra; sem lotação,
   a pastilha é o nº de pessoas; o título abre a ficha da obra, M2; os nomes vêm pela casa de onde vem cada
@@ -134,33 +141,43 @@ desaparece.
   Quadro por obras realça os moradores/passageiros (não há blocos de casas nem de carrinhas para as ligações;
   sem ninguém, "Casa X: ninguém mora lá." / "Carrinha X: ninguém vai nela."). O Quadro **não tem filtro
   "Obra"** à parte (05/10/2026: era a "aba separada" de que o Rafael não gostava; as obras veem-se pelo
-  agrupamento). Para caber: no telemóvel o alternador fica só com o texto (com os ícones a barra passava a três
-  linhas; fica em duas, 89 px), e no cabeçalho da reunião também de 1280 a 1919 px (com eles os filtros, ao
-  lado da hora, passavam a mais uma linha: a 1680 px, 94 → 154 px); a 1920 px (a TV) tem os ícones. Medido:
-  cabeçalho da reunião 75 px de 1280 a 1536 px e 94 px a 1680 e 1920 px, como antes.
+  agrupamento). Para caber: no telemóvel o alternador fica só com o texto, a toda a largura, na 1.ª linha da
+  barra (onde estava "137 pessoas": a contagem e o nº de blocos não aparecem no telemóvel; a barra é uma só
+  linha, 49 px), e no cabeçalho da reunião também de 1280 a 1919 px (com os ícones passava a mais uma
+  linha); a 1920 px (a TV) tem os ícones. Medido: cabeçalho da reunião 67 px a 1280 e 84 px a 1920.
+- **Por clientes** (05/10/2026, pedido do Rafael: "clientes também dessa maneira", `seccoesClientes`,
+  `BlocoCliente`): uma só secção, sem título, com um bloco por cliente pela ordem dos clientes (também os que
+  não têm ninguém, como na lista lateral "Clientes"; "Cliente desconhecido" no fim, se houver), com quem é
+  desse cliente — o cliente **efetivo** (o da obra, se tiver: o da cor e o da lista lateral). No cabeçalho, a
+  sigla com a cor do cliente e o nome; a pastilha é o nº de pessoas. Dentro do bloco, o "de onde vem" do
+  Quadro por obras: os nomes agrupados pela **casa onde moram** (`gruposDeOnde`: a ordem das casas, "Fora das
+  casas CMF" no fim, cada grupo pelo nome), com o nome da casa pequeno (0,8 em) por cima de cada grupo, em
+  colunas que correm de cima para baixo (CSS columns da largura do nome mais comprido). Uma casa grande parte-se
+  em pedaços quase iguais de até 6 nomes (`pedacosDoGrupo`: 10 → 5 + 5), cada um com o nome da casa e inteiro
+  numa coluna (partida a meio pela coluna, os nomes do fundo liam-se como de outra casa). Os nomes vão sem a
+  sigla (é a do bloco). Os blocos ficam lado a lado com a largura de que precisam (cada um parte de ⌈(nomes +
+  pedaços) / 7⌉ colunas e cresce na mesma proporção): os grandes ocupam a linha, os pequenos juntam-se; no
+  telemóvel a toda a largura, com duas colunas de nomes. **Não são alvos de largar** (`alvoDoBloco` = null; o
+  cliente muda-se na ficha da pessoa) e os nomes não se arrastam (não há para onde); selecionam-se, abrem a
+  ficha, entram na caixa de seleção e no "Mover para…". No modo de edição, só no PC, a dica diz "Nos clientes
+  não se larga: o cliente muda-se na ficha da pessoa.". Uma casa ou carrinha em foco (ou mostrada) realça os
+  moradores/passageiros, como no Quadro por obras; a casa em foco realça também o nome dela por cima dos
+  grupos. Sem contorno de "alterado" (os nomes mudados têm o ponto âmbar). Medido com a cópia da BD (137
+  pessoas, 7 clientes): reunião a 1920 cabe a 16 px (casas: 14 px); PC 1920 cabe a 15 px; 1366 e reunião a
+  1280×800 deslizam (como as casas); telemóvel 2 colunas, 0 nomes em duas linhas.
 - **Ler**: clicar num nome abre a ficha da pessoa; clicar no título de um bloco abre a da casa/carrinha (já
   não "Ver no mapa"). O que está em foco tem um anel; casa/carrinha em foco que não tem bloco no agrupamento
   atual (ex.: casa no Quadro por carrinhas) realça os nomes dos moradores/passageiros. Se não houver nada a que chegar (casa sem moradores e sem carrinhas a dormir lá no Quadro por
   carrinhas; carrinha sem passageiros e sem casa no Quadro por casas), um aviso curto diz porquê
   (`avisoSemNadaNoQuadro`, `useUiEdicao.avisar`); o agrupamento não muda.
-- **Filtros (04/10/2026; o "Obra" saiu a 05/10)**: Clientes, vários ao mesmo tempo. No PC as pastilhas dos
-  clientes na barra são o filtro: cada clique liga/desliga esse cliente (sem Shift); no telemóvel é um
-  `FiltroMultiplo` "Cliente". Ficam **só** as pessoas que passam; o cliente que conta é o
-  efetivo (o da obra, se tiver). Os blocos continuam todos, com a lotação e os lugares livres reais: os que
-  não têm ninguém do filtro ficam recolhidos numa fila por baixo da grelha de cada parte (título e pastilha;
-  continuam alvos de largar e abrem a ficha); os outros mostram "+N fora do filtro". A barra diz "N de M
-  pessoas" e, com algum filtro, "Limpar filtros" (como na Tabela; o foco passa para a 1.ª
-  pastilha ou para o botão "Cliente"). Quando o filtro não deixa ninguém, aparece por cima dos blocos
-  (que ficam, recolhidos: continuam alvos de largar) "Ninguém corresponde ao filtro. Limpar filtros"
-  (role=status). Na reunião os mesmos filtros (só para ver): a partir de 1280 px no próprio cabeçalho da
-  reunião, ao lado da hora (a lista "Cliente" até 1919 px; as pastilhas a partir de 1920 px), com
-  "N de M pessoas" e "Limpar filtros"; abaixo de 1280 px, uma barra fina por cima do Quadro. Medido a 1920:
-  cabeçalho 94 px e sem barra (antes 80 + 46), área do Quadro 954 → 987 px; a 1280, 67 + 37 → 75 px. O filtro fica em memória (o
-  mesmo dentro e fora da reunião; não fica guardado ao recarregar). Mostrar alguém que o filtro esconde
-  (pesquisa, ligações) limpa-o com o aviso "Filtro do Quadro limpo para mostrar …". No modo de edição, quem o
-  filtro esconde sai da seleção (aviso "N pessoa(s) escondida(s) pelo filtro saiu/saíram da seleção"), para
-  não ir no arrasto sem se ver (na Tabela a seleção fica). O Quadro já não segue o `clienteDestacado` da
-  legenda do Mapa; o Excel do Quadro exporta tudo.
+- **Sem filtros (05/10/2026)**: o filtro dos clientes do Quadro saiu (as pastilhas no PC, a lista "Cliente"
+  no telemóvel, os filtros no cabeçalho da reunião, "N de M pessoas", "Limpar filtros", os blocos recolhidos,
+  o "+N fora do filtro", o aviso "Filtro do Quadro limpo…" e a seleção tirada a quem o filtro escondia): no
+  lugar dele há o agrupamento por clientes, "tanto no telemóvel como no PC". Os filtros da Tabela e a legenda
+  do Mapa ficam. O Quadro não segue o `clienteDestacado` da legenda do Mapa; o Excel do Quadro exporta tudo e
+  só aparece no PC (a partir de 640 px). A barra no PC: o alternador, "N casas · M pessoas" e o Excel; no
+  modo de edição, por baixo, a dica (só no PC) e, no Quadro por carrinhas, "Confirmar todas as sugestões (N)"
+  (também no telemóvel, onde a dica "Toque longo num nome para o arrastar." saiu).
 - **Nomes e títulos sempre numa só linha** (casas e carrinhas): o `useAjuste` mede, em cada parte do Quadro, o
   nome mais comprido (em em) e as colunas dos blocos e dos nomes dessa parte nunca ficam mais estreitas do que
   ele (lado a lado, cada parte parte da largura de que os seus blocos precisam). Mede também o cabeçalho de
@@ -196,9 +213,9 @@ desaparece.
   carrinhas: "Mudar" onde dorme (`abrirDormida`); no Quadro por carrinhas, "Confirmar todas as sugestões (N)".
   Condutor pela ficha (como no mapa). Bloco com alterações por guardar: contorno âmbar e "●". As pastilhas já
   mostram a simulação.
-- **Reunião**: só leitura (nomes e títulos não clicáveis, sem alvos, sem ficha); os filtros de clientes e
-  obras funcionam (são só para ver). Continua a atender `useAoMostrar` (desliza e realça no Quadro, sem
-  saltar para o mapa).
+- **Reunião**: só leitura (nomes e títulos não clicáveis, sem alvos, sem ficha); sem filtros (05/10/2026),
+  com os quatro agrupamentos. Continua a atender `useAoMostrar` (desliza e realça no Quadro, sem saltar
+  para o mapa).
 - O mapa escondido não se pode deslocar durante um arrasto no Quadro (`mapa/interacoesEdicao.ts` ignora
   quando o mapa está `inert`).
 
@@ -247,7 +264,10 @@ desaparece.
   nome no mapa, cliente, telefone, carta —, "Marcar indisponível…", "Mudar casa/carrinha/obra…", "Tornar
   condutor", "Saiu da empresa…"), posta como as da casa e da carrinha (no PC à direita, arrastável; no
   telemóvel em baixo, recolhida), com a linha da pessoa realçada (barra azul-escura) e à vista
-  (`manterLinhaAVista`), também quando a ficha muda o que ordena ou filtra a Tabela (o nome com a Tabela por
+  (`manterLinhaAVista`), também quando a ficha muda de tamanho (05/10/2026: no telemóvel, "Ver tudo" fazia-a
+  crescer por cima da linha; `useLinhaAVistaComAFicha` segue a altura da ficha e volta a pôr a linha por
+  cima dela, só se ela se via antes da mudança, `linhaSeVe`: quem deslizou a tabela para ver outras linhas e
+  muda um campo da ficha não é levado de volta) e quando a ficha muda o que ordena ou filtra a Tabela (o nome com a Tabela por
   Nome, a casa com o filtro Casa…): a linha volta a pôr-se à vista e, se deixou de passar os filtros sem
   ninguém mexer neles, limpam-se com o aviso "Filtros limpos para mostrar …" (`acaoLinhaDaFicha`; quem
   escreve no filtro fica com ele). Só esse botão a abre (`useEstadoTabela.editar`, `editarQueFica`,
@@ -265,8 +285,10 @@ desaparece.
   "Fora das casas CMF" / "Sem transporte da empresa" / "Sem obra"; mudar = `moverComAviso` (um passo, Ctrl+Z
   desfaz). **Condutor**: botão que liga/desliga (`definirCondutorComAviso`). Células alteradas a âmbar com
   "antes: …". Seleção + "Mover para…" da barra âmbar para mudar várias. Ao lado das listas Casa e Carrinha,
-  um botão pequeno (ícone da casa, ou do carro/carrinha de lado) abre a ficha sem selecionar a linha. Na barra,
-  "Confirmar todas as sugestões (N)" (o mesmo diálogo do Quadro por carrinhas e da lista lateral).
+  um botão pequeno (ícone da casa, ou do carro/carrinha de lado) abre a ficha sem selecionar a linha. Na linha
+  compacta da barra, "Confirmar sugestões (N)" (o mesmo diálogo do Quadro por carrinhas e da lista lateral),
+  com N > 0; a dica "Muda nas células ou seleciona linhas e usa Mover para…" está dentro do painel "Filtros",
+  só no PC (05/10/2026).
 - O campo da Tabela passa a ser só um **filtro** ("Filtrar a tabela…"); "/" e Ctrl+K vão para a pesquisa do
   cabeçalho em todas as vistas. Mostrar alguém escondido pelos filtros limpa-os (com aviso curto).
 - **Filtros de escolha múltipla (04/10/2026)**: Cliente, Casa, Carrinha e **Obra** (`FiltroMultiplo`), cada
@@ -274,9 +296,29 @@ desaparece.
   especiais "Fora das casas CMF", "Sem transporte da empresa" e "Sem obra"; cada opção mostra o nº de pessoas
   de todas as linhas (não muda ao escolher); as obras vêm por cliente, com a marca. Sem obras na BD, "Obra:
   sem obras" desativado. A contagem passa a "N de M pessoas" e há "Limpar filtros" quando há algum ativo. No
-  telemóvel os quatro ficam em 2×2.
-- **Excel**: na Tabela com filtros, a folha Pessoas leva só as linhas filtradas, pela ordem da Tabela, e o
-  ficheiro diz "(filtrado)"; as folhas Casas e Carrinhas ficam inteiras. Sem filtros é igual a antes.
+  telemóvel ficam dois a dois.
+- **Painel "Filtros" (05/10/2026, pedido do Rafael: "arranjar maneira de só os abrir quando quisermos")**: o
+  campo "Filtrar por nome, Nº, casa…" fica sempre à vista e, ao lado, o botão **"Filtros"** (ícone, seta;
+  `aria-expanded`/`aria-controls`) abre e fecha o painel com Cliente, Casa, Carrinha, Obra, Indisponível, "Só
+  a confirmar" e "Mostrar quem saiu". Com algum ligado diz **"Filtros · N"** e fica azul (`filtrosLigados`:
+  cada filtro com escolhas conta 1, "Só a confirmar" 1 e "Mostrar quem saiu" também 1 — não é um filtro, mas
+  está no painel e muda o que se vê; o texto do campo não conta). **Fechado por omissão**, no telemóvel e no
+  PC; o aberto/fechado lembra-se no browser (`mapa-cmf:tabela-filtros`, `carregarPainelFiltros` /
+  `guardarPainelFiltros` com try/catch: sem localStorage fica fechado). A linha compacta: no PC o campo,
+  "Filtros", a contagem ("137 pessoas" ou "N de M pessoas"), "Limpar filtros" com algum filtro, "Confirmar
+  sugestões (N)" no modo de edição e o Excel à direita (49 px; com o painel aberto 87 px a 1920 e 1366). No
+  telemóvel o campo e "Filtros" na 1.ª linha (45 px) e, só com algum filtro (ou com sugestões no modo de
+  edição), uma 2.ª linha com "N de M pessoas", "Limpar filtros" e as sugestões: um filtro escondido nunca
+  engana. Antes a barra do telemóvel tinha sempre os cinco filtros, as caixas e a dica. *Acertos depois da
+  revisão*: com o painel fechado e "Mostrar quem saiu" ligado, a linha compacta tem a pastilha azul **"Com
+  quem saiu ✕"**, que a desliga (também no telemóvel; não é um filtro, por isso não há "Limpar filtros" só por
+  ela). Uma casa ou obra escolhida num filtro que deixa de existir (apagada, ou criada no rascunho e
+  desfeita) sai do filtro sem aviso (`filtrosSemOQueSaiu`; o aviso "Casa apagada: … Ctrl+Z desfaz" fica à
+  vista). No telemóvel o campo diz "Nome, Nº, casa…" (o texto todo ficava cortado ao lado de "Filtros · N").
+  Os cinco filtros do painel quebram linha no PC estreito (a 640 px a página deslizava 36 px de lado).
+- **Excel** (só no PC, a partir de 640 px; no telemóvel saiu a 05/10/2026): na Tabela com filtros, a folha
+  Pessoas leva só as linhas filtradas, pela ordem da Tabela, e o ficheiro diz "(filtrado)"; as folhas Casas
+  e Carrinhas ficam inteiras. Sem filtros é igual a antes.
 
 ## M2 nas vistas (05/10/2026)
 
@@ -290,13 +332,17 @@ Desenho em `docs/m2.md`; aqui só o que muda na Tabela, no Quadro e na reunião.
   colunas "Indisponível até" e, nas folhas Casas e Carrinhas, "Problemas abertos". Mostrar uma obra (pesquisa,
   obra criada) realça as linhas de quem lá trabalha.
 - **Quadro**: 3.º agrupamento **Obras** (um bloco por obra, por cliente, "Sem obra" no fim; cada nome com a
-  casa de onde vem). Ícone de problemas nos blocos. Numa carrinha, quem está indisponível hoje não conta na
+  casa de onde vem) e, desde 05/10/2026, o 4.º, **Clientes** (ver Quadro). Ícone de problemas nos blocos. Numa carrinha, quem está indisponível hoje não conta na
   pastilha (8/9) mas continua desenhado na sua caixa: as caixas são as do cartão do Mapa.
+- **Casas novas e apagadas** (05/10/2026; `docs/m2.md`): "Novo…" → Nova casa em todas as vistas (o diálogo
+  nunca muda de vista; a casa nova fica em foco: no Quadro o bloco aparece no agrupamento de sempre, na Tabela
+  entra nas listas das células). "Apagar casa…" no fim da ficha da casa no modo de edição, também na Tabela e
+  no Quadro (no telemóvel com "Ver tudo"); depois de apagar a ficha fecha.
 - **Ficha da vista**: no telemóvel, enquanto há um campo aberto, ocupa o ecrã todo (abaixo de 640 px); o aviso
   curto vai para cima quando há uma ficha aberta, para não a tapar.
 - **Reunião**: só leitura; vê as marcas ("até 12/10") e os ícones; o cabeçalho tem "Histórico" (sem
   "Reverter…"). "Ecrã inteiro" e "Histórico" ficam só com o ícone (com os nomes, a 1920 px fora do ecrã
-  inteiro os filtros passavam a uma 2.ª linha).
+  inteiro os filtros passavam a uma 2.ª linha; os filtros saíram a 05/10/2026, os ícones ficam).
 
 ## O que fica igual
 

@@ -1,12 +1,12 @@
 // Vista Quadro: o que se acende para mostrar uma pessoa, casa, carrinha ou obra (pedidos de vistas/mostrar.ts
 // e o foco da ficha) e que blocos têm alterações por guardar. Funções puras.
 //
-// Uma casa no Quadro por carrinhas ou por obras não tem bloco (nem uma carrinha no Quadro por casas ou por
-// obras): acendem-se os nomes de quem lá mora (ou de quem lá vai), que é o que interessa ver. Sem ninguém,
-// acende-se a ligação que o rodapé mostra (só nas casas e nas carrinhas): a casa onde a carrinha dorme, ou
-// as carrinhas que dormem na casa. Se nem isso houver, a vista não tem nada para acender e diz porquê num
-// aviso curto (avisoSemNadaNoQuadro). A obra só tem bloco no Quadro por obras; nos outros acendem-se as
-// pessoas dela.
+// Uma casa no Quadro por carrinhas, por obras ou por clientes não tem bloco (nem uma carrinha no Quadro por
+// casas, por obras ou por clientes): acendem-se os nomes de quem lá mora (ou de quem lá vai), que é o que
+// interessa ver. Sem ninguém, acende-se a ligação que o rodapé mostra (só nas casas e nas carrinhas): a casa
+// onde a carrinha dorme, ou as carrinhas que dormem na casa. Se nem isso houver, a vista não tem nada para
+// acender e diz porquê num aviso curto (avisoSemNadaNoQuadro). A obra só tem bloco no Quadro por obras; nos
+// outros acendem-se as pessoas dela. Os blocos dos clientes não se mostram (não há ficha do cliente).
 
 import type { Dormida } from '../../dominio/dormidas';
 import type { Indices } from '../../dominio/indices';
@@ -110,8 +110,8 @@ export function avisoSemNadaNoQuadro(
 
 /**
  * Pessoas a realçar levemente enquanto a casa, carrinha ou obra em foco não tem bloco neste agrupamento
- * (casa no Quadro por carrinhas ou por obras, carrinha no Quadro por casas ou por obras, obra no Quadro por
- * casas ou por carrinhas). Vazio nos outros casos: aí o bloco tem o anel.
+ * (casa no Quadro por carrinhas, obras ou clientes, carrinha no Quadro por casas, obras ou clientes, obra no
+ * Quadro por casas, carrinhas ou clientes). Vazio nos outros casos: aí o bloco tem o anel.
  */
 export function pessoasDoFocoSemBloco(
   foco: ElementoVista | null,
@@ -146,7 +146,8 @@ export function obraTemAlteracoes(
  * O bloco tem alterações por guardar: numa casa, carrinha ou obra, entra ou sai alguém (numa carrinha
  * também o condutor ou onde dorme) e, no M2, a ficha dela, a morada e os problemas (sitioTemAlteracoes, que
  * precisa do estado VISÍVEL para as operações 'campo' de um problema ou de um local); em "Fora das casas
- * CMF", "Sem transporte" ou "Sem obra", entra ou sai alguém do grupo.
+ * CMF", "Sem transporte" ou "Sem obra", entra ou sai alguém do grupo. Os blocos dos clientes nunca (não
+ * são alvos; os nomes mudados têm o ponto âmbar).
  */
 export function blocoTemAlteracoes(
   pendentes: readonly Operacao[],
@@ -168,35 +169,7 @@ export function blocoTemAlteracoes(
         (op) => op.tipo === 'mover' && op.campo === campo && (op.de === null || op.para === null),
       );
     }
+    case 'cliente':
+      return false;
   }
-}
-
-/**
- * O filtro do Quadro (os clientes) esconde tudo o que se ia acender: há chaves e são todas de pessoas
- * que não passam (os blocos das casas, carrinhas e obras ficam sempre, mesmo recolhidos). Quem pediu para
- * mostrar limpa então o filtro, como a Tabela faz com os dela. Com alguma à vista, acende-se essa e o filtro
- * fica.
- */
-export function filtroEscondeTudo(chaves: readonly string[], passa: (pessoaId: Id) => boolean): boolean {
-  const prefixo = 'pessoa:';
-  return chaves.length > 0 && chaves.every((c) => c.startsWith(prefixo) && !passa(c.slice(prefixo.length)));
-}
-
-/**
- * No modo de edição, quem está selecionado e o filtro do Quadro passa a esconder sai da seleção: senão ia
- * no arrasto (o motor leva a seleção toda) sem se ver. `null` quando ninguém sai; senão a seleção que fica
- * (pela mesma ordem) e o aviso curto a mostrar.
- */
-export function selecaoSemEscondidos(
-  selecao: ReadonlySet<Id>,
-  passa: (pessoaId: Id) => boolean,
-): { fica: Id[]; aviso: string } | null {
-  const fica = [...selecao].filter(passa);
-  const saem = selecao.size - fica.length;
-  if (saem === 0) return null;
-  const aviso =
-    saem === 1
-      ? '1 pessoa escondida pelo filtro saiu da seleção.'
-      : `${saem} pessoas escondidas pelo filtro saíram da seleção.`;
-  return { fica, aviso };
 }

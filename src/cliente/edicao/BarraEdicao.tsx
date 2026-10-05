@@ -3,7 +3,7 @@
 // No telemóvel: 1.ª linha com o estado, Cancelar e Guardar; 2.ª linha com o resto (ícones + textos curtos).
 // A 375 px a 1.ª linha só tem uns 166 px para o estado: sem o lápis e com "Sem alterações", "Edição" e a
 // pastilha cabem lado a lado (antes a pastilha espremia o título até ficar por cima dele).
-// M2: menu "Novo…" (Nova pessoa, Nova obra; setas, Home/End, Esc) e "Indisponível…" quando há seleção. Para a
+// M2: menu "Novo…" (Nova pessoa, Nova casa — 05/10/2026 —, Nova obra; setas, Home/End, Esc) e "Indisponível…" quando há seleção. Para a
 // barra continuar numa linha com estes dois, abaixo de 1900 px Desfazer e Refazer ficam só com o ícone (o nome
 // fica para os leitores de ecrã e na dica), "Limpar seleção" passa a "Limpar" e a frase longa ("— as mudanças
 // só ficam gravadas…") passa à curta. Medido (rascunho grande, com e sem seleção): uma linha de 1280 a 2560 px;
@@ -21,6 +21,7 @@ import { teclaNoBotaoMenu, teclaNoMenu } from './atalhos';
 import { BOTAO_BARRA, BOTAO_BARRA_PRIMARIO } from './classes';
 import {
   IconeAbrirMenu,
+  IconeCasa,
   IconeDesfazer,
   IconeGuardar,
   IconeIndisponivel,
@@ -33,7 +34,14 @@ import {
   IconeRefazer,
 } from './icones';
 import { contarAlteracoes } from './resumo';
-import { abrirIndisponivel, abrirMoverPara, abrirNovaPessoa, abrirObra, useUiEdicao } from './ui';
+import {
+  abrirIndisponivel,
+  abrirMoverPara,
+  abrirNovaCasa,
+  abrirNovaPessoa,
+  abrirObra,
+  useUiEdicao,
+} from './ui';
 
 function Separador() {
   return <span aria-hidden="true" className="mx-0.5 hidden h-5 w-px bg-amber-300 xl:block" />;
@@ -52,6 +60,12 @@ const ITENS_NOVO: readonly ItemMenu[] = [
     icone: <IconePessoaNova />,
     dica: 'Juntar uma pessoa nova (casa e carrinha no mesmo passo)',
     acao: abrirNovaPessoa,
+  },
+  {
+    rotulo: 'Nova casa',
+    icone: <IconeCasa />,
+    dica: 'Criar uma casa numa morada que já existe ou numa morada nova',
+    acao: abrirNovaCasa,
   },
   {
     rotulo: 'Nova obra',
@@ -145,7 +159,7 @@ function MenuNovo({ compacto }: { compacto: boolean }) {
         aria-controls={aberto !== null ? idMenu : undefined}
         onClick={() => (aberto === null ? abrirEm(0) : setAberto(null))}
         onKeyDown={aoTeclarNoBotao}
-        title="Nova pessoa ou nova obra"
+        title="Nova pessoa, nova casa ou nova obra"
         className={BOTAO_BARRA}
       >
         <IconeMais />

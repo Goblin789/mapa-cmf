@@ -29,6 +29,7 @@ import {
   podeHaverMais,
   proximoLimite,
   rotuloTipoLote,
+  semLocaisRepetidos,
 } from './historico';
 import { IconeAviso, IconeReverter, IconeRodar } from './icones';
 import { abrirReverter } from './ui';
@@ -46,7 +47,8 @@ function Lote({
   const [tudo, setTudo] = useState(false);
   const nota = notaEstadoLote(entrada.estado);
   // Só a ver: as linhas seguidas com a mesma frase (a latitude e a longitude de um pino) dão uma.
-  const frases = juntarFrasesIguais(entrada.alteracoes);
+  // E sem a linha do local que acompanha a sua casa ou obra (a frase delas já diz a morada).
+  const frases = juntarFrasesIguais(semLocaisRepetidos(entrada.alteracoes));
   const n = frases.length;
   const visiveis = tudo ? frases : frases.slice(0, DESCRICOES_VISIVEIS);
   const agendado = entrada.efetivoEm !== entrada.criadoEm && entrada.estado === 'agendado';

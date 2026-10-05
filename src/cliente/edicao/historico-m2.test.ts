@@ -19,6 +19,7 @@ import {
   mostraReverter,
   notaReversaoNoGuardar,
   prepararReversao,
+  semLocaisRepetidos,
 } from './historico';
 
 function linha(
@@ -245,6 +246,37 @@ describe('prepararReversao (o diálogo "Reverter")', () => {
     ]);
   });
 
+  it('uma casa apagada volta: as frases dizem o nome da casa que volta, não o id (05/10/2026)', () => {
+    const e = estadoExemplo();
+    const casa = e.casas.find((c) => c.id === 'casa-3');
+    const semCasa: Estado = {
+      ...e,
+      casas: e.casas.filter((c) => c.id !== 'casa-3'),
+      pessoas: e.pessoas.map((p) => (p.id === 'p-helena' ? { ...p, casaId: null } : p)),
+    };
+    const vista = prepararReversao(
+      semCasa,
+      entrada({
+        alteracoes: [
+          linha(
+            'pessoa',
+            'p-helena',
+            'casaId',
+            'casa-3',
+            null,
+            'Helena Z. — casa: Casa Três → Fora das casas CMF',
+          ),
+          linha('casa', 'casa-3', CAMPO_REGISTO, casa, null, 'Casa Três — apagada'),
+        ],
+      }),
+    );
+    expect(vista.erros).toEqual([]);
+    expect(vista.voltaAtras.map((f) => f.descricao)).toEqual([
+      'Casa Três — criada (1 Rue Fictícia, L-0000 Lugar local-b)',
+      'Helena Z. — casa: Fora das casas CMF → Casa Três',
+    ]);
+  });
+
   it('o aviso depois de pôr no rascunho', () => {
     expect(avisoReversaoNoRascunho(5)).toBe(
       'Reversão no rascunho: 5 alterações. Guardar para gravar; Ctrl+Z desfaz.',
@@ -321,5 +353,46 @@ describe('reversões que vão no Guardar e os nomes das gravações', () => {
     expect(etiquetaRevertida(entrada({ revertidoPor: [41] }), gravacoesConhecidas())?.dica).toBe(
       'Revertida pela gravação de 05/10 00:17 (Rui Exemplo)',
     );
+  });
+});
+
+describe('semLocaisRepetidos', () => {
+  const linha = (
+    entidade: string,
+    entidadeId: string,
+    antes: unknown,
+    depois: unknown,
+  ): AlteracaoHistorico => ({
+    entidade,
+    entidadeId,
+    campo: CAMPO_REGISTO,
+    antes: antes === null ? null : JSON.stringify(antes),
+    depois: depois === null ? null : JSON.stringify(depois),
+    descricao: `${entidade} ${entidadeId}`,
+  });
+
+  it('tira o local criado ou apagado com a sua casa ou obra; o estacionamento e o resto ficam', () => {
+    const alteracoes = [
+      linha('local', 'local-a', null, { id: 'local-a', tipo: 'casa' }),
+      linha('casa', 'casa-x', null, { id: 'casa-x', localId: 'local-a' }),
+      linha('local', 'local-b', null, { id: 'local-b', tipo: 'obra' }),
+      linha('local', 'local-c', null, { id: 'local-c', tipo: 'estacionamento' }),
+      linha('obra', 'obra-y', null, { id: 'obra-y', localId: 'local-b', estacionamentoLocalId: 'local-c' }),
+      linha('casa', 'casa-z', { id: 'casa-z', localId: 'local-d' }, null),
+      linha('local', 'local-d', { id: 'local-d', tipo: 'casa' }, null),
+      { ...linha('pessoa', 'p-ana', null, null), campo: 'casaId', antes: '"casa-1"', depois: '"casa-x"' },
+    ];
+    expect(semLocaisRepetidos(alteracoes).map((a) => a.entidadeId)).toEqual([
+      'casa-x',
+      'local-c',
+      'obra-y',
+      'casa-z',
+      'p-ana',
+    ]);
+  });
+
+  it('um local criado sozinho (ex.: a morada nova de uma casa que já existia) fica', () => {
+    const alteracoes = [linha('local', 'local-a', null, { id: 'local-a' })];
+    expect(semLocaisRepetidos(alteracoes)).toEqual(alteracoes);
   });
 });

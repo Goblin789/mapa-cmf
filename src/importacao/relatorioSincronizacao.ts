@@ -266,6 +266,11 @@ export function gerarRelatorioSincronizacao(
             `Locais que só existem na base de dados (ficam): ${plano.locaisSoNaBd.map((l) => l.nome).join(', ')}.`,
           )}</p>`
         : '') +
+      (plano.casasDoPrograma.length > 0
+        ? `<p class="nota">${e(
+            `Casas criadas no programa (ficam): ${plano.casasDoPrograma.map((c) => c.nome).join(', ')}.`,
+          )}</p>`
+        : '') +
       (plano.temporariasSoNaBd.length > 0
         ? `<p class="nota">${e(
             `Veículos temporários que só existem na base de dados (ficam): ${plano.temporariasSoNaBd.map(rotuloVeiculo).join(', ')}.`,

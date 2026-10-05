@@ -3,6 +3,12 @@
 // cor do cliente e sem a sigla (a coluna Cliente já a mostra). Ordena-se clicando no cabeçalho
 // (aria-sort); o campo da barra filtra (indiferente a acentos), com filtros de escolha múltipla por
 // cliente, casa, carrinha e obra (comum/FiltroMultiplo: Casa 1 e Casa 2 ao mesmo tempo; entre filtros é E).
+// Os filtros só aparecem quando se quer (pedido do Rafael, 05/10/2026): o campo fica sempre à vista e, ao
+// lado, o botão "Filtros" (com o nº de ligados: "Filtros · 2") abre e fecha o painel com eles, "Só a
+// confirmar" e "Mostrar quem saiu". Fechado por omissão; o browser lembra-se (localStorage). Com algum
+// filtro ligado, a linha compacta diz "N de M pessoas" e tem "Limpar filtros": um filtro escondido nunca
+// engana ("Mostrar quem saiu", que não é um filtro, aparece lá como "Com quem saiu ✕"). Uma casa ou obra
+// escolhida num filtro que deixa de existir sai do filtro (filtrosSemOQueSaiu). No telemóvel não há o Excel.
 // O cabeçalho fica fixo; no telemóvel a tabela desliza dentro do seu contentor (a página nunca desliza na
 // horizontal) e a coluna do nome fica presa à esquerda. A ordem e os filtros mantêm-se ao mudar de vista.
 //
@@ -15,7 +21,7 @@
 // A pesquisa do cabeçalho e as ligações da ficha mostram aqui (useAoMostrar): desliza até às linhas e
 // acende-as, limpando os filtros que as escondam. O realce por cliente da legenda do Mapa não conta aqui: a
 // Tabela tem o filtro Cliente.
-// O Excel da barra exporta o que se vê: com filtros, a folha Pessoas só tem as linhas filtradas.
+// O Excel da barra (só no PC) exporta o que se vê: com filtros, a folha Pessoas só tem as linhas filtradas.
 //
 // No modo de edição mostra a simulação (o rascunho) e edita como o mapa: coluna de caixas de seleção
 // (e "todas as visíveis"), clique na linha = seleção como nos nomes (Ctrl/⌘, Shift pela ordem visível),
@@ -27,7 +33,8 @@
 // "Saiu da empresa…" (o Rafael, 05/10/2026: "não aceito" que só se mudem no Mapa e no Quadro): no modo de
 // edição, a seguir ao nome, o botão "Editar…" (e o "Ver no mapa" só com o ícone, para a coluna presa não
 // crescer) abre a MESMA ficha editável do Mapa e do Quadro, posta como as da casa e da carrinha (no
-// telemóvel em baixo). Só esse botão a abre (useEstadoTabela.editar; linhasTabela.editarQueFica): a
+// telemóvel em baixo; quando ela muda de tamanho, "Ver tudo", a linha volta a pôr-se à vista por cima
+// dela). Só esse botão a abre (useEstadoTabela.editar; linhasTabela.editarQueFica): a
 // pesquisa e os nomes continuam só a realçar a linha, e o clique na linha só a seleciona. ✕/Esc fecham-na e
 // devolvem o foco do teclado ao "Editar…"; Guardar e Cancelar fecham-na; depois de "Saiu da empresa…"
 // fecha e a linha esconde-se (salvo com "Mostrar quem saiu").
@@ -47,6 +54,7 @@ import {
   type MouseEvent,
   memo,
   type ReactNode,
+  type RefObject,
   useCallback,
   useEffect,
   useId,
@@ -78,9 +86,17 @@ import { IconeLapis } from '../edicao/icones';
 import { operacoesConfirmarSugestoes } from '../edicao/ondeDorme';
 import { abrirIndisponivel, haDialogoAberto, useUiEdicao } from '../edicao/ui';
 import { useLoja } from '../estado/loja';
-import { IconeCarrinhaLado, IconeCarroLado, IconeCasa, IconeDormir, IconeLupa } from '../lista/icones';
+import {
+  IconeCarrinhaLado,
+  IconeCarroLado,
+  IconeCasa,
+  IconeDormir,
+  IconeLupa,
+  IconeSeta,
+} from '../lista/icones';
 import { FOCO_VISIVEL } from '../paineis/classes';
 import { haFichaDaPessoa } from '../paineis/fichas';
+import { useTelemovel } from '../paineis/MolduraFicha';
 import { PainelFoco } from '../paineis/PainelFoco';
 import { MarcaAConfirmar, MarcaCliente } from '../paineis/pecas';
 import { ROTULO_FORA_DAS_CASAS } from '../paineis/textos';
@@ -103,7 +119,7 @@ import {
   valorDaCelula,
 } from './celulasTabela';
 import { exportarExcel } from './excel';
-import { IconeDescarregar, IconeMapa, IconeOrdem } from './icones';
+import { IconeDescarregar, IconeFiltros, IconeMapa, IconeOrdem } from './icones';
 import {
   acaoLinhaDaFicha,
   ariaSort,
@@ -111,6 +127,7 @@ import {
   botoesDaLinha,
   COLUNAS_TABELA,
   type ColunaTabela,
+  carregarPainelFiltros,
   cliqueTiraOFoco,
   descricaoIndisponivel,
   deslocamentoParaVer,
@@ -118,9 +135,13 @@ import {
   FILTROS_INICIAIS,
   type FiltrosTabela,
   filtrarLinhas,
+  filtrosLigados,
+  filtrosSemOQueSaiu,
   filtrosTabelaAtivos,
+  guardarPainelFiltros,
   type LinhaDaFicha,
   type LinhaTabela,
+  linhaSeVe,
   linhasDaTabela,
   marcadaDepoisDoClique,
   modoDaCaixa,
@@ -133,6 +154,7 @@ import {
   type RealceLinha,
   realceDaLinha,
   reservaDaFicha,
+  rotuloBotaoFiltros,
   seguirEditar,
   selecaoComVisiveis,
   textoAteCurto,
@@ -151,13 +173,18 @@ import {
 import { verNoMapa } from './navegar';
 import { BOTAO_VISTA, NomeVista } from './pecas';
 
+/** O localStorage, para o painel dos filtros (o acesso pode falhar: carregar/guardarPainelFiltros apanham). */
+const armazem = () => window.localStorage;
+
 /**
  * Ordem, filtros e a linha realçada pelo clique: ficam ao ir ao mapa e voltar (não ao recarregar a
- * página).
+ * página). O painel dos filtros aberto ou fechado lembra-se também ao recarregar (localStorage).
  */
 const useEstadoTabela = create<{
   ordem: OrdemTabela;
   filtros: FiltrosTabela;
+  /** O painel "Filtros" está aberto (fechado por omissão, no telemóvel e no PC). */
+  filtrosAbertos: boolean;
   /** A linha em que se clicou (fora do modo de edição): realçada (na Tabela não há ficha da pessoa). */
   marcada: Id | null;
   /** M2: "Mostrar quem saiu" (as pessoas com ativa = false). Não é um filtro: "Limpar filtros" não a tira. */
@@ -169,17 +196,23 @@ const useEstadoTabela = create<{
   editar: Id | null;
   definirOrdem: (ordem: OrdemTabela) => void;
   definirFiltros: (filtros: FiltrosTabela) => void;
+  definirFiltrosAbertos: (abertos: boolean) => void;
   definirMarcada: (marcada: Id | null) => void;
   definirComQuemSaiu: (comQuemSaiu: boolean) => void;
   definirEditar: (editar: Id | null) => void;
 }>()((set) => ({
   ordem: ORDEM_INICIAL,
   filtros: FILTROS_INICIAIS,
+  filtrosAbertos: typeof window !== 'undefined' && carregarPainelFiltros(armazem),
   marcada: null,
   comQuemSaiu: false,
   editar: null,
   definirOrdem: (ordem) => set({ ordem }),
   definirFiltros: (filtros) => set({ filtros }),
+  definirFiltrosAbertos: (filtrosAbertos) => {
+    set({ filtrosAbertos });
+    guardarPainelFiltros(armazem, filtrosAbertos);
+  },
   definirMarcada: (marcada) => set({ marcada }),
   definirComQuemSaiu: (comQuemSaiu) => set({ comQuemSaiu }),
   definirEditar: (editar) => set({ editar }),
@@ -300,6 +333,85 @@ function manterLinhaAVista(tr: HTMLTableRowElement): void {
     const reduzir = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
     caixa.scrollBy({ top: delta, behavior: reduzir ? 'auto' : 'smooth' });
   });
+}
+
+/**
+ * A linha (`tr`) via-se, pelo menos em parte, com a ficha onde estava (`ficha`, a medida de antes): na caixa
+ * da tabela, por baixo do cabeçalho e, no telemóvel, por cima da ficha.
+ */
+function linhaSeViaComAFicha(tr: HTMLTableRowElement, ficha: DOMRect): boolean {
+  const caixa = tr.closest('table')?.parentElement;
+  const primeira = tr.cells[0];
+  if (!tr.isConnected || !caixa || !primeira) return false;
+  const fundoCabecalho = caixa.querySelector('thead th')?.getBoundingClientRect().bottom ?? 0;
+  const zona = zonaLivreDaTabela(
+    caixa.getBoundingClientRect(),
+    fundoCabecalho,
+    ficha,
+    primeira.getBoundingClientRect(),
+  );
+  return linhaSeVe(tr.getBoundingClientRect(), zona);
+}
+
+/**
+ * A linha da pessoa com a ficha aberta (o "Editar…") volta a pôr-se à vista quando a ficha muda de tamanho:
+ * no telemóvel, "Ver tudo" fá-la crescer por cima da linha (o Rafael, 05/10/2026). Segue a ficha que
+ * estiver aberta dentro de `area` (abre, fecha, outra ficha) e só reage a mudanças de altura depois da
+ * primeira medida (ao abrir, quem põe a linha à vista é o "Editar…"). Juntam-se as medidas de uma
+ * animação num só pedido. Só se a linha se via antes da mudança (com a ficha do tamanho de antes): se a
+ * pessoa deslizou a tabela para longe dela, editar um campo da ficha não a faz saltar de volta.
+ */
+function useLinhaAVistaComAFicha(
+  area: HTMLElement | null,
+  raiz: RefObject<HTMLElement | null>,
+  pessoaId: Id | null,
+): void {
+  useEffect(() => {
+    if (!area || pessoaId === null) return;
+    let observada: HTMLElement | null = null;
+    /** A última medida da ficha (null antes da primeira). */
+    let antes: DOMRect | null = null;
+    let seVia = false;
+    let pedido = 0;
+    const linha = () => {
+      const chave = CSS.escape(chaveElemento({ tipo: 'pessoa', id: pessoaId }));
+      return raiz.current?.querySelector<HTMLTableRowElement>(`tr[data-elemento="${chave}"]`) ?? null;
+    };
+    const tamanhos = new ResizeObserver(() => {
+      const agora = observada?.getBoundingClientRect() ?? null;
+      const mudou = antes !== null && agora !== null && Math.abs(agora.height - antes.height) > 1;
+      // Decide-se na 1.ª medida de cada mudança (com a ficha ainda do tamanho de antes); as seguintes
+      // da mesma animação só adiam o pedido.
+      if (mudou && pedido === 0 && antes) {
+        const tr = linha();
+        seVia = tr !== null && linhaSeViaComAFicha(tr, antes);
+      }
+      antes = agora;
+      if (!mudou) return;
+      window.clearTimeout(pedido);
+      pedido = window.setTimeout(() => {
+        pedido = 0;
+        const tr = linha();
+        if (seVia && tr) manterLinhaAVista(tr);
+      }, 80);
+    });
+    const seguir = () => {
+      const ficha = area.querySelector<HTMLElement>(`[${ATRIBUTO_FICHA}="vista"]`);
+      if (ficha === observada) return;
+      if (observada) tamanhos.unobserve(observada);
+      observada = ficha;
+      antes = null;
+      if (ficha) tamanhos.observe(ficha);
+    };
+    const mudancas = new MutationObserver(seguir);
+    mudancas.observe(area, { childList: true, subtree: true });
+    seguir();
+    return () => {
+      window.clearTimeout(pedido);
+      tamanhos.disconnect();
+      mudancas.disconnect();
+    };
+  }, [area, raiz, pessoaId]);
 }
 
 /**
@@ -1050,8 +1162,11 @@ export function Tabela() {
   const marcada = useEstadoTabela((s) => s.marcada);
   const comQuemSaiu = useEstadoTabela((s) => s.comQuemSaiu);
   const editar = useEstadoTabela((s) => s.editar);
+  const filtrosAbertos = useEstadoTabela((s) => s.filtrosAbertos);
+  const telemovel = useTelemovel();
   const raiz = useRef<HTMLElement>(null);
   const idFiltro = useId();
+  const idPainel = useId();
   // A pessoa com a ficha aberta na Tabela: a do "Editar…", no modo de edição, enquanto é o foco e está na
   // empresa (o mesmo haFichaDaPessoa do PainelFoco). Uma pessoa em foco sem ela só realça a linha.
   const editarAberto = editarQueFica(editar, foco, modoEdicao);
@@ -1065,6 +1180,7 @@ export function Tabela() {
   const [areaFicha, setAreaFicha] = useState<HTMLDivElement | null>(null);
   const haFicha = foco !== null && (foco.tipo !== 'pessoa' || comFicha !== null);
   const reserva = reservaDaFicha(haFicha, useFichaMovida(areaFicha, haFicha));
+  useLinhaAVistaComAFicha(areaFicha, raiz, comFicha);
 
   const linhas = useMemo(
     () => (estado && indices ? linhasDaTabela(estado, indices, { comQuemSaiu }) : []),
@@ -1099,6 +1215,16 @@ export function Tabela() {
       }),
     };
   }, [estado, indices, linhas]);
+
+  // Uma casa ou obra escolhida num filtro que deixou de existir (apagada, ou criada no rascunho e desfeita)
+  // sai do filtro: senão ficava ligada sem aparecer na lista para a desligar. Sem aviso: quem a apagou
+  // está a ver o "Casa apagada: … Ctrl+Z desfaz", que não se tapa.
+  useEffect(() => {
+    if (!opcoesFiltros) return;
+    const atuais = useEstadoTabela.getState().filtros;
+    const podados = filtrosSemOQueSaiu(atuais, opcoesFiltros);
+    if (podados !== atuais) useEstadoTabela.getState().definirFiltros(podados);
+  }, [opcoesFiltros]);
 
   // Uma pessoa em foco (pela pesquisa, pelos nomes da ficha de uma casa…): a linha dela passa a ser a
   // realçada; quando deixa de estar em foco, continua realçada (sabe-se onde se estava).
@@ -1217,6 +1343,11 @@ export function Tabela() {
   const mudar = (mudanca: Partial<FiltrosTabela>) => definirFiltros({ ...filtros, ...mudanca });
   const contagem = textoContagem(visiveis.length, linhas.length, comFiltros);
   const haObras = estado.obras.length > 0;
+  const ligados = filtrosLigados(filtros, comQuemSaiu);
+  const comSugestoes = modoEdicao && nSugestoes > 0;
+  // "Mostrar quem saiu" conta no nº do botão mas não é um filtro ("Limpar filtros" não a tira): com o painel
+  // fechado, a linha compacta diz que está ligada e desliga-se lá (nada escondido engana).
+  const quemSaiuEscondido = comQuemSaiu && !filtrosAbertos;
 
   return (
     <section
@@ -1224,10 +1355,11 @@ export function Tabela() {
       aria-label="Tabela de pessoas"
       className="relative flex min-h-0 flex-1 flex-col bg-white"
     >
-      {/* No telemóvel: filtro e Excel; os quatro filtros (2 × 2); "Só a confirmar" e a contagem; a dica da edição.
-          No PC tudo numa linha sempre que couber (a ordem muda com order-*). */}
+      {/* A linha compacta, sempre à vista: o campo do filtro e "Filtros" (no telemóvel na 1.ª linha); com
+          algum filtro, a contagem e "Limpar filtros"; no modo de edição, as sugestões; no PC, o Excel. O
+          painel (fechado por omissão) vem por baixo, a toda a largura. */}
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 border-b border-slate-200 bg-white px-3 py-1.5 sm:py-2">
-        <div className="relative order-1 min-w-0 flex-1 basis-40 sm:w-56 sm:flex-none sm:basis-auto">
+        <div className="relative min-w-0 flex-1 basis-40 sm:w-56 sm:flex-none sm:basis-auto">
           <label htmlFor={idFiltro} className="sr-only">
             Filtrar a tabela
           </label>
@@ -1237,113 +1369,155 @@ export function Tabela() {
             type="search"
             value={filtros.texto}
             onChange={(e) => mudar({ texto: e.target.value })}
-            placeholder="Filtrar por nome, Nº, casa…"
+            // No telemóvel mais curto: ao lado do "Filtros · N" o texto todo ficava cortado.
+            placeholder={telemovel ? 'Nome, Nº, casa…' : 'Filtrar por nome, Nº, casa…'}
             autoComplete="off"
             spellCheck={false}
             className={`${CAMPO} w-full pl-8`}
           />
         </div>
-        <div className="order-3 grid w-full grid-cols-2 gap-2 sm:order-2 sm:flex sm:w-auto">
-          <FiltroMultiplo
-            rotulo="Cliente"
-            genero="m"
-            opcoes={opcoesFiltros.clientes}
-            escolhidos={filtros.clientes}
-            aoMudar={(clientes) => mudar({ clientes })}
-            {...FILTRO}
-          />
-          <FiltroMultiplo
-            rotulo="Casa"
-            opcoes={opcoesFiltros.casas}
-            escolhidos={filtros.casas}
-            aoMudar={(casas) => mudar({ casas })}
-            {...FILTRO}
-          />
-          <FiltroMultiplo
-            rotulo="Carrinha"
-            opcoes={opcoesFiltros.carrinhas}
-            escolhidos={filtros.carrinhas}
-            aoMudar={(carrinhas) => mudar({ carrinhas })}
-            {...FILTRO}
-          />
-          <FiltroMultiplo
-            rotulo="Obra"
-            opcoes={opcoesFiltros.obras}
-            escolhidos={filtros.obras}
-            aoMudar={(obras) => mudar({ obras })}
-            textoVazio="sem obras"
-            larguraPainel={320}
-            {...FILTRO}
-          />
-          <FiltroMultiplo
-            rotulo="Indisponível"
-            genero="m"
-            opcoes={opcoesFiltros.indisponivel}
-            escolhidos={filtros.indisponivel}
-            aoMudar={(indisponivel) => mudar({ indisponivel })}
-            legenda="Filtrar por indisponível"
-            {...FILTRO}
-          />
-        </div>
-        <label className="order-4 flex shrink-0 cursor-pointer items-center gap-1.5 text-sm text-slate-700 sm:order-3">
-          <input
-            type="checkbox"
-            checked={filtros.soAConfirmar}
-            onChange={(e) => mudar({ soAConfirmar: e.target.checked })}
-            className="size-4 accent-slate-800"
-          />
-          Só a confirmar
-        </label>
-        <label className="order-4 flex shrink-0 cursor-pointer items-center gap-1.5 text-sm text-slate-700 sm:order-3">
-          <input
-            type="checkbox"
-            checked={comQuemSaiu}
-            onChange={(e) => useEstadoTabela.getState().definirComQuemSaiu(e.target.checked)}
-            className="size-4 accent-slate-800"
-          />
-          Mostrar quem saiu
-        </label>
-        {comFiltros && (
-          <button
-            type="button"
-            onClick={() => definirFiltros(FILTROS_INICIAIS)}
-            className={`order-5 shrink-0 rounded px-1 text-sm text-slate-600 underline sm:order-4 underline-offset-2 hover:text-slate-900 ${FOCO_VISIVEL}`}
-          >
-            Limpar filtros
-          </button>
-        )}
-        {/* Com o botão das sugestões, no PC (até 1536 px) a dica e o botão passam para uma 2.ª linha. */}
-        {modoEdicao && (
-          <div
-            className={`order-7 flex w-full min-w-0 items-center gap-2 ${nSugestoes > 0 ? 'sm:order-8 2xl:order-5 2xl:w-auto' : 'sm:order-5 sm:w-auto'}`}
-          >
-            <p
-              className={`min-w-0 text-[11px] leading-tight text-amber-900 sm:text-xs ${nSugestoes > 0 ? 'flex-1 sm:flex-none' : 'flex-1 sm:max-w-[15rem] 2xl:max-w-none'}`}
-            >
-              Muda nas células ou seleciona linhas e usa Mover para…
-            </p>
-            {nSugestoes > 0 && (
-              <button
-                type="button"
-                onClick={() => useUiEdicao.getState().abrirDialogo({ tipo: 'confirmar-sugestoes' })}
-                title="Cada carrinha passa a dormir na casa onde moram mais passageiros (pede confirmação)"
-                className={BOTAO_MINI}
-              >
-                <IconeDormir className="size-3.5 text-slate-500" />
-                Confirmar <span className="max-sm:hidden">todas as</span> sugestões ({nSugestoes})
-              </button>
-            )}
-          </div>
-        )}
-        <p
-          role="status"
-          className="order-6 ml-auto text-sm whitespace-nowrap text-slate-700 tabular-nums sm:mr-1"
+        <button
+          type="button"
+          aria-expanded={filtrosAbertos}
+          aria-controls={idPainel}
+          onClick={() => useEstadoTabela.getState().definirFiltrosAbertos(!filtrosAbertos)}
+          title={
+            filtrosAbertos
+              ? 'Esconder os filtros (os que estão ligados continuam)'
+              : 'Mostrar os filtros: Cliente, Casa, Carrinha, Obra, Indisponível, Só a confirmar e Mostrar quem saiu'
+          }
+          // Azul com algum filtro ligado: pela variante data-ligados, que ganha às cores do BOTAO_VISTA (classes
+          // condicionais com a mesma especificidade perdiam conforme a ordem do CSS).
+          data-ligados={ligados > 0 ? '' : undefined}
+          className={`${BOTAO_VISTA} data-[ligados]:border-blue-700 data-[ligados]:bg-blue-50 data-[ligados]:text-blue-900 data-[ligados]:hover:bg-blue-100`}
         >
-          {contagem}
-        </p>
-        <div className="order-2 flex shrink-0 sm:order-7">
+          <IconeFiltros />
+          {rotuloBotaoFiltros(ligados)}
+          {ligados > 0 && <span className="sr-only"> {ligados === 1 ? 'ligado' : 'ligados'}</span>}
+          <IconeSeta aberta={filtrosAbertos} className="size-3 text-slate-500" />
+        </button>
+        {/* Com algum filtro: "N de M pessoas" e "Limpar filtros" (no telemóvel só então, numa 2.ª linha); no
+            PC a contagem fica sempre. As sugestões ao lado, compactas. */}
+        <div
+          className={`flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 max-sm:w-full ${comFiltros || comSugestoes || quemSaiuEscondido ? '' : 'max-sm:hidden'}`}
+        >
+          <p
+            role="status"
+            className={`text-sm whitespace-nowrap text-slate-700 tabular-nums sm:ml-1 ${comFiltros ? '' : 'max-sm:hidden'}`}
+          >
+            {contagem}
+          </p>
+          {comFiltros && (
+            <button
+              type="button"
+              onClick={() => definirFiltros(FILTROS_INICIAIS)}
+              className={`shrink-0 rounded px-1 text-sm whitespace-nowrap text-slate-600 underline underline-offset-2 hover:text-slate-900 ${FOCO_VISIVEL}`}
+            >
+              Limpar filtros
+            </button>
+          )}
+          {quemSaiuEscondido && (
+            <button
+              type="button"
+              onClick={() => useEstadoTabela.getState().definirComQuemSaiu(false)}
+              title="Deixar de mostrar quem saiu da empresa"
+              className={`inline-flex h-7 shrink-0 items-center gap-1 rounded-full border border-blue-700 bg-blue-50 px-2 text-xs whitespace-nowrap text-blue-900 hover:bg-blue-100 ${FOCO_VISIVEL}`}
+            >
+              Com quem saiu
+              <span aria-hidden="true">✕</span>
+              <span className="sr-only">(deixar de mostrar)</span>
+            </button>
+          )}
+          {comSugestoes && (
+            <button
+              type="button"
+              onClick={() => useUiEdicao.getState().abrirDialogo({ tipo: 'confirmar-sugestoes' })}
+              title="Cada carrinha passa a dormir na casa onde moram mais passageiros (pede confirmação)"
+              className={BOTAO_MINI}
+            >
+              <IconeDormir className="size-3.5 text-slate-500" />
+              Confirmar sugestões ({nSugestoes})
+            </button>
+          )}
+        </div>
+        <div className="ml-auto flex shrink-0 max-sm:hidden">
           <BotaoExcelTabela filtradas={obterFiltradas} />
         </div>
+        {/* O painel dos filtros: no telemóvel os filtros dois a dois; no PC numa linha, sempre que couber.
+            No modo de edição, no PC, a dica (no telemóvel não: a Tabela precisa da altura). */}
+        <section
+          id={idPainel}
+          aria-label="Filtros da tabela"
+          hidden={!filtrosAbertos}
+          className="flex w-full flex-wrap items-center gap-x-2 gap-y-1.5"
+        >
+          {/* sm:flex-wrap: entre 640 e ~680 px os cinco não cabem numa linha (a página deslizava de lado). */}
+          <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap">
+            <FiltroMultiplo
+              rotulo="Cliente"
+              genero="m"
+              opcoes={opcoesFiltros.clientes}
+              escolhidos={filtros.clientes}
+              aoMudar={(clientes) => mudar({ clientes })}
+              {...FILTRO}
+            />
+            <FiltroMultiplo
+              rotulo="Casa"
+              opcoes={opcoesFiltros.casas}
+              escolhidos={filtros.casas}
+              aoMudar={(casas) => mudar({ casas })}
+              {...FILTRO}
+            />
+            <FiltroMultiplo
+              rotulo="Carrinha"
+              opcoes={opcoesFiltros.carrinhas}
+              escolhidos={filtros.carrinhas}
+              aoMudar={(carrinhas) => mudar({ carrinhas })}
+              {...FILTRO}
+            />
+            <FiltroMultiplo
+              rotulo="Obra"
+              opcoes={opcoesFiltros.obras}
+              escolhidos={filtros.obras}
+              aoMudar={(obras) => mudar({ obras })}
+              textoVazio="sem obras"
+              larguraPainel={320}
+              {...FILTRO}
+            />
+            <FiltroMultiplo
+              rotulo="Indisponível"
+              genero="m"
+              opcoes={opcoesFiltros.indisponivel}
+              escolhidos={filtros.indisponivel}
+              aoMudar={(indisponivel) => mudar({ indisponivel })}
+              legenda="Filtrar por indisponível"
+              {...FILTRO}
+            />
+          </div>
+          <label className="flex shrink-0 cursor-pointer items-center gap-1.5 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              checked={filtros.soAConfirmar}
+              onChange={(e) => mudar({ soAConfirmar: e.target.checked })}
+              className="size-4 accent-slate-800"
+            />
+            Só a confirmar
+          </label>
+          <label className="flex shrink-0 cursor-pointer items-center gap-1.5 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              checked={comQuemSaiu}
+              onChange={(e) => useEstadoTabela.getState().definirComQuemSaiu(e.target.checked)}
+              className="size-4 accent-slate-800"
+            />
+            Mostrar quem saiu
+          </label>
+          {modoEdicao && (
+            <p className="min-w-0 text-xs leading-tight text-amber-900 max-sm:hidden">
+              Muda nas células ou seleciona linhas e usa Mover para…
+            </p>
+          )}
+        </section>
       </div>
       {/* A ficha fica por cima da tabela, fora da caixa que desliza (não desliza com as linhas). */}
       <div ref={setAreaFicha} className="relative flex min-h-0 flex-1 flex-col">

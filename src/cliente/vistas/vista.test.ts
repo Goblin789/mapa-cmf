@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { decidirEntrada } from './regras';
 import {
+  AGRUPAMENTOS,
   comMarcaReuniao,
   ESTADO_INICIAL,
   entradaDaReuniao,
@@ -68,12 +69,16 @@ describe('hashDe', () => {
 });
 
 describe('lerAgrupamento', () => {
-  it('por omissão as casas; "carrinhas" e "obras" mudam', () => {
+  it('por omissão as casas; "carrinhas", "obras" e "clientes" mudam', () => {
     expect(lerAgrupamento(null)).toBe('casas');
     expect(lerAgrupamento('lixo')).toBe('casas');
     expect(lerAgrupamento('carrinhas')).toBe('carrinhas');
     expect(lerAgrupamento('obras')).toBe('obras');
     expect(lerAgrupamento('Obras')).toBe('casas');
+    // 05/10/2026: o 4.º agrupamento, lembrado como os outros.
+    expect(lerAgrupamento('clientes')).toBe('clientes');
+    expect(lerAgrupamento('cliente')).toBe('casas');
+    expect(AGRUPAMENTOS).toEqual(['casas', 'carrinhas', 'obras', 'clientes']);
   });
 });
 

@@ -277,6 +277,77 @@ export function filtrosTabelaAtivos(f: FiltrosTabela): boolean {
   );
 }
 
+// --- Painel dos filtros ----------------------------------------------------------------------------
+
+/**
+ * Quantos filtros do painel "Filtros" estão ligados (o nº do botão: "Filtros · 2"): cada filtro de escolha
+ * múltipla com escolhas (Cliente, Casa, Carrinha, Obra, Indisponível), "Só a confirmar" e "Mostrar quem
+ * saiu" (não é um filtro, mas também muda o que se vê e está no painel). O texto não conta: o campo está
+ * sempre à vista.
+ */
+export function filtrosLigados(f: FiltrosTabela, comQuemSaiu: boolean): number {
+  return (
+    [f.clientes, f.casas, f.carrinhas, f.obras, f.indisponivel].filter((c) => c.size > 0).length +
+    (f.soAConfirmar ? 1 : 0) +
+    (comQuemSaiu ? 1 : 0)
+  );
+}
+
+/**
+ * Os filtros sem as escolhas que já não estão nas opções (uma casa ou obra apagada, também uma criada no
+ * rascunho e desfeita): senão o filtro ficava ligado ("Casa: 1 escolhida", a Tabela vazia) sem forma de o
+ * desligar na lista. Devolve o MESMO objeto quando não sai nada (para não redesenhar).
+ */
+export function filtrosSemOQueSaiu(
+  f: FiltrosTabela,
+  opcoes: Pick<OpcoesFiltrosTabela, 'clientes' | 'casas' | 'carrinhas' | 'obras'>,
+): FiltrosTabela {
+  const podar = (escolhidos: ReadonlySet<string>, lista: readonly OpcaoFiltro[]) => {
+    if (escolhidos.size === 0) return escolhidos;
+    const existem = new Set(lista.map((o) => o.valor));
+    const ficam = [...escolhidos].filter((v) => existem.has(v));
+    return ficam.length === escolhidos.size ? escolhidos : new Set(ficam);
+  };
+  const clientes = podar(f.clientes, opcoes.clientes);
+  const casas = podar(f.casas, opcoes.casas);
+  const carrinhas = podar(f.carrinhas, opcoes.carrinhas);
+  const obras = podar(f.obras, opcoes.obras);
+  if (clientes === f.clientes && casas === f.casas && carrinhas === f.carrinhas && obras === f.obras)
+    return f;
+  return { ...f, clientes, casas, carrinhas, obras };
+}
+
+/** O texto do botão do painel: "Filtros" ou, com algum ligado, "Filtros · 2". */
+export function rotuloBotaoFiltros(ligados: number): string {
+  return ligados > 0 ? `Filtros · ${ligados}` : 'Filtros';
+}
+
+/** Onde o browser lembra se o painel dos filtros da Tabela está aberto (localStorage). */
+export const CHAVE_PAINEL_FILTROS = 'mapa-cmf:tabela-filtros';
+
+/** O painel guardado: só "aberto" o abre; o resto (ou nada) é fechado, a omissão (no telemóvel e no PC). */
+export function lerPainelFiltros(texto: string | null): boolean {
+  return texto === 'aberto';
+}
+
+/** Lê o painel guardado; sem localStorage (ou se o browser o recusar), fechado. */
+export function carregarPainelFiltros(armazem: () => Pick<Storage, 'getItem'>): boolean {
+  try {
+    return lerPainelFiltros(armazem().getItem(CHAVE_PAINEL_FILTROS));
+  } catch {
+    return false;
+  }
+}
+
+/** Guarda o painel aberto ou fechado; sem localStorage, fica só para esta visita. */
+export function guardarPainelFiltros(armazem: () => Pick<Storage, 'setItem'>, aberto: boolean): void {
+  try {
+    armazem().setItem(CHAVE_PAINEL_FILTROS, aberto ? 'aberto' : 'fechado');
+  } catch {
+    // Sem localStorage (janela privada, bloqueado): não se lembra.
+  }
+}
+
 /**
  * Linhas que passam os filtros. O texto procura em todas as palavras (cada uma tem de aparecer em
  * algum lado: "ana steinsel" encontra a Ana que mora em Steinsel) e no Nº (sem espaços nem hífenes).
@@ -667,6 +738,18 @@ export function zonaLivreDaTabela(
     ficha.top < bottom;
   if (tapa) bottom = ficha.top;
   return { top, bottom };
+}
+
+/**
+ * A linha vê-se, pelo menos em parte, na zona livre. A ficha do "Editar…" que muda de tamanho só volta a pôr
+ * a linha à vista se ela se via antes (a ficha tapou-a): se a pessoa deslizou a tabela para ver outras linhas,
+ * a tabela não salta de volta.
+ */
+export function linhaSeVe(
+  linha: Pick<Caixa, 'top' | 'bottom'>,
+  zona: { top: number; bottom: number },
+): boolean {
+  return linha.bottom > zona.top && linha.top < zona.bottom;
 }
 
 /**

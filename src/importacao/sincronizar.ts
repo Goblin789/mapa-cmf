@@ -12,7 +12,9 @@
 //   no programa e não estão nos JSON) nunca saem.
 // - Um JSON vazio (sem clientes, casas ou veículos) é erro bloqueante: tirava tudo de uma vez.
 // - Casas que desaparecem só saem sem moradores (senão é erro bloqueante); as carrinhas que lá dormiam
-//   ficam com onde dorme "por definir" (o mapa volta a usar a sugestão).
+//   ficam com onde dorme "por definir" (o mapa volta a usar a sugestão). As casas CRIADAS NO PROGRAMA
+//   (casaCriadaNoPrograma: id "casa-<UUID>") não estão nos JSON e nunca saem; uma casa dos JSON com o nome de
+//   uma delas é erro bloqueante (o nome é único na base de dados).
 // - Clientes que desaparecem só saem sem pessoas nem obras (senão é erro bloqueante).
 // - Locais nunca se apagam (podem ter obras e carrinhas a dormir lá): os que só existem na base de dados
 //   ficam e o relatório diz quais são.
@@ -24,6 +26,7 @@
 // - M2: casas e veículos que saem com problemas por resolver: recusado ("A carrinha CF 5003 tem 1 problema
 //   por resolver: resolve-o antes"); os problemas resolvidos apagam-se antes deles (ficam no histórico).
 
+import { casaCriadaNoPrograma } from '../dominio/campos';
 import { formatarMatricula } from '../dominio/matricula';
 import { CAMPO_REGISTO } from '../dominio/operacoes';
 import type { Carrinha, Casa, Cliente, Estado, Id, Local, Problema } from '../dominio/tipos';
@@ -152,6 +155,8 @@ export interface PlanoSincronizacao {
    * por isso ficam, com as pessoas e o condutor.
    */
   temporariasSoNaBd: Carrinha[];
+  /** Casas criadas no programa (não estão em casas.json): ficam, com os moradores. */
+  casasDoPrograma: Casa[];
   /**
    * M2: campos que mudaram nos JSON mas tinham sido mudados no programa: fica o valor do programa (não se
    * gravam). Os de `usarJson` não ficam aqui: aplicam-se.
@@ -181,6 +186,11 @@ function rotulo(entidade: EntidadeSincronizada, registo: Cliente | Local | Casa 
   if (entidade === 'cliente') return `Cliente ${nome}`;
   if (entidade === 'local') return `Local ${nome}`;
   return /^(casa|apartamento) /i.test(nome) ? nome : `Casa ${nome}`;
+}
+
+/** "apagada" para "Casa …" e "Carrinha …"; "apagado" para "Local …", "Apartamento …", "Cliente …", "Carro …". */
+function apagadoOuApagada(rotuloDoRegisto: string): string {
+  return /^(casa|carrinha) /i.test(rotuloDoRegisto) ? 'apagada' : 'apagado';
 }
 
 export function plural(n: number, singular: string, varios: string): string {
@@ -231,6 +241,7 @@ export function planearSincronizacao(
     dormidasRetiradas: [],
     locaisSoNaBd: [],
     temporariasSoNaBd: [],
+    casasDoPrograma: [],
     mantidos: [],
     apagadosNoPrograma: [],
     problemasApagados: [],
@@ -346,6 +357,11 @@ export function planearSincronizacao(
   const casasQueSaem = new Set<Id>();
   for (const c of estado.casas) {
     if (idsCasas.has(c.id)) continue;
+    // Criada no programa: não vem dos JSON, por isso não "desaparece" deles.
+    if (casaCriadaNoPrograma(c)) {
+      plano.casasDoPrograma.push(c);
+      continue;
+    }
     const moradores = estado.pessoas.filter((p) => p.casaId === c.id).length;
     if (moradores === 0) {
       if (problemasQueSaem(`A casa "${c.nome}"`, (p) => p.casaId === c.id, 'dados-iniciais/casas.json'))
@@ -360,6 +376,21 @@ export function planearSincronizacao(
         `A casa "${c.nome}" já não está em casas.json, mas tem ${plural(moradores, 'morador', 'moradores')}: ` +
         'não pode sair. Volte a pô-la no JSON, ou mude primeiro os moradores no programa.',
       onde: 'dados-iniciais/casas.json',
+    });
+  }
+
+  // O nome da casa é único na base de dados e as do programa ficam: uma casa dos JSON com o mesmo nome
+  // rebentava a gravação a meio (a transação desfazia tudo, mas sem explicar porquê).
+  const casasDoPrograma = new Map(plano.casasDoPrograma.map((c) => [c.nome, c]));
+  for (const c of ref.casas) {
+    const doPrograma = casasDoPrograma.get(c.nome);
+    if (!doPrograma) continue;
+    plano.erros.push({
+      bloqueante: true,
+      mensagem:
+        `A casa "${c.nome}" de casas.json tem o nome de uma casa criada no programa: não pode haver duas ` +
+        'com o mesmo nome. Muda o nome de uma delas (no programa ou no JSON).',
+      onde: `dados-iniciais/casas.json (${c.id})`,
     });
   }
 
@@ -718,6 +749,9 @@ export function frasesDoPlano(plano: PlanoSincronizacao, estado: Pick<Estado, 'l
     frases.push(`Ordem atualizada como nos JSON: ${partes.join(', ')}`);
   }
 
+  for (const c of plano.casasDoPrograma) {
+    frases.push(`${rotulo('casa', c)} foi criada no programa: fica (não está em casas.json)`);
+  }
   for (const l of plano.locaisSoNaBd) {
     frases.push(`${rotulo('local', l)} só existe na base de dados: fica (os locais nunca se apagam)`);
   }
@@ -734,7 +768,7 @@ export function frasesDoPlano(plano: PlanoSincronizacao, estado: Pick<Estado, 'l
     );
   }
   for (const a of plano.apagadosNoPrograma)
-    frases.push(`${a.rotulo} foi apagado no programa: não volta a entrar`);
+    frases.push(`${a.rotulo} foi ${apagadoOuApagada(a.rotulo)} no programa: não volta a entrar`);
   return frases;
 }
 

@@ -11,6 +11,7 @@ import {
   validarOperacoes,
 } from './operacoes';
 import {
+  criarCasa,
   criarIndisponibilidade,
   criarLocal,
   criarObra,
@@ -92,7 +93,7 @@ describe('validar: valores e registos novos', () => {
     const local = { ...localNovo, id: `local-${ID}02` };
     expect(validarOperacoes(e, [operacaoCriar('local', local)])).toEqual([]);
     expect(validarOperacoes(e, [operacaoCriar('local', { ...local, tipo: 'oficina' })])).toEqual([
-      'Obra Nova — Só se criam locais de obra ou estacionamento.',
+      'Obra Nova — Só se criam locais de obra, estacionamento ou casa.',
     ]);
     expect(validarOperacoes(e, [operacaoCriar('local', { ...local, raioM: 50000 })])).toEqual([
       'Obra Nova — Raio: tem de ser um número inteiro de 50 a 300 m.',
@@ -100,14 +101,14 @@ describe('validar: valores e registos novos', () => {
     expect(validarOperacoes(e, [operacaoCriar('obra', obraNova)])).toEqual([
       'Obra Nova — já existe (identificador repetido).',
     ]);
-    const casa = {
+    const carrinha = {
       tipo: 'registo',
-      entidade: 'casa',
-      id: 'casa-9',
+      entidade: 'carrinha',
+      id: 'zz9',
       de: null,
-      para: { id: 'casa-9' },
+      para: { id: 'zz9', matricula: 'ZZ9' },
     } as never;
-    expect(validarOperacoes(e, [casa])).toEqual(['casa-9 — não se cria no programa.']);
+    expect(validarOperacoes(e, [carrinha])).toEqual(['ZZ 9 — não se cria no programa.']);
     const ambos = { ...operacaoCriar('obra', obraNova), de: obraNova } as Operacao;
     expect(validarOperacoes(e, [ambos])).toEqual([
       'Obra Nova — um registo cria-se ou apaga-se (não as duas coisas).',
@@ -283,7 +284,7 @@ describe('validar: únicos (só nos registos mexidos)', () => {
 });
 
 describe('validar: apagar', () => {
-  it('só obras, locais, períodos e problemas; nunca pessoas nem casas', () => {
+  it('casas, obras, locais, períodos e problemas; nunca pessoas nem veículos', () => {
     const e = estado();
     const pessoa = {
       tipo: 'registo',
@@ -295,8 +296,14 @@ describe('validar: apagar', () => {
     expect(validarOperacoes(e, [pessoa])).toEqual([
       'Ana T. — uma pessoa não se apaga: usa "Saiu da empresa".',
     ]);
-    const casa = { tipo: 'registo', entidade: 'casa', id: 'casa-1', de: e.casas[0], para: null } as never;
-    expect(validarOperacoes(e, [casa])).toEqual(['Casa Um — não se apaga no programa.']);
+    const carrinha = {
+      tipo: 'registo',
+      entidade: 'carrinha',
+      id: 'zz1003',
+      de: e.carrinhas[2],
+      para: null,
+    } as never;
+    expect(validarOperacoes(e, [carrinha])).toEqual(['ZZ 1003 — não se apaga no programa.']);
   });
 
   it('a obra só sem pessoas no fim (tirar as pessoas no mesmo lote serve)', () => {
@@ -348,6 +355,116 @@ describe('validar: apagar', () => {
       para: null,
     } as Operacao;
     expect(validarOperacoes(e, [fantasma])).toEqual(['O problema que querias apagar já não existe.']);
+  });
+});
+
+describe('validar: casas novas e apagadas (05/10/2026)', () => {
+  const localCasa = criarLocal({
+    id: `local-${ID}09`,
+    tipo: 'casa',
+    nome: 'Casa Nova',
+    morada: 'Rue Y',
+    lat: 49.61,
+    lng: 6.13,
+    raioM: 150,
+  });
+  const casaNova = criarCasa({
+    id: `casa-${ID}09`,
+    nome: 'Casa Nova',
+    localId: localCasa.id,
+    lotacao: 6,
+    ordem: 9,
+  });
+
+  it('criar: com um local novo ou com um que já existe (Morada A, onde já há duas casas)', () => {
+    const e = estado();
+    expect(validarOperacoes(e, [operacaoCriar('local', localCasa), operacaoCriar('casa', casaNova)])).toEqual(
+      [],
+    );
+    expect(validarOperacoes(e, [operacaoCriar('casa', { ...casaNova, localId: 'local-a' })])).toEqual([]);
+  });
+
+  it('criar: nome repetido (sem acentos nem maiúsculas), morada que não existe, tolerado < máximo', () => {
+    const e = estado();
+    expect(
+      validarOperacoes(e, [operacaoCriar('casa', { ...casaNova, localId: 'local-a', nome: 'casa um' })]),
+    ).toEqual(['casa um — já há outra casa com este nome.']);
+    expect(validarOperacoes(e, [operacaoCriar('casa', casaNova)])).toEqual([
+      'Casa Nova — a morada escolhida não existe.',
+    ]);
+    expect(
+      validarOperacoes(e, [
+        operacaoCriar('casa', { ...casaNova, localId: 'local-a', maxContrato: 6, tolerado: 5 }),
+      ]),
+    ).toEqual(['Casa Nova — o tolerado (5) não pode ser menor do que o máx. do contrato (6).']);
+  });
+
+  it('apagar: só sem moradores (também quem saiu e a tinha), sem carrinhas a dormir lá e sem problemas abertos', () => {
+    const e = {
+      ...estado(),
+      carrinhas: estado().carrinhas.map((c) => (c.id === 'zz1003' ? { ...c, dormeCasaId: 'casa-1' } : c)),
+      problemas: [
+        criarProblema({ id: 'pr-1', casaId: 'casa-1', texto: 'Esquentador', abertoEm: '2026-10-01' }),
+      ],
+    };
+    expect(validarOperacoes(e, [operacaoApagar(e, 'casa', 'casa-1') as Operacao])).toEqual([
+      'Casa Um — ainda tem 3 moradores: muda-os para outra casa (ou para "Fora das casas CMF") antes de a apagar.',
+      'Casa Um — a ZZ 1003 dorme lá: muda onde dorme antes de a apagar.',
+      'Casa Um — tem 1 problema por resolver: resolve-o antes de a apagar.',
+    ]);
+    // Ivo saiu da empresa mas ainda tem a Casa Três.
+    expect(validarOperacoes(e, [operacaoApagar(e, 'casa', 'casa-3') as Operacao])).toEqual([
+      'Casa Três — ainda tem 1 morador: muda-os para outra casa (ou para "Fora das casas CMF") antes de a apagar.',
+    ]);
+  });
+
+  it('apagar: tirar no mesmo lote os moradores e onde dorme serve; os problemas resolvidos não impedem', () => {
+    const e = {
+      ...estado(),
+      carrinhas: estado().carrinhas.map((c) => (c.id === 'zz1003' ? { ...c, dormeCasaId: 'casa-1' } : c)),
+      problemas: [
+        criarProblema({
+          id: 'pr-1',
+          casaId: 'casa-1',
+          texto: 'Esquentador',
+          abertoEm: '2026-09-01',
+          resolvidoEm: '2026-09-02',
+        }),
+      ],
+    };
+    const ops: Operacao[] = [
+      operacaoApagar(e, 'casa', 'casa-1') as Operacao,
+      mover('p-ana', 'casaId', 'casa-1', null),
+      mover('p-bruno', 'casaId', 'casa-1', null),
+      mover('p-celia', 'casaId', 'casa-1', null),
+      { tipo: 'dormida', carrinhaId: 'zz1003', de: 'casa:casa-1', para: null },
+    ];
+    expect(validarOperacoes(e, ops)).toEqual([]);
+    // Mas não se põe ninguém (nem uma carrinha a dormir) na casa que se apaga.
+    expect(validarOperacoes(e, [...ops, mover('p-helena', 'casaId', null, 'casa-1')])).toEqual([
+      'Helena Z.: a casa escolhida já não existe.',
+      'Casa Um — ainda tem 1 morador: muda-os para outra casa (ou para "Fora das casas CMF") antes de a apagar.',
+    ]);
+  });
+
+  it('apagar: o local criado no programa sai com a casa; o dos dados iniciais não se apaga', () => {
+    const e = { ...estado(), locais: [...estado().locais, localCasa], casas: [...estado().casas, casaNova] };
+    expect(
+      validarOperacoes(e, [
+        operacaoApagar(e, 'local', localCasa.id) as Operacao,
+        operacaoApagar(e, 'casa', casaNova.id) as Operacao,
+      ]),
+    ).toEqual([]);
+    expect(validarOperacoes(e, [operacaoApagar(e, 'local', localCasa.id) as Operacao])).toEqual([
+      'Casa Nova — esta morada ainda é usada por Casa Nova: não se apaga.',
+    ]);
+    const semCasa3 = { ...e, pessoas: e.pessoas.filter((p) => p.id !== 'p-ivo') };
+    expect(
+      validarOperacoes(semCasa3, [
+        operacaoApagar(semCasa3, 'casa', 'casa-3') as Operacao,
+        operacaoApagar(semCasa3, 'local', 'local-b') as Operacao,
+      ]),
+    ).toEqual(['Casa Três — esta morada veio dos dados iniciais e não se apaga no programa.']);
   });
 });
 

@@ -5,7 +5,8 @@
 // dentro da reunião não (substitui a entrada atual). O botão "Reunião" acrescenta uma entrada marcada
 // (MARCA_REUNIAO no history.state); sair da reunião volta atrás nessa entrada, para não ficarem duas
 // entradas iguais seguidas. Entrando pelo endereço (#reuniao), sair substitui a entrada.
-// O agrupamento do Quadro (por casas, por carrinhas ou por obras) fica lembrado no browser (localStorage).
+// O agrupamento do Quadro (por casas, por carrinhas, por obras ou por clientes) fica lembrado no browser
+// (localStorage).
 
 import { useEffect } from 'react';
 import { create } from 'zustand';
@@ -18,17 +19,20 @@ export const VISTAS: readonly { id: Vista; rotulo: string; titulo: string }[] = 
   {
     id: 'quadro',
     rotulo: 'Quadro',
-    titulo: 'Quadro: casas, carrinhas ou obras em colunas, como as folhas do Michael',
+    titulo: 'Quadro: casas, carrinhas, obras ou clientes em colunas, como as folhas do Michael',
   },
 ];
 
 /** Na reunião só há o Quadro (por omissão) e o Mapa. */
 export const VISTAS_REUNIAO: readonly Vista[] = ['quadro', 'mapa'];
 
-/** Como o Quadro junta as pessoas: por casa, por carrinha ou por obra. */
-export type Agrupamento = 'casas' | 'carrinhas' | 'obras';
+/**
+ * Como o Quadro junta as pessoas: por casa, por carrinha, por obra ou (pedido do Rafael, 05/10/2026) por
+ * cliente.
+ */
+export type Agrupamento = 'casas' | 'carrinhas' | 'obras' | 'clientes';
 
-export const AGRUPAMENTOS: readonly Agrupamento[] = ['casas', 'carrinhas', 'obras'];
+export const AGRUPAMENTOS: readonly Agrupamento[] = ['casas', 'carrinhas', 'obras', 'clientes'];
 
 export interface EstadoVista {
   vista: Vista;

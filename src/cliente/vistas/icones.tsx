@@ -24,6 +24,15 @@ function Svg({ className = 'size-4', children }: Props & { children: ReactNode }
   );
 }
 
+/** Filtros: três traços cada vez mais curtos (o botão "Filtros" da Tabela). */
+export function IconeFiltros(props: Props) {
+  return (
+    <Svg {...props}>
+      <path d="M2 4h12M4.5 8h7M7 12h2" />
+    </Svg>
+  );
+}
+
 /** Mapa dobrado em três. */
 export function IconeMapa(props: Props) {
   return (

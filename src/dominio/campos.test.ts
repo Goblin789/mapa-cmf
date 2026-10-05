@@ -3,11 +3,13 @@
 import { describe, expect, it } from 'vitest';
 import {
   CAMPOS_EDITAVEIS,
+  casaCriadaNoPrograma,
   chaveMatricula,
   ENTIDADES_EDITAVEIS,
   eCampoEditavel,
   encontrarRegisto,
   LIMITES,
+  localCriadoNoPrograma,
   PADRAO_ID_NOVO,
   ROTULO_CAMPO,
   registosDe,
@@ -16,6 +18,7 @@ import {
   validarValorCampo,
 } from './campos';
 import {
+  criarCasa,
   criarIndisponibilidade,
   criarLocal,
   criarObra,
@@ -190,7 +193,7 @@ describe('validarRegisto (registos novos)', () => {
     expect(validarRegisto('local', local)).toEqual([]);
     expect(validarRegisto('local', { ...local, tipo: 'estacionamento' })).toEqual([]);
     expect(validarRegisto('local', { ...local, tipo: 'oficina' })).toEqual([
-      'Só se criam locais de obra ou estacionamento.',
+      'Só se criam locais de obra, estacionamento ou casa.',
     ]);
     expect(validarRegisto('local', { ...local, raioM: 50000 })).toEqual([
       'Raio: tem de ser um número inteiro de 50 a 300 m.',
@@ -240,5 +243,53 @@ describe('validarRegisto (registos novos)', () => {
     expect(validarRegisto('indisponibilidade', i)).toEqual([]);
     expect(validarRegisto('indisponibilidade', { ...i, pessoaId: '' })).toEqual(['Falta a pessoa.']);
     expect(validarRegisto('indisponibilidade', { ...i, inicio: '2026-13-01' })).toHaveLength(1);
+  });
+
+  it('casa (05/10/2026): id "casa-<UUID>" ou o de uma casa dos dados iniciais, 1 lugar ou mais, a ordem', () => {
+    const casa = criarCasa({ id: `casa-${ID}`, nome: 'Casa Nova', localId: 'local-a', lotacao: 6 });
+    expect(validarRegisto('casa', casa)).toEqual([]);
+    // O Reverter de uma casa dos dados iniciais apagada volta a pô-la com o id dela.
+    expect(validarRegisto('casa', { ...casa, id: 'apartamento-e-puttelange' })).toEqual([]);
+    expect(validarRegisto('casa', { ...casa, id: 'Casa Nova' })).toEqual([
+      'Identificador inválido (tem de ser "casa-…", gerado pelo programa).',
+    ]);
+    expect(validarRegisto('casa', { ...casa, lotacao: 0 })).toEqual([
+      'Lotação: uma casa tem pelo menos 1 lugar.',
+    ]);
+    expect(validarRegisto('casa', { ...casa, lotacao: 61 })).toHaveLength(1);
+    expect(validarRegisto('casa', { ...casa, nome: '' })).toEqual(['Nome: não pode ficar vazio.']);
+    expect(validarRegisto('casa', { ...casa, sempreCheia: true })).toEqual([
+      'Uma casa nova entra com os lugares da lotação.',
+    ]);
+    expect(validarRegisto('casa', { ...casa, ordem: -1 })).toHaveLength(1);
+    expect(validarRegisto('casa', { ...casa, apartamento: '' })).toEqual([
+      'Apartamento: fica vazio com null, não com "".',
+    ]);
+  });
+
+  it('local de uma casa nova: "local-<UUID>"', () => {
+    const local = criarLocal({ id: `local-${ID}`, tipo: 'casa', raioM: 150, lat: 49.6, lng: 6.1 });
+    expect(validarRegisto('local', local)).toEqual([]);
+    expect(validarRegisto('local', { ...local, id: 'local-himeling' })).toEqual([
+      'Identificador inválido (a morada de uma casa nova é "local-<UUID>", gerado pelo programa).',
+    ]);
+  });
+});
+
+describe('criados no programa', () => {
+  const UUID = '1b2c3d4e-0000-4000-8000-000000000001';
+
+  it('casa: só "casa-<UUID>"; as dos dados iniciais também começam por "casa-"', () => {
+    expect(casaCriadaNoPrograma({ id: `casa-${UUID}` })).toBe(true);
+    expect(casaCriadaNoPrograma({ id: 'casa-1-puttelange' })).toBe(false);
+    expect(casaCriadaNoPrograma({ id: 'eischen' })).toBe(false);
+  });
+
+  it('local: obra/estacionamento com "local-…"; casa só com "local-<UUID>"', () => {
+    expect(localCriadoNoPrograma({ id: `local-${UUID}`, tipo: 'casa' })).toBe(true);
+    expect(localCriadoNoPrograma({ id: 'local-a', tipo: 'casa' })).toBe(false);
+    expect(localCriadoNoPrograma({ id: 'himeling-grotte', tipo: 'casa' })).toBe(false);
+    expect(localCriadoNoPrograma({ id: 'local-x1', tipo: 'obra' })).toBe(true);
+    expect(localCriadoNoPrograma({ id: `local-${UUID}`, tipo: 'oficina' })).toBe(false);
   });
 });

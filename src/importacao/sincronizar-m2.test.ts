@@ -15,6 +15,7 @@ import { gerarRelatorioSincronizacao } from './relatorioSincronizacao';
 import {
   alteracoesDoPlano,
   contarPlano,
+  frasesDoPlano,
   planearSincronizacao,
   planoVazio,
   resumoDoPlano,
@@ -114,6 +115,21 @@ describe('planearSincronizacao com editados (função pura)', () => {
     const plano = planearSincronizacao(dados, estado, new Set(['local:rua-z:@registo']));
     expect(plano.novos.locais).toEqual([]);
     expect(plano.apagadosNoPrograma).toEqual([{ entidade: 'local', id: 'rua-z', rotulo: 'Local Rua Z' }]);
+    expect(frasesDoPlano(plano, estado)).toContain('Local Rua Z foi apagado no programa: não volta a entrar');
+  });
+
+  it('a frase do apagado no programa concorda com o registo: a casa "apagada", o apartamento "apagado"', () => {
+    const plano = planearSincronizacao(referenciaFicticia(), estado);
+    plano.apagadosNoPrograma.push(
+      { entidade: 'casa', id: 'casa-tres', rotulo: 'Casa Três' },
+      { entidade: 'casa', id: 'apartamento-z', rotulo: 'Apartamento Z' },
+    );
+    expect(frasesDoPlano(plano, estado)).toEqual(
+      expect.arrayContaining([
+        'Casa Três foi apagada no programa: não volta a entrar',
+        'Apartamento Z foi apagado no programa: não volta a entrar',
+      ]),
+    );
   });
 
   it('casas e veículos que saem: com problemas por resolver, recusado; os resolvidos apagam-se antes', () => {
@@ -282,6 +298,63 @@ describe('na base de dados', () => {
     expect(bd.select().from(problemas).all()).toEqual([]);
     expect(carregarEstado(bd).carrinhas.map((c) => c.id)).not.toContain('ZZ1003');
     expect(bd.$client.pragma('foreign_key_check')).toEqual([]);
+  });
+
+  it('casas no programa (05/10/2026): a criada no programa não sai; a apagada no programa não volta; nome igual ao de uma do programa é recusado', () => {
+    const nova = {
+      id: 'casa-1b2c3d4e-0000-4000-8000-000000000051',
+      nome: 'Casa Nova',
+      localId: 'rua-a',
+      apartamento: null,
+      lotacao: 3,
+      maxContrato: null,
+      tolerado: null,
+      notaContrato: null,
+      senhorio: null,
+      equipamento: null,
+      sempreCheia: false,
+      ordem: 9,
+    };
+    const casaTres = carregarEstado(bd).casas.find((c) => c.id === 'casa-tres');
+    noPrograma([
+      { tipo: 'registo', entidade: 'casa', id: nova.id, de: null, para: nova },
+      { tipo: 'registo', entidade: 'casa', id: 'casa-tres', de: casaTres ?? null, para: null },
+      // A ZZ 1001 dormia na Casa Três.
+      { tipo: 'dormida', carrinhaId: 'ZZ1001', de: 'casa:casa-tres', para: null },
+    ]);
+    const ensaio = ensaiarSincronizacao(bd, referenciaFicticia(), AGORA);
+    expect(ensaio.plano.erros).toEqual([]);
+    expect(ensaio.plano.removidos.casas).toEqual([]);
+    expect(ensaio.plano.casasDoPrograma.map((c) => c.id)).toEqual([nova.id]);
+    expect(ensaio.plano.novos.casas).toEqual([]);
+    expect(ensaio.plano.apagadosNoPrograma).toEqual([
+      { entidade: 'casa', id: 'casa-tres', rotulo: 'Casa Três' },
+    ]);
+    const relatorio = gerarRelatorioSincronizacao(ensaio.plano, ensaio.estado, {
+      agora: AGORA,
+      modo: 'ensaio',
+      bd: ':memory:',
+      versao: ensaio.versao,
+      loteId: null,
+      falha: null,
+    });
+    expect(relatorio).toContain('Casas criadas no programa (ficam): Casa Nova.');
+    expect(aplicarSincronizacao(bd, referenciaFicticia(), { agora: AGORA })).toMatchObject({ tipo: 'vazio' });
+    expect(
+      carregarEstado(bd)
+        .casas.map((c) => c.id)
+        .sort(),
+    ).toEqual(['casa-dois', 'casa-um', nova.id].sort());
+
+    const comONome = dadosCom((d) => {
+      const um = d.casas.find((c) => c.id === 'casa-um');
+      if (um) um.nome = 'Casa Nova';
+    });
+    const recusado = aplicarSincronizacao(bd, comONome, { agora: AGORA });
+    expect(recusado.tipo).toBe('recusado');
+    expect(recusado.plano.erros.map((e) => e.mensagem)).toEqual([
+      'A casa "Casa Nova" de casas.json tem o nome de uma casa criada no programa: não pode haver duas com o mesmo nome. Muda o nome de uma delas (no programa ou no JSON).',
+    ]);
   });
 
   it('importar --aplicar --forcar apaga também os problemas e os períodos (antes das pessoas, casas e carrinhas)', () => {

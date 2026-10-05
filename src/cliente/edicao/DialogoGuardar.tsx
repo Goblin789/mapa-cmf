@@ -83,6 +83,8 @@ function resumoDaSeccao(seccao: SeccaoAlteracoes, n: number): string {
       return comPlural(n, 'ficha muda', 'fichas mudam');
     case 'pessoas':
       return comPlural(n, 'pessoa entra ou sai', 'pessoas entram ou saem');
+    case 'casas':
+      return comPlural(n, 'casa nova ou apagada', 'casas novas ou apagadas');
     case 'indisponivel':
       return `indisponível: ${comPlural(n, 'pessoa', 'pessoas')}`;
     case 'problemas':

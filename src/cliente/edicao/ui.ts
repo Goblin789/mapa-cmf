@@ -27,6 +27,8 @@ export type DialogoEdicao =
   // --- M2 (docs/m2.md). Os de edição só abrem no modo de edição: quem os abre entra antes nele. ---
   /** Nova pessoa (módulo Fichas: edicao/DialogoNovaPessoa.tsx). */
   | { tipo: 'nova-pessoa' }
+  /** Nova casa (05/10/2026: edicao/DialogoCasa.tsx). */
+  | { tipo: 'nova-casa' }
   /** "Saiu da empresa" / "Voltou à empresa" de uma pessoa (módulo Fichas: edicao/DialogoSaida.tsx). */
   | { tipo: 'saida'; pessoaId: Id }
   /**
@@ -87,6 +89,11 @@ export function abrirDormida(carrinhaId: Id): void {
 /** Nova pessoa. */
 export function abrirNovaPessoa(): void {
   useUiEdicao.getState().abrirDialogo({ tipo: 'nova-pessoa' });
+}
+
+/** Nova casa. */
+export function abrirNovaCasa(): void {
+  useUiEdicao.getState().abrirDialogo({ tipo: 'nova-casa' });
 }
 
 /** "Saiu da empresa" (ou "Voltou à empresa", se a pessoa já não estiver ativa). */

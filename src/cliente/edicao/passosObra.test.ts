@@ -9,11 +9,13 @@ import {
   clientesDeObras,
   type DadosObra,
   dadosDaObra,
+  descreverLocalApagar,
   nomeEstacionamento,
   passoApagarObra,
   passoCriarObra,
   passoEditarObra,
   resumoApagarObra,
+  tituloApagarObra,
   usosDoLocal,
 } from './passosObra';
 
@@ -455,5 +457,20 @@ describe('passoApagarObra', () => {
 
   it('a obra já não existe: null', () => {
     expect(passoApagarObra(estadoBase(), 'nao-existe')).toBeNull();
+  });
+});
+
+describe('confirmação de apagar a obra', () => {
+  it('o título não repete "obra" quando o nome já começa por "Obra"', () => {
+    expect(tituloApagarObra('Obra Ensaio')).toBe('Apagar a Obra Ensaio?');
+    expect(tituloApagarObra('obra do Kirchberg')).toBe('Apagar a obra do Kirchberg?');
+    expect(tituloApagarObra('Kirchberg')).toBe('Apagar a obra Kirchberg?');
+  });
+
+  it('um local sem morada (só o pino) diz-se "o sítio no mapa"', () => {
+    expect(descreverLocalApagar({ morada: 'Rue X 1, Luxembourg', nome: 'Obra X' })).toBe(
+      'a morada Rue X 1, Luxembourg',
+    );
+    expect(descreverLocalApagar({ morada: '  ', nome: 'Obra Ensaio' })).toBe('o sítio no mapa (Obra Ensaio)');
   });
 });

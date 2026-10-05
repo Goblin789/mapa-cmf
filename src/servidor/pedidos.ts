@@ -122,6 +122,20 @@ const REGISTOS = {
     cartaValidade: textoOuNulo,
     ativa: z.boolean(),
   }),
+  casa: z.strictObject({
+    id,
+    nome: texto,
+    localId: id,
+    apartamento: textoOuNulo,
+    lotacao: z.number(),
+    maxContrato: z.number().nullable(),
+    tolerado: z.number().nullable(),
+    notaContrato: textoOuNulo,
+    senhorio: textoOuNulo,
+    equipamento: textoOuNulo,
+    sempreCheia: z.boolean(),
+    ordem: z.number(),
+  }),
   obra: z.strictObject({
     id,
     nome: texto,
@@ -197,6 +211,7 @@ function operacaoRegistoDe<E extends EntidadeCriavel>(entidade: E, registo: (typ
 
 const operacaoRegisto = z.discriminatedUnion('entidade', [
   operacaoRegistoDe('pessoa', REGISTOS.pessoa),
+  operacaoRegistoDe('casa', REGISTOS.casa),
   operacaoRegistoDe('obra', REGISTOS.obra),
   operacaoRegistoDe('local', REGISTOS.local),
   operacaoRegistoDe('indisponibilidade', REGISTOS.indisponibilidade),

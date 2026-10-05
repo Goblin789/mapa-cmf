@@ -204,6 +204,8 @@ export function registoNaFormaDoEstado<E extends EntidadeCriavel>(
       } as LinhasBd['pessoas'][number];
       return paraPessoa(linha) as RegistosEditaveis[E];
     }
+    case 'casa':
+      return paraCasa(r as unknown as LinhasBd['casas'][number]) as RegistosEditaveis[E];
     case 'obra':
       return paraObra(r as unknown as LinhasBd['obras'][number]) as RegistosEditaveis[E];
     case 'local':

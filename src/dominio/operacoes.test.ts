@@ -425,16 +425,17 @@ describe('validarOperacoes', () => {
     ).toStrictEqual([
       'A pessoa nao-existe não existe.',
       'Ivo X. não está ativa.',
-      'Ana T.: o destino casa-x não existe.',
+      // Casas e obras apagam-se no programa: a frase não mostra o id (05/10/2026).
+      'Ana T.: a casa escolhida já não existe.',
       'Ana T.: o destino zz9999 não existe.',
-      'Ana T.: o destino obra-x não existe.',
+      'Ana T.: a obra escolhida já não existe.',
     ]);
   });
 
   it('pessoa inativa com destino inexistente dá os dois erros', () => {
     expect(validarOperacoes(estadoExemplo(), [mover('p-ivo', 'obraId', null, 'obra-x')])).toStrictEqual([
       'Ivo X. não está ativa.',
-      'Ivo X.: o destino obra-x não existe.',
+      'Ivo X.: a obra escolhida já não existe.',
     ]);
   });
 
@@ -613,11 +614,13 @@ describe('nomeDoValor', () => {
     expect(nomeDoValor(estado, 'obraId', null)).toBe('sem obra');
   });
 
-  it('ids que não existem aparecem tal como estão', () => {
+  it('uma casa ou obra que já não existe é "uma casa/obra apagada" (nunca o id); a carrinha pelo id', () => {
     const estado = estadoExemplo();
-    expect(nomeDoValor(estado, 'casaId', 'casa-x')).toBe('casa-x');
+    expect(nomeDoValor(estado, 'casaId', 'casa-1b2c3d4e-0000-4000-8000-000000000001')).toBe(
+      'uma casa apagada',
+    );
     expect(nomeDoValor(estado, 'carrinhaId', 'zz9999')).toBe('zz9999');
-    expect(nomeDoValor(estado, 'obraId', 'obra-x')).toBe('obra-x');
+    expect(nomeDoValor(estado, 'obraId', 'obra-x')).toBe('uma obra apagada');
   });
 });
 
@@ -638,9 +641,12 @@ describe('descreverOperacao', () => {
     );
   });
 
-  it('pessoa ou valores que não existem aparecem pelo id', () => {
+  it('pessoa que não existe aparece pelo id; a obra apagada por palavras', () => {
     expect(descreverOperacao(estadoExemplo(), mover('nao-existe', 'obraId', 'obra-x', 'obra-a'))).toBe(
-      'nao-existe — obra: obra-x → Obra Alfa',
+      'nao-existe — obra: uma obra apagada → Obra Alfa',
+    );
+    expect(descreverOperacao(estadoExemplo(), mover('p-ana', 'casaId', 'casa-x', 'casa-2'))).toBe(
+      'Ana T. — casa: uma casa apagada → Casa Dois',
     );
   });
 
@@ -676,12 +682,12 @@ describe('onde dorme: chaves', () => {
     }
   });
 
-  it('nomeDaDormida: nome da casa ou do local; "por definir"; ids desconhecidos aparecem como vieram', () => {
+  it('nomeDaDormida: nome da casa ou do local; "por definir"; casa apagada por palavras; o resto como veio', () => {
     const estado = estadoExemplo();
     expect(nomeDaDormida(estado, 'casa:casa-2')).toBe('Casa Dois');
     expect(nomeDaDormida(estado, 'local:local-parque')).toBe('Parque');
     expect(nomeDaDormida(estado, null)).toBe('por definir');
-    expect(nomeDaDormida(estado, 'casa:casa-x')).toBe('casa-x');
+    expect(nomeDaDormida(estado, 'casa:casa-x')).toBe('uma casa apagada');
     expect(nomeDaDormida(estado, 'lixo')).toBe('lixo');
   });
 });
@@ -777,9 +783,9 @@ describe('onde dorme: operações', () => {
         dormida('zz1002', null, 'obra:obra-a'),
       ]),
     ).toStrictEqual([
-      'O sítio onde dormir "casa:local-a" não existe.',
-      'O sítio onde dormir "local:casa-1" não existe.',
-      'O sítio onde dormir "obra:obra-a" não existe.',
+      'ZZ 1001 — o sítio onde dormir escolhido já não existe.',
+      'ZZ 1003 — o sítio onde dormir escolhido já não existe.',
+      'ZZ 1002 — o sítio onde dormir escolhido já não existe.',
     ]);
   });
 
@@ -798,7 +804,7 @@ describe('onde dorme: operações', () => {
       'ZZ 1002 — onde dorme: Parque → Casa Três',
     );
     expect(descreverOperacao(estado, dormida('zz-x', 'casa:casa-x', null))).toBe(
-      'zz-x — onde dorme: casa-x → por definir',
+      'zz-x — onde dorme: uma casa apagada → por definir',
     );
   });
 

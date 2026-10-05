@@ -27,6 +27,7 @@ import {
   nomeDoValor,
   type Operacao,
   type OperacaoRegisto,
+  separarCriacao,
   validarOperacoes,
   valoresIguais,
   valorLegivel,
@@ -162,8 +163,11 @@ function motivoAusente(entidade: EntidadeEditavel): string {
     : 'já não existe';
 }
 
-/** A operação inversa de `feita` sobre o estado, ou o motivo por que já não se pode reverter. */
-function inversa(estado: Estado, feita: Operacao): { op: Operacao } | { motivo: string } {
+/**
+ * A operação inversa de `feita` sobre o estado (uma; duas ou mais quando um registo apagado volta com campos
+ * que a forma de criar não aceita: separarCriacao), ou o motivo por que já não se pode reverter.
+ */
+function inversa(estado: Estado, feita: Operacao): { ops: Operacao[] } | { motivo: string } {
   switch (feita.tipo) {
     case 'mover': {
       const p = estado.pessoas.find((x) => x.id === feita.pessoaId);
@@ -172,7 +176,7 @@ function inversa(estado: Estado, feita: Operacao): { op: Operacao } | { motivo: 
       if (atual !== feita.para) {
         return { motivo: `entretanto mudou: agora está em ${nomeDoValor(estado, feita.campo, atual)}` };
       }
-      return { op: { ...feita, de: feita.para, para: feita.de } };
+      return { ops: [{ ...feita, de: feita.para, para: feita.de }] };
     }
     case 'condutor': {
       const c = estado.carrinhas.find((x) => x.id === feita.carrinhaId);
@@ -184,7 +188,7 @@ function inversa(estado: Estado, feita: Operacao): { op: Operacao } | { motivo: 
             : `o condutor é ${estado.pessoas.find((x) => x.id === c.condutorId)?.nomeCurto ?? c.condutorId}`;
         return { motivo: `entretanto mudou: agora ${agora}` };
       }
-      return { op: { ...feita, de: feita.para, para: feita.de } };
+      return { ops: [{ ...feita, de: feita.para, para: feita.de }] };
     }
     case 'dormida': {
       const c = estado.carrinhas.find((x) => x.id === feita.carrinhaId);
@@ -194,7 +198,7 @@ function inversa(estado: Estado, feita: Operacao): { op: Operacao } | { motivo: 
         const agora = atual === null ? 'está por definir' : `dorme em ${nomeDaDormida(estado, atual)}`;
         return { motivo: `entretanto mudou: agora ${agora}` };
       }
-      return { op: { ...feita, de: feita.para, para: feita.de } };
+      return { ops: [{ ...feita, de: feita.para, para: feita.de }] };
     }
     case 'campo': {
       const registo = encontrarRegisto(estado, feita.entidade, feita.id) as
@@ -207,7 +211,7 @@ function inversa(estado: Estado, feita: Operacao): { op: Operacao } | { motivo: 
           motivo: `entretanto mudou: agora é ${valorLegivel(estado, feita.entidade, feita.campo, atual)}`,
         };
       }
-      return { op: { ...feita, de: feita.para, para: feita.de } };
+      return { ops: [{ ...feita, de: feita.para, para: feita.de }] };
     }
     case 'registo': {
       const atual = encontrarRegisto(estado, feita.entidade, feita.id);
@@ -217,10 +221,10 @@ function inversa(estado: Estado, feita: Operacao): { op: Operacao } | { motivo: 
         }
         if (!atual) return { motivo: motivoAusente(feita.entidade) };
         if (!valoresIguais(atual, feita.para)) return { motivo: 'entretanto mudou (foi editado depois)' };
-        return { op: { ...feita, de: atual, para: null } as OperacaoRegisto };
+        return { ops: [{ ...feita, de: atual, para: null } as OperacaoRegisto] };
       }
       if (atual) return { motivo: 'já existe outra vez' };
-      return { op: { ...feita, de: null, para: feita.de } as OperacaoRegisto };
+      return { ops: separarCriacao({ ...feita, de: null, para: feita.de } as OperacaoRegisto) };
     }
   }
 }
@@ -229,7 +233,8 @@ function inversa(estado: Estado, feita: Operacao): { op: Operacao } | { motivo: 
  * As operações que desfazem as alterações de um lote, sobre o estado VISÍVEL (o do servidor com o rascunho
  * que já houver): linhas pela ordem inversa; 'pessoa' casaId/carrinhaId/obraId → 'mover'; CAMPO_CONDUTOR →
  * 'condutor'; CAMPO_DORMIDA → 'dormida'; um campo de CAMPOS_EDITAVEIS → 'campo'; CAMPO_REGISTO → 'registo'
- * (criar ↔ apagar). Cada inversa tem `de` = o `depois` da linha: se o valor atual já não é esse, a linha vai
+ * (criar ↔ apagar; um registo apagado volta com a forma de um novo e, a seguir, os campos que essa forma não
+ * aceita, separarCriacao: ex.: uma casa com "lugares iguais aos moradores", um problema resolvido). Cada inversa tem `de` = o `depois` da linha: se o valor atual já não é esse, a linha vai
  * para `impossiveis` ("entretanto mudou: agora está em Casa Três"). As marcas "a confirmar" (casaAConfirmar,
  * carrinhaAConfirmar) ignoram-se: as que um 'mover' limpou não voltam (a reversão é uma escolha à mão).
  * Linhas que não são do programa (ex.: a cor de um cliente, a ordem) → impossíveis.
@@ -238,12 +243,12 @@ function inversa(estado: Estado, feita: Operacao): { op: Operacao } | { motivo: 
  * Inversas que dão erro e se podem separar vão para `impossiveis` com o motivo, em vez de bloquearem o lote
  * inteiro: a criação de uma pessoa ("uma pessoa nova não se apaga: usa Saiu da empresa"), um registo que já
  * não está no Estado; e, com erros de validarOperacoes, tira-se uma a uma (pela ordem) a inversa cuja saída faz
- * diminuir os erros (o motivo é a frase do erro que desaparece), até não haver erros ou nada melhorar. Só o
- * que sobra fica em `erros` (bloqueia).
+ * diminuir os erros (o motivo é a frase do erro que desaparece), até não haver erros ou nada melhorar. Só o que
+ * sobra fica em `erros` (bloqueia).
  */
 export function planearReversao(estado: Estado, alteracoes: readonly AlteracaoGravada[]): PlanoReversao {
   const impossiveis: ImpossivelReverter[] = [];
-  let candidatas: { op: Operacao; descricao: string }[] = [];
+  let candidatas: { ops: Operacao[]; descricao: string }[] = [];
   // Um registo criado no lote como ficou no fim do lote: com os 'campo' do mesmo lote (ex.: um problema aberto
   // e resolvido no mesmo Guardar). É com isto que se vê se "foi editado depois".
   const operacoes = alteracoes.map(operacaoDaAlteracao);
@@ -273,11 +278,11 @@ export function planearReversao(estado: Estado, alteracoes: readonly AlteracaoGr
     }
     const r = inversa(estado, feita);
     if ('motivo' in r) impossiveis.push({ descricao, motivo: r.motivo });
-    else candidatas.push({ op: r.op, descricao });
+    else candidatas.push({ ops: r.ops, descricao });
   }
 
-  const validar = (lista: readonly { op: Operacao }[]) =>
-    validarOperacoes(estado, compactarOperacoes(lista.map((c) => c.op)));
+  const validar = (lista: readonly { ops: Operacao[] }[]) =>
+    validarOperacoes(estado, compactarOperacoes(lista.flatMap((c) => c.ops)));
   let erros = validar(candidatas);
   while (erros.length > 0) {
     let melhorou = false;
@@ -294,5 +299,5 @@ export function planearReversao(estado: Estado, alteracoes: readonly AlteracaoGr
     }
     if (!melhorou) break;
   }
-  return { operacoes: compactarOperacoes(candidatas.map((c) => c.op)), impossiveis, erros };
+  return { operacoes: compactarOperacoes(candidatas.flatMap((c) => c.ops)), impossiveis, erros };
 }

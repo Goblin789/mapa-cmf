@@ -166,7 +166,7 @@ describe('resumoDoPasso (o aviso depois de aplicar)', () => {
         { tipo: 'campo', entidade: 'pessoa', id: 'p-ana', campo: 'temCarta', de: null, para: false },
         { tipo: 'campo', entidade: 'pessoa', id: 'p-ana', campo: 'telefone', de: null, para: '691' },
       ]),
-    ).toBe('Ana T. — carta: sem dados ainda → não, telefone: — → 691');
+    ).toBe('Ana T. — carta: sem dados ainda → Não tem, telefone: — → 691');
     expect(
       resumoDoPasso(estado, [
         { tipo: 'campo', entidade: 'casa', id: 'casa-1', campo: 'lotacao', de: 3, para: 4 },

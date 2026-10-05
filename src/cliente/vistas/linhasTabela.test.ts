@@ -7,15 +7,22 @@ import { ROTULO_FORA_DAS_CASAS, ROTULO_SEM_TRANSPORTE } from '../paineis/textos'
 import { estadoVistas } from './estadoTeste';
 import {
   ariaSort,
+  CHAVE_PAINEL_FILTROS,
   COM_FUTUROS,
+  carregarPainelFiltros,
   DISPONIVEL_HOJE,
   descricaoIndisponivel,
   deslocamentoParaVer,
   FILTROS_INICIAIS,
   type FiltrosTabela,
   filtrarLinhas,
+  filtrosLigados,
+  filtrosSemOQueSaiu,
   filtrosTabelaAtivos,
+  guardarPainelFiltros,
   INDISPONIVEL_HOJE,
+  lerPainelFiltros,
+  linhaSeVe,
   linhasDaTabela,
   marcadaDepoisDoClique,
   modoDaCaixa,
@@ -26,6 +33,7 @@ import {
   proximaOrdem,
   realceDaLinha,
   reservaDaFicha,
+  rotuloBotaoFiltros,
   SEM,
   selecaoComVisiveis,
   textoAConfirmar,
@@ -524,6 +532,17 @@ describe('zonaLivreDaTabela e deslocamentoParaVer', () => {
     expect(deslocamentoParaVer({ top: 490, bottom: 530 }, { top: 508, bottom: 602 })).toBe(-26);
     expect(deslocamentoParaVer({ top: 700, bottom: 820 }, { top: 508, bottom: 602 })).toBe(192);
   });
+
+  it('linhaSeVe: inteira ou em parte na zona livre; longe (a pessoa deslizou a tabela), não', () => {
+    const zona = { top: 508, bottom: 602 };
+    expect(linhaSeVe({ top: 520, bottom: 560 }, zona)).toBe(true);
+    // Meio tapada pela ficha (ou pelo cabeçalho): ainda se via, volta a pôr-se à vista.
+    expect(linhaSeVe({ top: 591, bottom: 632 }, zona)).toBe(true);
+    expect(linhaSeVe({ top: 490, bottom: 530 }, zona)).toBe(true);
+    // Fora da zona: por baixo da ficha, ou lá em cima depois de deslizar para ver outras pessoas.
+    expect(linhaSeVe({ top: 602, bottom: 643 }, zona)).toBe(false);
+    expect(linhaSeVe({ top: -2400, bottom: -2360 }, zona)).toBe(false);
+  });
 });
 
 describe('indisponível na Tabela (M2)', () => {
@@ -599,5 +618,105 @@ describe('"Mostrar quem saiu" (M2)', () => {
     const todas = linhasDaTabela(estado, ind, { comQuemSaiu: true });
     expect(todas).toHaveLength(9);
     expect(todas.filter((l) => l.saiu).map((l) => l.nome)).toEqual(['Velho I.']);
+  });
+});
+
+describe('filtrosSemOQueSaiu', () => {
+  const o = opcoesFiltrosTabela(estado, ind, linhas);
+
+  it('sem nada que tenha saído devolve o mesmo objeto', () => {
+    const f = { ...FILTROS_INICIAIS, casas: new Set(['casa-l1', SEM]), clientes: new Set(['alfa']) };
+    expect(filtrosSemOQueSaiu(f, o)).toBe(f);
+    expect(filtrosSemOQueSaiu(FILTROS_INICIAIS, o)).toBe(FILTROS_INICIAIS);
+  });
+
+  it('uma casa ou obra apagada sai do filtro; o resto (e as outras escolhas) fica', () => {
+    const f: FiltrosTabela = {
+      ...FILTROS_INICIAIS,
+      texto: 'ana',
+      soAConfirmar: true,
+      casas: new Set(['casa-l1', 'casa-apagada']),
+      obras: new Set(['obra-apagada']),
+      indisponivel: new Set([INDISPONIVEL_HOJE]),
+    };
+    const podados = filtrosSemOQueSaiu(f, o);
+    expect([...podados.casas]).toEqual(['casa-l1']);
+    expect(podados.obras.size).toBe(0);
+    expect(podados).toMatchObject({ texto: 'ana', soAConfirmar: true });
+    expect(podados.indisponivel).toBe(f.indisponivel);
+    expect(filtrosLigados(podados, false)).toBe(3);
+  });
+
+  it('a última casa escolhida apagada: o filtro Casa fica desligado (e não "1 escolhida" sem ninguém)', () => {
+    const f = { ...FILTROS_INICIAIS, casas: new Set(['casa-apagada']) };
+    expect(filtrosTabelaAtivos(filtrosSemOQueSaiu(f, o))).toBe(false);
+  });
+});
+
+describe('painel "Filtros" da Tabela (pedido do Rafael, 05/10/2026: só quando se quer)', () => {
+  it('conta os filtros ligados do painel (o texto não: o campo está sempre à vista)', () => {
+    expect(filtrosLigados(FILTROS_INICIAIS, false)).toBe(0);
+    expect(rotuloBotaoFiltros(0)).toBe('Filtros');
+    expect(filtrosLigados({ ...FILTROS_INICIAIS, texto: 'ana' }, false)).toBe(0);
+    // Cada filtro de escolha múltipla conta uma vez, com uma ou várias escolhas.
+    const dois: FiltrosTabela = {
+      ...FILTROS_INICIAIS,
+      casas: new Set(['casa-l1', 'casa-a']),
+      clientes: new Set(['alfa']),
+    };
+    expect(filtrosLigados(dois, false)).toBe(2);
+    expect(rotuloBotaoFiltros(2)).toBe('Filtros · 2');
+    const todos: FiltrosTabela = {
+      texto: 'x',
+      clientes: new Set(['alfa']),
+      casas: new Set([SEM]),
+      carrinhas: new Set(['XX1001']),
+      obras: new Set([SEM]),
+      indisponivel: new Set([INDISPONIVEL_HOJE]),
+      soAConfirmar: true,
+    };
+    expect(filtrosLigados(todos, false)).toBe(6);
+    // "Mostrar quem saiu" não é um filtro ("Limpar filtros" não a tira), mas está no painel e muda o que
+    // se vê: conta no botão.
+    expect(filtrosLigados(FILTROS_INICIAIS, true)).toBe(1);
+    expect(filtrosLigados(todos, true)).toBe(7);
+  });
+
+  it('fechado por omissão; o aberto/fechado lembra-se no browser', () => {
+    expect(lerPainelFiltros(null)).toBe(false);
+    expect(lerPainelFiltros('fechado')).toBe(false);
+    expect(lerPainelFiltros('lixo')).toBe(false);
+    expect(lerPainelFiltros('aberto')).toBe(true);
+    const guardado = new Map<string, string>();
+    const armazem = () => ({
+      getItem: (k: string) => guardado.get(k) ?? null,
+      setItem: (k: string, v: string) => {
+        guardado.set(k, v);
+      },
+    });
+    expect(carregarPainelFiltros(armazem)).toBe(false);
+    guardarPainelFiltros(armazem, true);
+    expect(guardado.get(CHAVE_PAINEL_FILTROS)).toBe('aberto');
+    expect(carregarPainelFiltros(armazem)).toBe(true);
+    guardarPainelFiltros(armazem, false);
+    expect(carregarPainelFiltros(armazem)).toBe(false);
+  });
+
+  it('sem localStorage (janela privada, bloqueado) fica fechado e não rebenta', () => {
+    const recusa = () => {
+      throw new Error('SecurityError');
+    };
+    expect(carregarPainelFiltros(recusa)).toBe(false);
+    expect(() => guardarPainelFiltros(recusa, true)).not.toThrow();
+    const falhaAoLer = () => ({
+      getItem: () => {
+        throw new Error('bloqueado');
+      },
+      setItem: () => {
+        throw new Error('cheio');
+      },
+    });
+    expect(carregarPainelFiltros(falhaAoLer)).toBe(false);
+    expect(() => guardarPainelFiltros(falhaAoLer, false)).not.toThrow();
   });
 });

@@ -182,7 +182,7 @@ describe('gravarLote: operações novas', () => {
     });
     expect(gravar([operacaoCriar('local', { ...localNovo, tipo: 'oficina' })])).toStrictEqual({
       tipo: 'invalido',
-      erros: ['Obra Nova — Só se criam locais de obra ou estacionamento.'],
+      erros: ['Obra Nova — Só se criam locais de obra, estacionamento ou casa.'],
     });
     expect(gravar([operacaoCriar('local', { ...localNovo, raioM: 50000 })])).toMatchObject({
       tipo: 'invalido',
@@ -403,7 +403,7 @@ describe('gravarLote: operações novas', () => {
       'ZZ 0002 — outras matrículas: ZZ 9999 → ZZ 9999, ZZ 8888',
       'Casa Monte — lugares iguais aos moradores: não → sim',
       'Casa Monte — lotação: 4 → 5',
-      'Álvaro Exemplo — carta: não → sim',
+      'Álvaro Exemplo — carta: Não tem → Tem',
       'Álvaro Exemplo — carta válida até: — → 31/05/2029',
       'Obra do Vale — pino mudado de sítio',
       'Obra do Vale — pino mudado de sítio',
@@ -541,7 +541,7 @@ describe('POST /api/lotes (M2)', () => {
     });
     expect(r1.status).toBe(400);
     expect(((await r1.json()) as { erros: string[] }).erros).toEqual([
-      'operacoes[0].para: Só se criam locais de obra ou estacionamento.',
+      'operacoes[0].para: Só se criam locais de obra, estacionamento ou casa.',
     ]);
     const r2 = await postar({
       versaoBase: 1,

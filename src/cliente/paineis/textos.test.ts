@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { dormidasDasCarrinhas } from '../../dominio/dormidas';
 import { indexar } from '../../dominio/indices';
+import { valorLegivel } from '../../dominio/operacoes';
 import { estadoExemplo } from '../../dominio/teste-fabrica';
 import { estadoFicticio, pessoaFicticia } from './dadosFicticios';
 import {
@@ -12,6 +13,7 @@ import {
   hojeISO,
   nomeCompleto,
   notaCorDaObra,
+  ROTULO_ESCOLHA_CARTA,
   rotuloDoCampo,
   textoAntes,
   textoApartamento,
@@ -52,6 +54,27 @@ describe('M2: valores dos campos das fichas', () => {
     expect(textoValorCampo(exemplo, 'casa', 'localId', 'local-b')).toBe(
       '1 Rue Fictícia, L-0000 Lugar local-b',
     );
+  });
+
+  it('a carta diz o mesmo na ficha, no "antes:", no Guardar e no Histórico (05/10/2026)', () => {
+    const hoje = '2026-10-05';
+    const casos = [
+      { temCarta: true, cartaValidade: '2027-03-01', ficha: 'Tem, válida até 01/03/2027', frase: 'Tem' },
+      { temCarta: true, cartaValidade: null, ficha: 'Tem (validade desconhecida)', frase: 'Tem' },
+      { temCarta: false, cartaValidade: null, ficha: 'Não tem', frase: 'Não tem' },
+      { temCarta: null, cartaValidade: null, ficha: 'sem dados ainda', frase: 'sem dados ainda' },
+    ] as const;
+    for (const { temCarta, cartaValidade, ficha, frase } of casos) {
+      const p = pessoaFicticia({ id: 'p-x', nomeCurto: 'X.', temCarta, cartaValidade });
+      expect(textoCarta(p, hoje)).toBe(ficha);
+      // A frase do Histórico e do Guardar começa pelas mesmas palavras da ficha (nada de "sim"/"não").
+      expect(valorLegivel(exemplo, 'pessoa', 'temCarta', temCarta)).toBe(frase);
+      expect(ficha.startsWith(frase)).toBe(true);
+      expect(textoValorCampo(exemplo, 'pessoa', 'temCarta', temCarta)).toBe(frase);
+      expect(textoAntes(exemplo, 'pessoa', 'temCarta', temCarta)).toBe(`antes: ${frase}`);
+    }
+    expect(ROTULO_ESCOLHA_CARTA.tem).toBe('Tem');
+    expect(ROTULO_ESCOLHA_CARTA['nao-tem']).toBe('Não tem');
   });
 
   it('"antes: …" com o valor gravado', () => {

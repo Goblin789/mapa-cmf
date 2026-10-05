@@ -10,6 +10,7 @@ import {
   revertidosEmVigor,
 } from './reverter';
 import {
+  criarCasa,
   criarIndisponibilidade,
   criarLocal,
   criarObra,
@@ -162,8 +163,9 @@ describe('operacaoDaAlteracao', () => {
     expect(operacaoDaAlteracao(linha('carrinha', 'zz1001', 'ordem', 1, 2))).toBeNull();
     // Um veículo que entrou pelos dados iniciais (antes sem valor) não é um 'campo'.
     expect(operacaoDaAlteracao(linha('carrinha', 'zz1001', 'marca', undefined, 'Ford'))).toBeNull();
+    // Os veículos não se criam nem se apagam no programa.
     expect(
-      operacaoDaAlteracao(linha('casa', 'casa-1', CAMPO_REGISTO, undefined, { id: 'casa-1' })),
+      operacaoDaAlteracao(linha('carrinha', 'zz1001', CAMPO_REGISTO, undefined, { id: 'zz1001' })),
     ).toBeNull();
   });
 });
@@ -377,3 +379,107 @@ describe('planearReversao', () => {
     );
   });
 });
+
+describe('planearReversao: casas novas e apagadas (05/10/2026)', () => {
+  const local = criarLocal({ id: `local-${ID}31`, tipo: 'casa', nome: 'Casa Nova', morada: 'Rue Y' });
+  const casa = criarCasa({ id: `casa-${ID}31`, nome: 'Casa Nova', localId: local.id, lotacao: 4, ordem: 9 });
+  const criada = [
+    linha('local', local.id, CAMPO_REGISTO, undefined, local),
+    linha('casa', casa.id, CAMPO_REGISTO, undefined, casa),
+  ];
+
+  it('"Casa Nova — criada" reverte-se apagando a casa e o local; com moradores entretanto (e a morada nova), fica nos erros', () => {
+    const e = estadoExemplo();
+    const comCasa: Estado = { ...e, locais: [...e.locais, local], casas: [...e.casas, casa] };
+    const plano = planearReversao(comCasa, criada);
+    expect(plano.erros).toEqual([]);
+    expect(plano.impossiveis).toEqual([]);
+    expect(plano.operacoes).toEqual([
+      { tipo: 'registo', entidade: 'casa', id: casa.id, de: casa, para: null },
+      { tipo: 'registo', entidade: 'local', id: local.id, de: local, para: null },
+    ]);
+    const comMorador: Estado = {
+      ...comCasa,
+      pessoas: comCasa.pessoas.map((p) => (p.id === 'p-helena' ? { ...p, casaId: casa.id } : p)),
+    };
+    // Como a obra que entretanto ganhou pessoas: tirar só a casa (ou só o local) não resolve.
+    expect(planearReversao(comMorador, criada).erros).toEqual([
+      'Casa Nova — ainda tem 1 morador: muda-os para outra casa (ou para "Fora das casas CMF") antes de a apagar.',
+    ]);
+  });
+
+  it('"Casa Nova — criada" numa morada que já existia, com moradores entretanto: não se pode reverter', () => {
+    // Só a casa a desfazer: sem o local, a inversa sai para os "já não se pode reverter", com o motivo.
+    const e = estadoExemplo();
+    const naMorada = { ...casa, localId: 'local-a' };
+    const comMorador: Estado = {
+      ...e,
+      casas: [...e.casas, naMorada],
+      pessoas: e.pessoas.map((p) => (p.id === 'p-helena' ? { ...p, casaId: naMorada.id } : p)),
+    };
+    const plano = planearReversao(comMorador, [linha('casa', casa.id, CAMPO_REGISTO, undefined, naMorada)]);
+    expect(plano.operacoes).toEqual([]);
+    expect(plano.erros).toEqual([]);
+    expect(plano.impossiveis.map((i) => i.motivo)).toEqual([
+      'Casa Nova — ainda tem 1 morador: muda-os para outra casa (ou para "Fora das casas CMF") antes de a apagar.',
+    ]);
+  });
+
+  it('"Casa X — apagada" volta com os moradores, onde dorme a carrinha e os problemas resolvidos', () => {
+    const e = estadoExemplo();
+    const walferdange = criarCasa({
+      id: 'walferdange',
+      nome: 'Walferdange',
+      localId: 'local-b',
+      sempreCheia: true,
+    });
+    const problema = criarProblema({
+      id: `problema-${ID}32`,
+      casaId: 'walferdange',
+      texto: 'Janela',
+      abertoEm: '2026-08-01',
+      resolvidoEm: '2026-08-03',
+    });
+    const linhas = [
+      linha('pessoa', 'p-helena', 'casaId', 'walferdange', null),
+      linha('carrinha', 'zz1003', CAMPO_DORMIDA, 'casa:walferdange', null),
+      linha('problema', problema.id, CAMPO_REGISTO, problema, undefined),
+      linha('casa', 'walferdange', CAMPO_REGISTO, walferdange, undefined),
+    ];
+    const plano = planearReversao(e, linhas);
+    expect(plano.erros).toEqual([]);
+    expect(plano.impossiveis).toEqual([]);
+    expect(plano.operacoes).toEqual([
+      operacaoCriarCasa({ ...walferdange, sempreCheia: false }),
+      { tipo: 'campo', entidade: 'casa', id: 'walferdange', campo: 'sempreCheia', de: false, para: true },
+      {
+        tipo: 'registo',
+        entidade: 'problema',
+        id: problema.id,
+        de: null,
+        para: { ...problema, resolvidoEm: null },
+      },
+      {
+        tipo: 'campo',
+        entidade: 'problema',
+        id: problema.id,
+        campo: 'resolvidoEm',
+        de: null,
+        para: '2026-08-03',
+      },
+      { tipo: 'dormida', carrinhaId: 'zz1003', de: null, para: 'casa:walferdange' },
+      { tipo: 'mover', pessoaId: 'p-helena', campo: 'casaId', de: null, para: 'walferdange' },
+    ]);
+    // Outra casa ficou entretanto com o nome: sem a casa, o resto também não volta, por isso o diálogo explica
+    // e não deixa pôr no rascunho.
+    const comNome: Estado = {
+      ...e,
+      casas: [...e.casas, criarCasa({ id: 'casa-x', nome: 'walferdange', localId: 'local-b' })],
+    };
+    expect(planearReversao(comNome, linhas).erros).toEqual(['Walferdange — já há outra casa com este nome.']);
+  });
+});
+
+function operacaoCriarCasa(casa: ReturnType<typeof criarCasa>): Operacao {
+  return { tipo: 'registo', entidade: 'casa', id: casa.id, de: null, para: casa } as Operacao;
+}

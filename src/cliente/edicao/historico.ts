@@ -2,9 +2,15 @@
 // M2: frases seguidas iguais juntas (só ao mostrar), etiquetas "Reverte…"/"Revertida" e o que o diálogo
 // "Reverter" mostra (prepararReversao).
 
-import type { EntradaHistorico } from '../../dominio/api';
+import type { AlteracaoHistorico, EntradaHistorico } from '../../dominio/api';
 import { formatarDiaHoraCurto } from '../../dominio/datas';
-import { chaveOperacao, descreverOperacao, type Operacao } from '../../dominio/operacoes';
+import {
+  aplicarOperacoes,
+  CAMPO_REGISTO,
+  chaveOperacao,
+  descreverOperacao,
+  type Operacao,
+} from '../../dominio/operacoes';
 import { type ImpossivelReverter, planearReversao, podeReverter } from '../../dominio/reverter';
 import type { Estado } from '../../dominio/tipos';
 import type { ReversaoPendente } from '../tempoReal/rascunhoPendente';
@@ -129,6 +135,41 @@ export function juntarFrasesIguais(alteracoes: readonly { descricao: string }[])
     else frases.push({ descricao: a.descricao, linhas: 1 });
   }
   return frases;
+}
+
+/** O localId de um registo guardado em JSON (null se não for um registo com local). */
+function localIdDoRegisto(json: string | null): string | null {
+  if (!json) return null;
+  try {
+    const r = JSON.parse(json) as { localId?: unknown };
+    return typeof r.localId === 'string' ? r.localId : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Só da apresentação: tira a linha do local criado (ou apagado) com a sua casa ou obra no mesmo lote. A frase
+ * da casa ou da obra já diz a morada ("Casa X — criada (Rue Y)"), e "Casa X — local criado: Rue Y" repetia-a.
+ * O estacionamento de uma obra fica (é outro sítio). O Reverter recebe sempre todas as linhas do lote.
+ */
+export function semLocaisRepetidos<
+  T extends Pick<AlteracaoHistorico, 'entidade' | 'entidadeId' | 'campo' | 'antes' | 'depois'>,
+>(alteracoes: readonly T[]): T[] {
+  const criados = new Set<string>();
+  const apagados = new Set<string>();
+  for (const a of alteracoes) {
+    if ((a.entidade !== 'casa' && a.entidade !== 'obra') || a.campo !== CAMPO_REGISTO) continue;
+    const local = localIdDoRegisto(a.depois ?? a.antes);
+    if (!local) continue;
+    if (a.antes === null) criados.add(local);
+    else if (a.depois === null) apagados.add(local);
+  }
+  if (criados.size === 0 && apagados.size === 0) return [...alteracoes];
+  return alteracoes.filter((a) => {
+    if (a.entidade !== 'local' || a.campo !== CAMPO_REGISTO) return true;
+    return !(a.antes === null ? criados : a.depois === null ? apagados : new Set<string>()).has(a.entidadeId);
+  });
 }
 
 export type LoteParaEtiqueta = Pick<EntradaHistorico, 'loteId' | 'criadoEm' | 'autor' | 'autorNome'>;
@@ -273,8 +314,14 @@ export function prepararReversao(
   jaNoRascunho = false,
 ): VistaReversao {
   const plano = planearReversao(estadoVisivel, entrada.alteracoes);
+  // Os nomes do que a reversão volta a criar (uma casa ou uma obra apagada): "Ana T. — casa: Fora das casas
+  // CMF → Casa X", e não o id da casa, que ainda não está no estado visível. Os apagados ainda lá estão.
+  const nomes = aplicarOperacoes(
+    estadoVisivel,
+    plano.operacoes.filter((op) => op.tipo === 'registo' && op.de === null),
+  );
   const voltaAtras = juntarFrasesIguais(
-    plano.operacoes.map((op) => ({ descricao: descreverOperacao(estadoVisivel, op) })),
+    plano.operacoes.map((op) => ({ descricao: descreverOperacao(nomes, op) })),
   );
   let explicacao: string | null = null;
   if ((entrada.revertidoPor ?? []).length > 0) {

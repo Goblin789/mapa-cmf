@@ -174,7 +174,9 @@ describe('descreverConflito', () => {
         esperado: null,
         atual: 'casa-x',
       }),
-    ).toBe('p-x — casa: esperavas Fora das casas CMF, mas agora está em casa-x (alguém mudou entretanto)');
+    ).toBe(
+      'p-x — casa: esperavas Fora das casas CMF, mas agora está em uma casa apagada (alguém mudou entretanto)',
+    );
   });
 
   it('condutor: quem se esperava e quem conduz agora', () => {
@@ -286,7 +288,7 @@ describe('descreverConflito — onde dorme', () => {
       'ZZ 1001 — onde dorme: esperavas Casa Dois, mas agora está por definir (alguém mudou entretanto)',
     );
     expect(conflito('casa:casa-x', 'local:local-x', 'zz-x')).toBe(
-      'zz-x — onde dorme: esperavas casa-x, mas agora dorme em local-x (alguém mudou entretanto)',
+      'zz-x — onde dorme: esperavas uma casa apagada, mas agora dorme em local-x (alguém mudou entretanto)',
     );
   });
 });
@@ -928,7 +930,7 @@ describe('gravarLote e lerHistorico na base de dados', () => {
     const antes = carregarEstado(bd, AGORA);
     expect(gravarLote(bd, pedido([dormida('car-2', 'casa:casa-monte', 'casa:casa-nada')]))).toStrictEqual({
       tipo: 'invalido',
-      erros: ['O sítio onde dormir "casa:casa-nada" não existe.'],
+      erros: ['ZZ 0002 — o sítio onde dormir escolhido já não existe.'],
     });
     // Um local com o id de uma casa (ou o contrário) também não existe.
     expect(gravarLote(bd, pedido([dormida('car-2', 'casa:casa-monte', 'local:casa-ribeira')]))).toMatchObject(

@@ -1,9 +1,9 @@
 // Comutadores das vistas: Mapa | Tabela | Quadro (cabeçalho), Quadro | Mapa (reunião), Casas | Carrinhas |
-// Obras (Quadro, também na reunião) e o botão "Reunião". Botões segmentados com aria-pressed num <fieldset>
+// Obras | Clientes (Quadro, também na reunião) e o botão "Reunião". Botões segmentados com aria-pressed num <fieldset>
 // com legenda, como o "Ver por" da lista lateral. Cada opção tem ícone e texto.
 
 import type { ComponentType } from 'react';
-import { IconeCarrinha, IconeCasa, IconeObra } from '../lista/icones';
+import { IconeCarrinha, IconeCasa, IconeCliente, IconeObra } from '../lista/icones';
 import { FOCO_VISIVEL } from '../paineis/classes';
 import { IconeMapa, IconeQuadro, IconeReuniao, IconeTabela } from './icones';
 import { pedirReuniao } from './modoReuniao';
@@ -118,14 +118,27 @@ const OPCOES_AGRUPAMENTO: readonly Opcao<Agrupamento>[] = [
   },
   // Ao lado das casas e das carrinhas, e não num filtro à parte (pedido do Rafael, 04/10/2026).
   { id: 'obras', rotulo: 'Obras', titulo: 'Uma coluna por obra, com quem lá trabalha', Icone: IconeObra },
+  // Em vez do filtro dos clientes que o Quadro tinha (pedido do Rafael, 05/10/2026).
+  {
+    id: 'clientes',
+    rotulo: 'Clientes',
+    titulo: 'Um bloco por cliente, com quem é desse cliente (pela casa onde mora)',
+    Icone: IconeCliente,
+  },
 ];
 
 /**
- * Casas | Carrinhas | Obras, no Quadro. Só o texto onde as três opções com ícone não cabiam: no telemóvel
- * (a barra do Quadro passava a três linhas) e no cabeçalho da reunião de 1280 a 1919 px (os
- * filtros, ao lado da hora, passavam a mais uma linha).
+ * Casas | Carrinhas | Obras | Clientes, no Quadro. Só o texto onde as quatro opções com ícone não cabiam:
+ * no telemóvel (a toda a largura, na 1.ª linha da barra do Quadro) e no cabeçalho da reunião de 1280 a
+ * 1919 px (passava a mais uma linha).
  */
-export function AlternadorAgrupamento({ grande = false }: { grande?: boolean }) {
+export function AlternadorAgrupamento({
+  grande = false,
+  className = '',
+}: {
+  grande?: boolean;
+  className?: string;
+}) {
   const agrupamento = useVista((s) => s.agrupamento);
   const definirAgrupamento = useVista((s) => s.definirAgrupamento);
   return (
@@ -134,6 +147,7 @@ export function AlternadorAgrupamento({ grande = false }: { grande?: boolean }) 
       opcoes={OPCOES_AGRUPAMENTO}
       valor={agrupamento}
       aoMudar={definirAgrupamento}
+      className={className}
       classeBotao={grande ? 'h-8 text-base' : 'h-7 text-sm'}
       classeIcone={grande ? 'xl:max-[120rem]:hidden' : 'max-sm:hidden'}
     />

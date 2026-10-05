@@ -105,25 +105,35 @@ export type ValorDoCampo<E extends EntidadeEditavel, C extends CampoEditavel<E>>
   keyof RegistosEditaveis[E]];
 
 /**
- * Entidades que se criam no programa (operação 'registo' com `de` = null): pessoas novas, obras (e os seus
- * locais e estacionamentos), períodos de indisponibilidade e problemas. Casas e veículos novos continuam a
- * entrar pelos dados iniciais (npm run sincronizar) no M2.
+ * Entidades que se criam no programa (operação 'registo' com `de` = null): pessoas novas, casas (pedido do
+ * Rafael, 05/10/2026: "Nova casa" no "Novo…", com o local no mesmo passo se a morada for nova), obras (e os
+ * seus locais e estacionamentos), períodos de indisponibilidade e problemas. Os veículos novos continuam a
+ * entrar pelos dados iniciais (npm run sincronizar).
  */
-export const ENTIDADES_CRIAVEIS = ['pessoa', 'obra', 'local', 'indisponibilidade', 'problema'] as const;
+export const ENTIDADES_CRIAVEIS = [
+  'pessoa',
+  'casa',
+  'obra',
+  'local',
+  'indisponibilidade',
+  'problema',
+] as const;
 export type EntidadeCriavel = (typeof ENTIDADES_CRIAVEIS)[number];
 
 /**
- * Entidades que se apagam (operação 'registo' com `para` = null). Nunca pessoas (saem com `ativa` = false),
- * casas nem veículos. Uma obra só se apaga sem pessoas; um local só se foi criado no programa
- * (localCriadoNoPrograma) e sem nada que o use (casas, obras, estacionamentos de obras, carrinhas que lá
- * dormem).
+ * Entidades que se apagam (operação 'registo' com `para` = null). Nunca pessoas (saem com `ativa` = false)
+ * nem veículos. Uma casa (dos dados iniciais ou criada no programa) só sem moradores, sem carrinhas a dormir
+ * lá e sem problemas por resolver (os resolvidos apagam-se com ela: chave estrangeira); uma obra só sem
+ * pessoas; um local só se foi criado no programa (localCriadoNoPrograma) e sem nada que o use (casas, obras,
+ * estacionamentos de obras, carrinhas que lá dormem).
  */
-export const ENTIDADES_APAGAVEIS = ['obra', 'local', 'indisponibilidade', 'problema'] as const;
+export const ENTIDADES_APAGAVEIS = ['casa', 'obra', 'local', 'indisponibilidade', 'problema'] as const;
 export type EntidadeApagavel = (typeof ENTIDADES_APAGAVEIS)[number];
 
 /** Prefixo dos ids gerados no browser (ex.: "obra-2f1c…"). Os ids importados são outros (ex.: "CF5001"). */
 export const PREFIXO_ID: Readonly<Record<EntidadeCriavel, string>> = {
   pessoa: 'pessoa',
+  casa: 'casa',
   obra: 'obra',
   local: 'local',
   indisponibilidade: 'indisp',
@@ -172,20 +182,51 @@ export function dentroDaRegiao(lat: number, lng: number): boolean {
 }
 
 /**
- * Tipos de local que se criam no programa (o local de uma obra e o seu estacionamento). Os outros (casa,
- * oficina, escritório, bomba…) só vêm dos dados iniciais: são os "locais conhecidos" do GPS (M4).
+ * Tipos de local que se criam no programa (o local de uma obra, o seu estacionamento e a morada nova de uma
+ * casa nova). Os outros (oficina, escritório, bomba…) só vêm dos dados iniciais. Todos são "locais
+ * conhecidos" do GPS (M4).
  */
-export const TIPOS_LOCAL_CRIAVEIS = ['obra', 'estacionamento'] as const satisfies readonly TipoLocal[];
+export const TIPOS_LOCAL_CRIAVEIS = [
+  'obra',
+  'estacionamento',
+  'casa',
+] as const satisfies readonly TipoLocal[];
+
+/** "local-" + um UUID (novoId). */
+const PADRAO_ID_LOCAL_DO_PROGRAMA = /^local-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
- * O local foi criado no programa (id "local-…" e tipo obra/estacionamento): só estes se apagam (e só sem
- * nada que os use, o que se vê em validarOperacoes). Os dos dados iniciais nunca se apagam no programa.
+ * O local foi criado no programa (id "local-…" e tipo obra/estacionamento/casa): só estes se apagam (e só
+ * sem nada que os use, o que se vê em validarOperacoes). Os dos dados iniciais nunca se apagam no programa.
+ * Os locais de casas dos dados iniciais são muitos e de tipo 'casa': nesse tipo só conta "local-<UUID>"
+ * (novoId), não basta o prefixo.
  */
 export function localCriadoNoPrograma(local: Pick<Local, 'id' | 'tipo'>): boolean {
+  if (local.tipo === 'casa') return PADRAO_ID_LOCAL_DO_PROGRAMA.test(local.id);
   return (
     local.id.startsWith(`${PREFIXO_ID.local}-`) &&
     (TIPOS_LOCAL_CRIAVEIS as readonly TipoLocal[]).includes(local.tipo)
   );
+}
+
+/**
+ * Id de uma casa criada no programa: "casa-" + um UUID (novoId). As casas dos dados iniciais também têm ids
+ * a começar por "casa-" ("casa-1-puttelange"), por isso o prefixo não chega: conta o UUID inteiro.
+ */
+const PADRAO_ID_CASA_DO_PROGRAMA = /^casa-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Ids das casas dos dados iniciais (casas.json: minúsculas, algarismos e hífenes, ex.: "eischen",
+ * "apartamento-e-puttelange"). Uma casa destas apagada no programa volta com o mesmo id pelo Reverter.
+ */
+const PADRAO_ID_CASA_DOS_DADOS = /^[a-z0-9]+(?:-[a-z0-9]+){0,15}$/;
+
+/**
+ * A casa foi criada no programa (o id é "casa-<UUID>", sem coluna nova na base de dados): o sincronizar
+ * nunca a tira por não estar em casas.json. As outras vieram dos dados iniciais.
+ */
+export function casaCriadaNoPrograma(casa: Pick<Casa, 'id'>): boolean {
+  return PADRAO_ID_CASA_DO_PROGRAMA.test(casa.id);
 }
 
 /** Rótulo de cada campo, nas fichas e no histórico ("Ana — nome curto: Ana → Ana T."). */
@@ -463,14 +504,32 @@ export function validarValorCampo<E extends EntidadeEditavel>(
 }
 
 /** Os ids dos registos criados no programa: "obra-<uuid>", "indisp-<uuid>"… */
-export const PADRAO_ID_NOVO = /^(pessoa|obra|local|indisp|problema)-[A-Za-z0-9-]{8,64}$/;
+export const PADRAO_ID_NOVO = /^(pessoa|casa|obra|local|indisp|problema)-[A-Za-z0-9-]{8,64}$/;
+
+/**
+ * O id serve para um registo novo desta entidade. Casas: "casa-<UUID>" (casaCriadaNoPrograma) ou o id de uma
+ * casa dos dados iniciais (o Reverter de "Casa X — apagada" volta a pô-la com o id que tinha; o servidor só o
+ * aceita se essa casa foi apagada no programa, lotes.ts errosIdsDeCasas). Os outros: PADRAO_ID_NOVO com o
+ * prefixo da entidade.
+ */
+function idServeParaNovo(entidade: EntidadeCriavel, id: unknown): boolean {
+  if (typeof id !== 'string') return false;
+  if (entidade === 'casa') return casaCriadaNoPrograma({ id }) || PADRAO_ID_CASA_DOS_DADOS.test(id);
+  return PADRAO_ID_NOVO.test(id) && id.startsWith(`${PREFIXO_ID[entidade]}-`);
+}
+
+/** "obra, estacionamento ou casa". */
+function listaComOu(itens: readonly string[]): string {
+  return itens.length <= 1 ? (itens[0] ?? '') : `${itens.slice(0, -1).join(', ')} ou ${itens.at(-1)}`;
+}
 
 /**
  * Erros (frases sem o nome do registo) de um registo NOVO, antes de ver o estado: o id gerado no browser
  * (PADRAO_ID_NOVO, com o prefixo da entidade), cada campo editável (validarValorCampo) e a forma de um
  * registo acabado de criar: pessoa sem casa, carrinha nem obra, ativa, sem marcas "a confirmar", sem nomes
- * alternativos nem nº original; obra 'manual'; problema com exatamente um alvo e ainda aberto; local só do
- * tipo obra/estacionamento, com o raio entre LIMITES.raioMinimo e raioMaximo e a posição dentro da região
+ * alternativos nem nº original; casa com pelo menos 1 lugar, sem "lugares iguais aos moradores" e com a
+ * ordem; obra 'manual'; problema com exatamente um alvo e ainda aberto; local só do tipo
+ * obra/estacionamento/casa, com o raio entre LIMITES.raioMinimo e raioMaximo e a posição dentro da região
  * do mapa. O que depende do estado (o id já existe, referências, unicidade) vê-se em validarOperacoes.
  * [] = serve. Usada pelo validarOperacoes e pelo zod do servidor.
  */
@@ -478,8 +537,7 @@ export function validarRegisto(entidade: EntidadeCriavel, registo: unknown): str
   if (registo === null || typeof registo !== 'object' || Array.isArray(registo)) return ['Registo inválido.'];
   const r = registo as Record<string, unknown>;
   const erros: string[] = [];
-  const id = r.id;
-  if (typeof id !== 'string' || !PADRAO_ID_NOVO.test(id) || !id.startsWith(`${PREFIXO_ID[entidade]}-`)) {
+  if (!idServeParaNovo(entidade, r.id)) {
     erros.push(`Identificador inválido (tem de ser "${PREFIXO_ID[entidade]}-…", gerado pelo programa).`);
   }
   for (const campo of CAMPOS_EDITAVEIS[entidade] as readonly CampoEditavel<typeof entidade>[]) {
@@ -501,6 +559,15 @@ export function validarRegisto(entidade: EntidadeCriavel, registo: unknown): str
       if (r.numeroOriginal != null) erros.push('Uma pessoa nova entra sem nº original (é o da importação).');
       break;
     }
+    case 'casa':
+      if (typeof r.lotacao === 'number' && r.lotacao < 1)
+        erros.push('Lotação: uma casa tem pelo menos 1 lugar.');
+      // Os "lugares iguais aos moradores" não se mostram nem se mudam (pedido do Rafael, 04/10/2026).
+      if (r.sempreCheia !== false) erros.push('Uma casa nova entra com os lugares da lotação.');
+      if (typeof r.ordem !== 'number' || !Number.isInteger(r.ordem) || r.ordem < 0) {
+        erros.push('Ordem: tem de ser um número inteiro (0 ou mais).');
+      }
+      break;
     case 'obra':
       if (r.origem !== 'manual') erros.push('Uma obra criada no programa é "manual".');
       break;
@@ -518,7 +585,11 @@ export function validarRegisto(entidade: EntidadeCriavel, registo: unknown): str
       break;
     case 'local':
       if (!(TIPOS_LOCAL_CRIAVEIS as readonly unknown[]).includes(r.tipo)) {
-        erros.push(`Só se criam locais de ${TIPOS_LOCAL_CRIAVEIS.join(' ou ')}.`);
+        erros.push(`Só se criam locais de ${listaComOu(TIPOS_LOCAL_CRIAVEIS)}.`);
+      } else if (r.tipo === 'casa' && !PADRAO_ID_LOCAL_DO_PROGRAMA.test(String(r.id))) {
+        erros.push(
+          'Identificador inválido (a morada de uma casa nova é "local-<UUID>", gerado pelo programa).',
+        );
       }
       if (
         typeof r.raioM !== 'number' ||

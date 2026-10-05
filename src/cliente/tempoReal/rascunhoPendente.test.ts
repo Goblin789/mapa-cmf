@@ -414,7 +414,7 @@ describe('M2: rascunhos com fichas, registos e reversões', () => {
       { ...CAMPO, campo: 'ordem' },
       { ...CAMPO, entidade: 'cliente' },
       { ...CAMPO, para: { x: 1 } },
-      { ...PERIODO, entidade: 'casa' },
+      { ...PERIODO, entidade: 'carrinha' },
       { ...PERIODO, para: { id: 'outro' } },
       { ...PERIODO, de: PERIODO.para },
     ];
