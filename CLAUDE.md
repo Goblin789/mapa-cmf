@@ -92,7 +92,7 @@ camadas, lista lateral, **modo de edição** (rascunho, arrastar, Mover para…,
 - Todos os nomes têm o mesmo texto (`COR_TEXTO_NOMES`); as cores dos clientes são claras (ver `docs/cores.md`).
 - Tipos da API em `src/dominio/api.ts`; formato das matrículas em `src/dominio/matricula.ts`.
 
-**M2 construído e ensaiado, por juntar** (`docs/m2.md`; decisões em `docs/decisoes.md`, "M2"): domínio (`campos.ts`, `operacoes.ts` com 'campo' e
+**M2 na main desde 05/10/2026 (0e8bb72), ensaiado; publica-se com o próximo deploy** (`docs/m2.md`; decisões em `docs/decisoes.md`, "M2"): domínio (`campos.ts`, `operacoes.ts` com 'campo' e
 'registo', `reverter.ts`, `indisponibilidade.ts`, `problemas.ts`, `datas.ts`), migração 0004
 (`indisponibilidades`, `problemas`, `lotes.reverte`), `POST /api/lotes` com as operações novas e `reverte`,
 `POST /api/geocodificar(/inverso)`, sincronizar sem desfazer edições, e a loja (`hoje`, `reverte`). As
@@ -101,8 +101,9 @@ interfaces estão feitas (fichas editáveis, nova pessoa e saída, indisponível
 Os serviços de moradas estão ligados (geoportail.lu, IGN e Nominatim com 1 pedido/s, em
 `src/servidor/geocodificacao.ts`) e o `npm run geocodificar` usa o mesmo módulo; **nos ensaios arrancar o
 servidor com `MORADAS=desligadas`** (503, nada sai para os serviços). O `GET /api/estado` leva só os períodos
-e problemas dos últimos 30 dias. Construído na worktree `C:/dev/mapa-cmf-m2` (branch m2), por juntar com o
-mapa fechado.
+e problemas dos últimos 30 dias. Construído na worktree `C:/dev/mapa-cmf-m2` e juntado à main com as
+decisões de 04–05/10 (Quadro Casas | Carrinhas | Obras sem filtro "Obra", contrato só na ficha da casa, sem
+"sempre cheia", Tabela sem ficha da pessoa e com "Voltou à empresa…" para quem saiu).
 No compactar, `resolvidoEm` de um problema e `ativa`/marcas "a confirmar" de uma pessoa NÃO se dobram na
 criação: ficam 'campo' a seguir (criar e resolver no mesmo rascunho grava-se). As reversões do rascunho saem
 por `reversoesDoRascunho()` (loja) para o registo do localStorage (também no `protegerRascunho`, quando a
