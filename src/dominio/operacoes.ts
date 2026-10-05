@@ -1104,14 +1104,23 @@ function moradaDoLocal(estado: Estado, id: unknown): string {
   return local.morada.trim() || local.nome;
 }
 
-/** Um valor de um campo, legível: "—", sim/não/não sei, dias dd/mm/aaaa, matrículas, nomes em vez de ids. */
+/**
+ * O que se diz quando ainda não se sabe (a carta desconhecida, temCarta null): o mesmo texto na ficha, no
+ * Histórico e no Guardar.
+ */
+export const SEM_DADOS_AINDA = 'sem dados ainda';
+
+/**
+ * Um valor de um campo, legível: "—", sim/não (a carta desconhecida: "sem dados ainda"), dias dd/mm/aaaa,
+ * matrículas, nomes em vez de ids.
+ */
 export function valorLegivel(
   estado: Estado,
   entidade: EntidadeEditavel,
   campo: string,
   v: ValorCampo,
 ): string {
-  if (campo === 'temCarta') return v === true ? 'sim' : v === false ? 'não' : 'não sei';
+  if (campo === 'temCarta') return v === true ? 'sim' : v === false ? 'não' : SEM_DADOS_AINDA;
   if (campo === 'fim' && entidade === 'indisponibilidade' && v === null) return 'sem data de regresso';
   if (campo === 'estacionamentoLocalId' && v === null) return 'sem estacionamento';
   if (v === null || v === '') return '—';

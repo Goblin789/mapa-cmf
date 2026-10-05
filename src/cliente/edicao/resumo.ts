@@ -462,6 +462,36 @@ function fichasMexidas(pendentes: readonly Operacao[], entidade: string, campos:
   return [...ids];
 }
 
+/**
+ * M2: as carrinhas de quem tem um período de indisponibilidade criado, mudado ou apagado no rascunho (gravada e
+ * visível). Acabar ou encurtar um período ("Já voltou", "Mudar datas…") devolve o lugar a quem estava fora e
+ * pode deixar a carrinha com gente a mais. Nas casas a cama nunca se liberta, por isso lá não muda nada.
+ */
+function carrinhasDeIndisponivelMexido(
+  pendentes: readonly Operacao[],
+  indServidor: Indices,
+  indVisivel: Indices,
+  estados: readonly Pick<Estado, 'indisponibilidades'>[],
+): Id[] {
+  const pessoas = new Set<Id>();
+  for (const op of pendentes) {
+    if ((op.tipo !== 'campo' && op.tipo !== 'registo') || op.entidade !== 'indisponibilidade') continue;
+    const pessoaId =
+      op.tipo === 'registo'
+        ? (op.para ?? op.de)?.pessoaId
+        : estados.flatMap((e) => e.indisponibilidades).find((i) => i.id === op.id)?.pessoaId;
+    if (pessoaId) pessoas.add(pessoaId);
+  }
+  const ids = new Set<Id>();
+  for (const id of pessoas) {
+    for (const ind of [indServidor, indVisivel]) {
+      const carrinhaId = ind.pessoas.get(id)?.carrinhaId;
+      if (carrinhaId) ids.add(carrinhaId);
+    }
+  }
+  return [...ids];
+}
+
 /** Campos da casa que mudam a lotação ou o contrato. */
 const CAMPOS_LOTACAO_CASA = ['lotacao', 'sempreCheia', 'maxContrato', 'tolerado'] as const;
 
@@ -510,7 +540,8 @@ function avisoRegresso(ind: Indices, carrinhaId: Id): AvisoGuardar | null {
 
 /**
  * Avisos a mostrar antes de guardar, só sobre o que as alterações pioram:
- * - casas e carrinhas que recebem gente (M2: ou cuja lotação/lugares baixam) e ficam com gente a mais (mais
+ * - casas e carrinhas que recebem gente (M2: ou cuja lotação/lugares baixam; nas carrinhas, também quando um
+ *   período de indisponibilidade de quem lá vai acaba, encurta ou é apagado) e ficam com gente a mais (mais
  *   do que tinham); nas carrinhas os indisponíveis hoje não contam (ocupacaoDaCarrinha);
  * - casas que recebem gente (M2: ou cujo contrato muda) e passam (ou passam mais) o máximo/tolerado;
  * - condutores escolhidos sem carta (forte) ou com a carta caducada (só se `hoje` for dado);
@@ -576,7 +607,11 @@ export function calcularAvisos(
   }
 
   const carrinhasQueRecebem = destinos(pendentes, 'carrinhaId');
-  const carrinhas = new Set([...carrinhasQueRecebem, ...fichasMexidas(pendentes, 'carrinha', ['lugares'])]);
+  const carrinhas = new Set([
+    ...carrinhasQueRecebem,
+    ...fichasMexidas(pendentes, 'carrinha', ['lugares']),
+    ...carrinhasDeIndisponivelMexido(pendentes, indServidor, indVisivel, [estadoVisivel, estadoServidor]),
+  ]);
   for (const id of carrinhas) {
     const carrinha = indVisivel.carrinhas.get(id);
     if (!carrinha) continue;

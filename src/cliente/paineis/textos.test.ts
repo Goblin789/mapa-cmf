@@ -34,7 +34,10 @@ describe('M2: valores dos campos das fichas', () => {
   it('formata os valores como o Histórico, com Sim/Não e a carta por extenso', () => {
     expect(textoValorCampo(exemplo, 'pessoa', 'temCarta', true)).toBe('Tem');
     expect(textoValorCampo(exemplo, 'pessoa', 'temCarta', false)).toBe('Não tem');
-    expect(textoValorCampo(exemplo, 'pessoa', 'temCarta', null)).toBe('Não sei');
+    expect(textoValorCampo(exemplo, 'pessoa', 'temCarta', null)).toBe('sem dados ainda');
+    // A carta desconhecida diz o mesmo na ficha (textoCarta), no "antes:" e nas frases do Histórico/Guardar.
+    const semCarta = pessoaFicticia({ id: 'p-x', nomeCurto: 'X.', temCarta: null, cartaValidade: null });
+    expect(textoCarta(semCarta, '2026-10-05')).toBe('sem dados ainda');
     expect(textoValorCampo(exemplo, 'casa', 'sempreCheia', true)).toBe('Sim');
     expect(textoValorCampo(exemplo, 'casa', 'sempreCheia', false)).toBe('Não');
     expect(textoValorCampo(exemplo, 'casa', 'tolerado', null)).toBe('—');
@@ -54,7 +57,7 @@ describe('M2: valores dos campos das fichas', () => {
   it('"antes: …" com o valor gravado', () => {
     expect(textoAntes(exemplo, 'casa', 'lotacao', 8)).toBe('antes: 8');
     expect(textoAntes(exemplo, 'pessoa', 'telefone', null)).toBe('antes: —');
-    expect(textoAntes(exemplo, 'pessoa', 'temCarta', null)).toBe('antes: não sei');
+    expect(textoAntes(exemplo, 'pessoa', 'temCarta', null)).toBe('antes: sem dados ainda');
   });
 
   it('rótulos com maiúscula e a morada com o país fora do Luxemburgo', () => {

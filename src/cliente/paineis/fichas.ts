@@ -24,6 +24,7 @@ import {
   operacaoCriar,
   operacoesParaAlvo,
   validarOperacoes,
+  valoresIguais,
 } from '../../dominio/operacoes';
 import { normalizarTexto } from '../../dominio/pesquisa';
 import type { Carrinha, Casa, Estado, Id, Pais, Pessoa } from '../../dominio/tipos';
@@ -315,6 +316,15 @@ export function operacoesMoradaDoLocal(estado: Estado, localId: Id, valor: Morad
   ].filter((op): op is OperacaoCampo => op !== null);
 }
 
+/**
+ * Nota por baixo da lotação, no modo de edição, numa casa cujos lugares são os moradores (`sempreCheia`:
+ * Walferdange, Schifflange): aí a lotação não conta (lotacaoEfetiva), e sem a nota mudava-se um número sem
+ * efeito nenhum. Sem as palavras "sempre cheia" (pedido do Rafael, 04/10/2026). null nas outras casas.
+ */
+export function notaDaLotacao(casa: Pick<Casa, 'sempreCheia'>): string | null {
+  return casa.sempreCheia ? 'Nesta casa os lugares são os moradores: a lotação não conta.' : null;
+}
+
 /** As outras casas na mesma morada (o local é partilhado: mudar a morada muda-a para todas). */
 export function outrasCasasNoLocal(casa: Casa, ind: Pick<Indices, 'casasPorLocal'>): Casa[] {
   return (ind.casasPorLocal.get(casa.localId) ?? []).filter((c) => c.id !== casa.id);
@@ -492,6 +502,31 @@ export function campoPendente<E extends EntidadeEditavel>(
         op.tipo === 'campo' && op.entidade === entidade && op.id === id && op.campo === campo,
     ) ?? null
   );
+}
+
+// --- M2: o editor aberto enquanto outra pessoa grava o mesmo campo (tempo real) -----------------------
+
+/** Os valores dos campos de um registo quando o editor abriu, por campo. */
+export type ValoresAoAbrir = Readonly<Record<string, ValorCampo>>;
+
+/**
+ * Tempo real: com o editor de um campo aberto, outra pessoa pode gravar o mesmo campo (o estado visível muda
+ * por baixo dele). O `de` de cada operação passa a ser o valor de quando o editor abriu: assim o Guardar dá
+ * conflito (409, "esperavas A, mas agora é B") em vez de escrever por cima em silêncio. Um campo que se deixa
+ * como estava ao abrir fica sem efeito (de = para: o aplicar deixa-o cair), mesmo que entretanto tenha mudado.
+ */
+export function comDeDeQuandoAbriu(ops: readonly OperacaoCampo[], aoAbrir: ValoresAoAbrir): OperacaoCampo[] {
+  return ops.map((op) => (Object.hasOwn(aoAbrir, op.campo) ? { ...op, de: aoAbrir[op.campo] ?? null } : op));
+}
+
+/** Algum dos campos mudou desde que o editor abriu (o valor visível já não é o de então). */
+export function mudouDesdeQueAbriu(aoAbrir: ValoresAoAbrir, agora: ValoresAoAbrir): boolean {
+  return Object.keys(aoAbrir).some((campo) => !valoresIguais(aoAbrir[campo] ?? null, agora[campo] ?? null));
+}
+
+/** A nota curta por baixo do editor aberto: "Mudou entretanto: agora é 10." */
+export function notaMudouEntretanto(agora: string): string {
+  return `Mudou entretanto: agora é ${agora}.`;
 }
 
 // --- M2: nova pessoa e saída da empresa (DialogoNovaPessoa.tsx, DialogoSaida.tsx) ------------------

@@ -40,6 +40,7 @@ import {
   armazenamentoLocal,
   autorCompativel,
   comTrancaRascunhos,
+  type GravacaoRevertida,
   guardarRascunhoPendente,
   INTERVALO_VIVO_MS,
   largar,
@@ -306,9 +307,10 @@ export interface Loja {
    * M2: "Reverter" um lote do Histórico: entra no modo de edição (se ainda não estiver) e junta as operações
    * inversas (dominio/reverter.ts, planearReversao) ao rascunho como UM passo. Nada é gravado. Devolve se
    * mudou alguma coisa. Desfazer esse passo tira o lote de `reverte` (Refazer volta a pô-lo); Guardar envia
-   * os lotes com alguma operação ainda nos pendentes; o rascunho pendente (localStorage) guarda-os também.
+   * os lotes com alguma operação ainda nos pendentes; o rascunho pendente (localStorage) guarda-os também,
+   * com a data e o autor da gravação (`gravacao`), para a nota do Guardar ser a mesma depois de recarregar.
    */
-  iniciarReversao: (loteId: number, operacoes: readonly Operacao[]) => boolean;
+  iniciarReversao: (loteId: number, operacoes: readonly Operacao[], gravacao?: GravacaoRevertida) => boolean;
 
   /** Pessoas selecionadas (só no modo de edição). */
   selecao: ReadonlySet<Id>;
@@ -331,6 +333,19 @@ export const useLoja = create<Loja>()((set, get) => {
       reverte: lotesRevertidos(passos),
       ...derivar(aplicarOperacoes(estadoServidor, passos.flat()), get().hoje),
     };
+  }
+
+  /**
+   * Quem deixou de estar ativo no estado visível ("Saiu da empresa" de alguém selecionado, Desfazer um
+   * "Voltou à empresa", ou outra pessoa que gravou a saída) sai da seleção: senão ia no "Mover para…" ou no
+   * "Trazer a selecionada" e só o Guardar o recusava.
+   */
+  function tirarInativosDaSelecao(): void {
+    const { selecao, estado } = get();
+    if (!estado || selecao.size === 0) return;
+    const ativas = new Set(estado.pessoas.filter((p) => p.ativa).map((p) => p.id));
+    const ficam = [...selecao].filter((id) => ativas.has(id));
+    if (ficam.length < selecao.size) set({ selecao: new Set(ficam) });
   }
 
   /** Fora do modo de edição, sem rascunho (o que o Cancelar deixa). */
@@ -441,6 +456,7 @@ export const useLoja = create<Loja>()((set, get) => {
           // Com um pedido mais recente ainda a meio, continua "a carregar".
           ...(pedido === ultimoPedido ? { aCarregar: false } : {}),
         });
+        tirarInativosDaSelecao();
         await recuperarRascunho();
       } catch (e) {
         // Há um pedido mais recente a meio: é ele que decide o que se mostra.
@@ -517,6 +533,7 @@ export const useLoja = create<Loja>()((set, get) => {
         erroGuardar: null,
         ...recalcular([...get().passos, passo]),
       });
+      tirarInativosDaSelecao();
     },
     moverPara: (pessoaIds, alvo) => {
       const { estado, modoEdicao } = get();
@@ -536,6 +553,7 @@ export const useLoja = create<Loja>()((set, get) => {
         erroGuardar: null,
         ...recalcular(passos.slice(0, -1)),
       });
+      tirarInativosDaSelecao();
     },
     refazer: () => {
       const { passos, passosDesfeitos, modoEdicao } = get();
@@ -547,6 +565,7 @@ export const useLoja = create<Loja>()((set, get) => {
         erroGuardar: null,
         ...recalcular([...passos, proximo]),
       });
+      tirarInativosDaSelecao();
     },
     aGuardar: false,
     erroGuardar: null,
@@ -631,7 +650,7 @@ export const useLoja = create<Loja>()((set, get) => {
       }
     },
     reverte: [],
-    iniciarReversao: (loteId, operacoes) => {
+    iniciarReversao: (loteId, operacoes, gravacao) => {
       if (!get().estadoServidor) return false;
       const passo = operacoes.filter((op) => !operacaoSemEfeito(op));
       if (passo.length === 0) return false;
@@ -641,7 +660,15 @@ export const useLoja = create<Loja>()((set, get) => {
       const { passos } = get();
       if (passos.length === antes) return false;
       // O lote fica ligado a este passo: Desfazer tira-o de `reverte`, Refazer volta a pô-lo.
-      reversoes = [...reversoes, { loteId, passo: passos.length - 1, chaves: passo.map(chaveOperacao) }];
+      reversoes = [
+        ...reversoes,
+        {
+          loteId,
+          passo: passos.length - 1,
+          chaves: passo.map(chaveOperacao),
+          ...(gravacao ? { gravacao: { ...gravacao } } : {}),
+        },
+      ];
       set({ reverte: lotesRevertidos(passos) });
       return true;
     },

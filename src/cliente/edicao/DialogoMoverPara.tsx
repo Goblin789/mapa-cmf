@@ -1,7 +1,8 @@
 // "Mover para…": lista pesquisável de destinos (casas, carrinhas, obras e os grupos especiais) com os
 // lugares livres no estado visível e o resultado se as pessoas forem para lá. É o caminho garantido
 // no telemóvel. Teclado: escrever filtra, ↑ ↓ escolhem, Enter move, Esc fecha (padrão combobox ARIA).
-// M2: as carrinhas não contam quem está indisponível hoje e dizem "1 livre até 12/10" (destinos.ts).
+// M2: as carrinhas não contam quem está indisponível hoje e dizem "1 livre até 12/10" (destinos.ts). Aberto
+// no separador Obras ("Mudar obra…" da ficha) sem nenhuma obra, diz como se cria uma e tem "Nova obra…".
 
 import { type KeyboardEvent, useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { Id, Pessoa } from '../../dominio/tipos';
@@ -14,7 +15,7 @@ import { useEcraLargo } from '../paineis/ganchos';
 import { MarcaCliente } from '../paineis/pecas';
 import { comPlural } from '../paineis/textos';
 import { moverComAviso } from './acoes';
-import { BOTAO_SECUNDARIO } from './classes';
+import { BOTAO_PEQUENO, BOTAO_SECUNDARIO } from './classes';
 import { Dialogo } from './Dialogo';
 import {
   ativoValido,
@@ -23,11 +24,13 @@ import {
   filtrarDestinos,
   montarDestinos,
   proximoAtivo,
+  separadoresDoMover,
   type TipoDestino,
   textoLivres,
   tituloMover,
 } from './destinos';
 import { IconeCarrinha, IconeCasa, IconeLupa, IconeObra } from './icones';
+import { abrirObra } from './ui';
 
 const SEPARADORES: { tipo: TipoDestino | null; rotulo: string }[] = [
   { tipo: null, rotulo: 'Tudo' },
@@ -168,7 +171,10 @@ export function DialogoMoverPara({
 
   const pessoas = pessoaIds.map((id) => indices?.pessoas.get(id)).filter((p): p is Pessoa => p !== undefined);
   const temObras = grupos.some((g) => g.tipo === 'obra');
-  const separadores = SEPARADORES.filter((s) => s.tipo !== 'obra' || temObras);
+  const tiposVisiveis = separadoresDoMover(temObras, filtro);
+  const separadores = SEPARADORES.filter((s) => tiposVisiveis.includes(s.tipo));
+  // "Mudar obra…" sem nenhuma obra: em vez da lista vazia, como se cria uma.
+  const semObras = tipo === 'obra' && !temObras;
 
   const escolher = (d: Destino) => {
     if (d.todosJaLa) return;
@@ -268,13 +274,30 @@ export function DialogoMoverPara({
         </div>
       </div>
 
+      {/* Fora da listbox: um botão não é uma opção. */}
+      {semObras && (
+        <div className="space-y-2 px-4 pt-6 text-center text-sm text-slate-600">
+          <p>Ainda não há obras.</p>
+          <button
+            type="button"
+            onClick={() => {
+              aoFechar();
+              abrirObra(null);
+            }}
+            className={BOTAO_PEQUENO}
+          >
+            <IconeObra className="h-3.5 w-3.5" />
+            Nova obra…
+          </button>
+        </div>
+      )}
       <div
         id={idLista}
         role="listbox"
         aria-label="Destinos"
         className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pt-1 pb-3"
       >
-        {filtrados.length === 0 && (
+        {filtrados.length === 0 && !semObras && (
           <p className="px-2 py-6 text-center text-sm text-slate-600">Nenhum destino com “{texto.trim()}”.</p>
         )}
         {filtrados.map((g) => (

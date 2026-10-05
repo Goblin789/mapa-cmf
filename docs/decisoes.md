@@ -43,7 +43,9 @@ servidor aplica a 0004 e faz a cópia automática em `dados/copias/`).
 - *Histórico e Reverter*: "Reverter…" em cada gravação feita no programa; o que já não se pode reverter
   aparece com o porquê (ex.: "uma pessoa nova não se apaga: usa Saiu da empresa"; "entretanto mudou"); vai
   para o rascunho como um passo. As gravações aparecem como "Reverte a gravação de 05/10 01:01 (autor)" e
-  "Revertida". As marcas "a confirmar" dizem "casa confirmada" / "carrinha a confirmar".
+  "Revertida". As marcas "a confirmar" dizem "casa confirmada" / "carrinha a confirmar". Uma gravação
+  revertida não se reverte outra vez, a menos que a própria reversão seja revertida: aí volta a estar em vigor
+  (perde o "Revertida" e tem outra vez "Reverter…").
 - *Guardar*: grupos novos (Fichas, Pessoas novas e saídas, Indisponível, Problemas, Obras); o pino (lat e
   lng) conta como uma alteração; com períodos ou problemas, o comentário tem a frase fixa "Não escrevas o
   motivo da indisponibilidade nem dados de saúde." e avisa enquanto se escreve.
@@ -68,13 +70,18 @@ e do ecrã de entrada e do ícone; as decisões dele mandam na interface e o M2 
   nome delas). Sem filtro "Obra" no Quadro nem no cabeçalho da reunião (a Tabela tem-no).
 - *"Sempre cheia"*: saiu também do que o M2 acrescentava (o campo editável e a linha "Sempre cheia: Sim" da
   ficha da casa); o campo continua nos dados e no sincronizar. No Histórico e no Guardar o rótulo é "lugares
-  iguais aos moradores" (`ROTULO_CAMPO` em `dominio/campos.ts`, como o `NOME_CAMPO` do sincronizar).
+  iguais aos moradores" (`ROTULO_CAMPO` em `dominio/campos.ts`, como o `NOME_CAMPO` do sincronizar). Nessas
+  casas (Walferdange, Schifflange) a lotação não conta, por isso, a editar, a lotação tem por baixo a nota
+  "Nesta casa os lugares são os moradores: a lotação não conta." (sem mudar um número sem efeito às cegas).
 - *Aviso do contrato*: só na ficha da casa e no Guardar; os acrescentos do M2 nos cartões e na lista lateral
   (o ícone dos problemas) ficam sem ele.
 - *Tabela*: sem ficha da pessoa (saiu a ficha compacta, onde o M2 tinha os campos de quem saiu): a seguir ao
   nome, "Ver no mapa"; na linha de quem saiu ("Mostrar quem saiu") o mesmo sítio tem "Voltou à empresa…"
   (no telemóvel "Voltou…"), que entra no modo de edição, se preciso, e abre o diálogo
   (`abrirVoltouAEmpresa`). Os dados de quem saiu (telefone, carta…) mudam-se depois de voltar, na ficha.
+  Com isto, na Tabela já não se mudam os campos da pessoa (nº, nome, apelidos, nome no mapa, cliente,
+  telefone, carta) nem se dá "Saiu da empresa…": faz-se na ficha do Mapa ou do Quadro ("Ver no mapa"). Na
+  Tabela editam-se as células (casa, carrinha, obra, indisponível) e as fichas da casa e da carrinha.
 
 *Por confirmar com o Rafael*:
 - se os **apelidos** devem ser opcionais na pessoa nova (hoje são obrigatórios);
@@ -87,6 +94,10 @@ e do ecrã de entrada e do ícone; as decisões dele mandam na interface e o M2 
 - um ensaio pontual com os **serviços de moradas verdadeiros** (só foram ensaiados com respostas fictícias,
   menos 2 pedidos feitos no ensaio das obras);
 - se lhe serve a casa de onde vem cada nome no Quadro por obras (ou se prefere os nomes sós, como nas casas);
+- se lhe serve a nota da lotação nas casas cujos lugares são os moradores (ou se prefere não poder mudar a
+  lotação nessas casas, ou nada);
+- se aceita que na Tabela não se mudem os campos da pessoa nem se dê "Saiu da empresa…" (só na ficha do Mapa e
+  do Quadro, pelo "Ver no mapa");
 - continua por decidir a partir de quando o Excel do Michael deixa de ser mantido (agora já se criam pessoas
   no programa).
 

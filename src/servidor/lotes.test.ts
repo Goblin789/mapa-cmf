@@ -88,6 +88,17 @@ describe('alteracoesDasOperacoes', () => {
 });
 
 describe('descreverConflito', () => {
+  it('com quem gravou por último e quando, o parêntese diz quem foi', () => {
+    const estado = estadoExemplo();
+    expect(
+      descreverConflito(
+        estado,
+        { tipo: 'condutor', carrinhaId: 'zz1001', esperado: 'p-ana', atual: 'p-gil' },
+        'Michael Exemplo, 05/10 09:12',
+      ),
+    ).toBe('ZZ 1001 — condutor: esperavas Ana T., mas agora é Gil N. (Michael Exemplo, 05/10 09:12)');
+  });
+
   const estado = estadoExemplo();
 
   it('com valores nos dois lados', () => {
@@ -644,7 +655,7 @@ describe('gravarLote e lerHistorico na base de dados', () => {
           esperado: null,
           atual: 'p-ze',
           descricao:
-            'ZZ 0002 — condutor: esperavas que não tivesse condutor, mas agora é Zé Teste (alguém mudou entretanto)',
+            'ZZ 0002 — condutor: esperavas que não tivesse condutor, mas agora é Zé Teste (Este computador, 03/10 10:30)',
         },
       ],
     });
@@ -689,7 +700,7 @@ describe('gravarLote e lerHistorico na base de dados', () => {
             esperado: null,
             atual: 'p-ze',
             descricao:
-              'ZZ 0002 — condutor: esperavas que não tivesse condutor, mas agora é Zé Teste (alguém mudou entretanto)',
+              'ZZ 0002 — condutor: esperavas que não tivesse condutor, mas agora é Zé Teste (Este computador, 03/10 10:30)',
           },
         ],
       });
@@ -734,7 +745,7 @@ describe('gravarLote e lerHistorico na base de dados', () => {
             esperado: 'car-2',
             atual: 'car-1',
             descricao:
-              'Zé Teste — carrinha: esperavas ZZ 0002, mas agora está em ZZ 0001 (alguém mudou entretanto)',
+              'Zé Teste — carrinha: esperavas ZZ 0002, mas agora está em ZZ 0001 (Este computador, 03/10 10:30)',
           },
         ],
       });
@@ -944,7 +955,7 @@ describe('gravarLote e lerHistorico na base de dados', () => {
           esperado: 'local:loc-parque',
           atual: 'casa:casa-monte',
           descricao:
-            'ZZ 0001 — onde dorme: esperavas Parque, mas agora dorme em Casa Monte (alguém mudou entretanto)',
+            'ZZ 0001 — onde dorme: esperavas Parque, mas agora dorme em Casa Monte (Este computador, 03/10 10:30)',
         },
       ],
     });

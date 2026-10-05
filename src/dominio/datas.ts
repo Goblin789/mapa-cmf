@@ -43,3 +43,23 @@ export function formatarDiaCompleto(dia: string): string {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dia);
   return m ? `${m[3]}/${m[2]}/${m[1]}` : dia;
 }
+
+const formatoDiaHora = new Intl.DateTimeFormat('pt-PT', {
+  timeZone: FUSO,
+  day: '2-digit',
+  month: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  hourCycle: 'h23',
+});
+
+/**
+ * "2026-10-03T15:01:00Z" → "03/10 17:01" (hora do Luxemburgo, sem o ano): o Histórico, o Reverter e as frases
+ * dos conflitos. Texto inválido passa como veio.
+ */
+export function formatarDiaHoraCurto(iso: string): string {
+  const data = new Date(iso);
+  if (Number.isNaN(data.getTime())) return iso;
+  const partes = Object.fromEntries(formatoDiaHora.formatToParts(data).map((p) => [p.type, p.value]));
+  return `${partes.day}/${partes.month} ${partes.hour}:${partes.minute}`;
+}

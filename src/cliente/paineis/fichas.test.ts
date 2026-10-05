@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { dormidasDasCarrinhas } from '../../dominio/dormidas';
 import { indexar } from '../../dominio/indices';
-import type { Operacao } from '../../dominio/operacoes';
+import {
+  aplicarOperacoes,
+  encontrarConflitos,
+  type Operacao,
+  operacaoCampo,
+  operacaoSemEfeito,
+} from '../../dominio/operacoes';
 import { estadoExemplo } from '../../dominio/teste-fabrica';
 import { estadoFicticio } from './dadosFicticios';
 import {
@@ -12,12 +18,16 @@ import {
   carrinhasDasPessoas,
   carrinhasQueDormemEm,
   casasDasPessoas,
+  comDeDeQuandoAbriu,
   coordenadasDoLocal,
   destinoNoMapa,
   erroOutrasMatriculas,
   erroSemNome,
   escolhaCarta,
   haFichaDaPessoa,
+  mudouDesdeQueAbriu,
+  notaDaLotacao,
+  notaMudouEntretanto,
   opcoesOutraMorada,
   operacoesMoradaDoLocal,
   outraComNomeNoMapa,
@@ -27,8 +37,53 @@ import {
 
 // --- M2: fichas editáveis (dados fictícios de dominio/teste-fabrica.ts) -----------------------------
 
+describe('M2: o editor aberto enquanto outra pessoa grava o mesmo campo (tempo real)', () => {
+  it('o `de` é o valor de quando abriu: o Guardar dá conflito em vez de escrever por cima', () => {
+    const aoAbrir = estadoExemplo();
+    // Com o editor da lotação da Casa Um aberto (3), outra pessoa grava 5; o estado visível passa a 5.
+    const outro = operacaoCampo(aoAbrir, 'casa', 'casa-1', 'lotacao', 5) as Operacao;
+    const servidor = aplicarOperacoes(aoAbrir, [outro]);
+    const calculada = operacaoCampo(servidor, 'casa', 'casa-1', 'lotacao', 4);
+    expect(calculada).toMatchObject({ de: 5, para: 4 });
+    const [op] = comDeDeQuandoAbriu(calculada ? [calculada] : [], { lotacao: 3 });
+    expect(op).toMatchObject({ de: 3, para: 4 });
+    expect(encontrarConflitos(servidor, op ? [op] : [])).toEqual([
+      {
+        tipo: 'campo',
+        entidade: 'casa',
+        id: 'casa-1',
+        campo: 'lotacao',
+        esperado: 3,
+        atual: 5,
+        existe: true,
+      },
+    ]);
+    // Deixar o valor como estava ao abrir não escreve por cima do que a outra pessoa gravou.
+    const igual = operacaoCampo(servidor, 'casa', 'casa-1', 'lotacao', 3);
+    const [semEfeito] = comDeDeQuandoAbriu(igual ? [igual] : [], { lotacao: 3 });
+    expect(semEfeito && operacaoSemEfeito(semEfeito)).toBe(true);
+  });
+
+  it('só os campos guardados ao abrir mudam o `de`; a nota diz o valor de agora', () => {
+    const e = estadoExemplo();
+    const op = operacaoCampo(e, 'pessoa', 'p-ana', 'telefone', '691 000 000');
+    expect(comDeDeQuandoAbriu(op ? [op] : [], { temCarta: true })).toEqual(op ? [op] : []);
+    expect(mudouDesdeQueAbriu({ temCarta: null, cartaValidade: null }, { temCarta: null })).toBe(false);
+    expect(mudouDesdeQueAbriu({ temCarta: null }, { temCarta: true })).toBe(true);
+    expect(mudouDesdeQueAbriu({ lat: 49.6 }, { lat: 49.61 })).toBe(true);
+    expect(notaMudouEntretanto('10')).toBe('Mudou entretanto: agora é 10.');
+  });
+});
+
 describe('M2: o que os editores das fichas precisam', () => {
   const exemplo = estadoExemplo();
+
+  it('a lotação de uma casa cujos lugares são os moradores leva uma nota (sem "sempre cheia")', () => {
+    const nota = notaDaLotacao({ sempreCheia: true });
+    expect(nota).toBe('Nesta casa os lugares são os moradores: a lotação não conta.');
+    expect(nota).not.toMatch(/sempre|cheia|contrato|tolerad/i);
+    expect(notaDaLotacao({ sempreCheia: false })).toBeNull();
+  });
 
   it('a morada da casa muda o LOCAL num só passo (morada aparada, país, posição)', () => {
     const ops = operacoesMoradaDoLocal(exemplo, 'local-a', {

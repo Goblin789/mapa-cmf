@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { CLASSE_FOCO_TECLADO, classeDestaque, posicao, tracoDestaque } from './comum';
+import { CLASSE_FOCO_TECLADO, classeDestaque, obraEsbatida, posicao, tracoDestaque } from './comum';
+
+describe('obraEsbatida (legenda do Mapa)', () => {
+  it('com outro cliente aceso, a obra esbate-se; com o dela, nenhum ou em foco, não', () => {
+    expect(obraEsbatida('cliente-a', 'cliente-b', null)).toBe(true);
+    expect(obraEsbatida('cliente-a', 'cliente-b', 'relacionado')).toBe(true);
+    expect(obraEsbatida('cliente-a', 'cliente-a', null)).toBe(false);
+    expect(obraEsbatida(null, 'cliente-b', null)).toBe(false);
+    expect(obraEsbatida('cliente-a', 'cliente-b', 'foco')).toBe(false);
+  });
+});
 
 describe('realce do foco', () => {
   it('o foco do teclado num botão do mapa é um anel, não um outline (o Leaflet apaga o outline)', () => {

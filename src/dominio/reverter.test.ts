@@ -2,7 +2,13 @@
 
 import { describe, expect, it } from 'vitest';
 import { CAMPO_CONDUTOR, CAMPO_DORMIDA, CAMPO_REGISTO, type Operacao } from './operacoes';
-import { type AlteracaoGravada, operacaoDaAlteracao, planearReversao, podeReverter } from './reverter';
+import {
+  type AlteracaoGravada,
+  operacaoDaAlteracao,
+  planearReversao,
+  podeReverter,
+  revertidosEmVigor,
+} from './reverter';
 import {
   criarIndisponibilidade,
   criarLocal,
@@ -72,6 +78,46 @@ describe('podeReverter', () => {
     expect(podeReverter({ autor: 'importacao', estado: 'aplicado', tipo: 'importacao' })).toBe(false);
     expect(podeReverter({ autor: 'dados-iniciais', estado: 'aplicado', tipo: 'ficha' })).toBe(false);
     expect(podeReverter({ autor: 'local', estado: 'agendado', tipo: 'mudanca' })).toBe(false);
+  });
+});
+
+describe('revertidosEmVigor', () => {
+  it('sem reversões, ninguém está revertido', () => {
+    expect(revertidosEmVigor([])).toEqual(new Map());
+    expect(revertidosEmVigor([{ id: 3, reverte: [] }])).toEqual(new Map());
+  });
+
+  it('uma reversão revertida deixa de contar: o lote que ela revertia volta a estar em vigor', () => {
+    // 9 reverte 8; 10 reverte 9 (em qualquer ordem na lista).
+    const r = revertidosEmVigor([
+      { id: 10, reverte: [9] },
+      { id: 9, reverte: [8] },
+    ]);
+    expect(r).toEqual(new Map([[9, [10]]]));
+    // 11 reverte o 8 outra vez; 12 reverte o 10 → o 9 volta a valer, mas o 8 continua revertido (9 e 11).
+    expect(
+      revertidosEmVigor([
+        { id: 9, reverte: [8] },
+        { id: 10, reverte: [9] },
+        { id: 11, reverte: [8] },
+        { id: 12, reverte: [10] },
+      ]),
+    ).toEqual(
+      new Map([
+        [10, [12]],
+        [8, [9, 11]],
+      ]),
+    );
+  });
+
+  it('uma reversão de vários lotes revertida devolve-os todos; repetidos e números absurdos não contam', () => {
+    expect(
+      revertidosEmVigor([
+        { id: 5, reverte: [2, 3, 3, 7] },
+        { id: 6, reverte: [5] },
+      ]),
+    ).toEqual(new Map([[5, [6]]]));
+    expect(revertidosEmVigor([{ id: 5, reverte: [2, 2, 5] }])).toEqual(new Map([[2, [5]]]));
   });
 });
 

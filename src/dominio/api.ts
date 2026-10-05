@@ -23,6 +23,12 @@ export interface RespostaGuardar {
   versao: number;
 }
 
+/**
+ * A frase geral de um 409 (o servidor manda-a em `erro`; o Guardar mostra-a por cima das frases de cada
+ * conflito, que dizem o quê, quem e quando).
+ */
+export const FRASE_CONFLITO = 'Alguém gravou mudanças nestas mesmas coisas entretanto. Nada foi gravado.';
+
 /** Conflito devolvido pelo servidor, já com a frase pronta a mostrar. */
 export type ConflitoServidor = Conflito & { descricao: string };
 
@@ -51,7 +57,11 @@ export interface EntradaHistorico {
   alteracoes: AlteracaoHistorico[];
   /** M2: lotes que este lote reverteu (vazio ou ausente = nenhum). */
   reverte?: number[];
-  /** M2: lotes gravados depois que reverteram este (vazio ou ausente = nenhum). */
+  /**
+   * M2: lotes gravados depois que reverteram este e continuam em vigor (vazio ou ausente = nenhum). Uma
+   * reversão que foi ela própria revertida não conta: o lote volta a estar em vigor e a poder reverter-se
+   * (revertidosEmVigor em dominio/reverter.ts).
+   */
   revertidoPor?: number[];
 }
 

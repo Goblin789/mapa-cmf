@@ -170,13 +170,13 @@ const BOTOES: { tipo: TipoDestino; rotulo: string; Icone: typeof IconeCasa }[] =
 ];
 
 /**
- * No modo de edição: "Mudar casa", "Mudar carrinha", "Mudar obra" (esta só se houver obras) e, a quem vai
+ * No modo de edição: "Mudar casa", "Mudar carrinha", "Mudar obra" (sem obras, o "Mover para…" abre no
+ * separador Obras e diz como se cria uma) e, a quem vai
  * numa carrinha, "Tornar condutor da …" (ou "Deixar de conduzir a …", a quem já conduz).
  * Fora dele: como se muda (entrar no modo de edição).
  */
 export function AcoesPessoa({ pessoa }: { pessoa: Pessoa }) {
   const modoEdicao = useLoja((s) => s.modoEdicao);
-  const haObras = useLoja((s) => (s.estado?.obras.length ?? 0) > 0);
   const carrinha = useLoja((s) =>
     pessoa.carrinhaId ? s.indices?.carrinhas.get(pessoa.carrinhaId) : undefined,
   );
@@ -199,19 +199,17 @@ export function AcoesPessoa({ pessoa }: { pessoa: Pessoa }) {
     <div className="mt-3 border-t border-slate-200 pt-2">
       <p className="mb-1.5 text-[11px] font-semibold tracking-wide text-slate-600 uppercase">Mudar</p>
       <div className="flex flex-wrap gap-1.5">
-        {BOTOES.filter((b) => b.tipo !== 'obra' || haObras || pessoa.obraId !== null).map(
-          ({ tipo, rotulo, Icone }) => (
-            <button
-              key={tipo}
-              type="button"
-              onClick={() => abrirMoverPara([pessoa.id], tipo)}
-              className={BOTAO_PEQUENO}
-            >
-              <Icone className="h-3.5 w-3.5" />
-              {rotulo}…
-            </button>
-          ),
-        )}
+        {BOTOES.map(({ tipo, rotulo, Icone }) => (
+          <button
+            key={tipo}
+            type="button"
+            onClick={() => abrirMoverPara([pessoa.id], tipo)}
+            className={BOTAO_PEQUENO}
+          >
+            <Icone className="h-3.5 w-3.5" />
+            {rotulo}…
+          </button>
+        ))}
         {carrinha && (
           <button
             type="button"

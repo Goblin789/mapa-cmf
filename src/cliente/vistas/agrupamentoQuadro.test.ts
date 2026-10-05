@@ -20,10 +20,8 @@ import {
   maiorLetraQueCabe,
   montarQuadro,
   nomeNaZona,
-  opcoesObrasQuadro,
   passaFiltroQuadro,
   SEM_FILTRO,
-  SEM_OBRA,
   type SeccaoQuadro,
   zonasDeVizinhos,
 } from './agrupamentoQuadro';
@@ -351,7 +349,7 @@ describe('DEGRAUS_AJUSTE (os lugares livres das carrinhas também na reunião e 
   });
 });
 
-describe('filtro do Quadro (clientes e obras, vários de cada)', () => {
+describe('filtro do Quadro (só clientes, vários)', () => {
   // A Ana B. (cliente alfa) trabalha na obra da Beta: conta como Beta (o cliente da obra manda).
   const comObras: Estado = {
     ...estadoVistas(),
@@ -365,10 +363,7 @@ describe('filtro do Quadro (clientes e obras, vários de cada)', () => {
   };
   const indO = indexar(comObras);
   const dormO = dormidasDasCarrinhas(comObras, indO);
-  const filtro = (clientes: string[], obras: string[] = []): FiltroQuadro => ({
-    clientes: new Set(clientes),
-    obras: new Set(obras),
-  });
+  const filtro = (clientes: string[]): FiltroQuadro => ({ clientes: new Set(clientes) });
   const quadro = (f: FiltroQuadro, agrup: 'casas' | 'carrinhas' = 'casas') =>
     montarQuadro(agrup, comObras, indO, dormO, f);
 
@@ -401,36 +396,21 @@ describe('filtro do Quadro (clientes e obras, vários de cada)', () => {
     expect(nomes(bloco(s, 'casa:casa-l1')).sort()).toEqual(['Ana B.', 'Zé A.']);
   });
 
-  it('obras (OU) e "Sem obra"; entre clientes e obras é E', () => {
-    expect(nomes(bloco(quadro(filtro([], ['obra-b'])), 'casa:casa-l1'))).toEqual(['Ana B.']);
-    expect(nomes(bloco(quadro(filtro([], [SEM_OBRA])), 'casa:casa-l1'))).toEqual(['Zé A.']);
-    const obras = quadro(filtro([], ['obra-a', 'obra-b']));
-    expect(blocosDoQuadro(obras).flatMap(nomes).sort()).toEqual(['Ana B.', 'Rui C.']);
-    // Alfa E obra B: a Ana B. é da Beta pela obra, por isso ninguém.
-    expect(blocosDoQuadro(quadro(filtro(['alfa'], ['obra-b']))).flatMap(nomes)).toEqual([]);
+  it('o filtro é só de clientes (o efetivo: o da obra); as obras não têm filtro à parte', () => {
+    expect(Object.keys(SEM_FILTRO)).toEqual(['clientes']);
     const ana = indO.pessoas.get('p-2');
     if (!ana) throw new Error('Sem a Ana B.');
-    expect(passaFiltroQuadro(ana, filtro(['beta'], ['obra-b']), indO.obras)).toBe(true);
+    // A Ana B. é da Alfa, mas trabalha numa obra da Beta: conta como Beta.
+    expect(passaFiltroQuadro(ana, filtro(['beta']), indO.obras)).toBe(true);
     expect(passaFiltroQuadro(ana, filtro(['alfa']), indO.obras)).toBe(false);
-  });
-
-  it('uma obra que já não existe conta como "Sem obra" (no filtro e na contagem da opção)', () => {
-    const ana = indO.pessoas.get('p-2');
-    if (!ana) throw new Error('Sem a Ana B.');
+    // Com uma obra que já não existe, conta o cliente dela (e, no Quadro por obras, vai para "Sem obra").
     const perdida = { ...ana, obraId: 'obra-apagada' };
-    expect(passaFiltroQuadro(perdida, filtro([], [SEM_OBRA]), indO.obras)).toBe(true);
-    expect(passaFiltroQuadro(perdida, filtro([], ['obra-b']), indO.obras)).toBe(false);
-    const comPerdida = {
-      ...comObras,
-      pessoas: comObras.pessoas.map((p) => (p.id === 'p-2' ? perdida : p)),
-    };
+    expect(passaFiltroQuadro(perdida, filtro(['alfa']), indO.obras)).toBe(true);
+    const comPerdida = { ...comObras, pessoas: comObras.pessoas.map((p) => (p.id === 'p-2' ? perdida : p)) };
     const indP = indexar(comPerdida);
-    const semObra = opcoesObrasQuadro(comPerdida, indP).find((o) => o.valor === SEM_OBRA)?.contagem;
-    const passam = comPerdida.pessoas.filter(
-      (p) => p.ativa && passaFiltroQuadro(p, filtro([], [SEM_OBRA]), indP.obras),
-    ).length;
-    expect(semObra).toBe(7);
-    expect(passam).toBe(semObra);
+    const s = montarQuadro('obras', comPerdida, indP, dormidasDasCarrinhas(comPerdida, indP));
+    expect(nomes(bloco(s, 'sem-obra'))).toContain('Ana B.');
+    expect(bloco(s, 'sem-obra').pessoas).toHaveLength(7);
   });
 
   it('as secções contam só quem passa; os blocos largos e as carrinhas também filtram', () => {
@@ -445,17 +425,6 @@ describe('filtro do Quadro (clientes e obras, vários de cada)', () => {
     expect(nomes(xx1001)).toEqual(['Zé A.', 'Ana B.']);
     expect(bloco(c, 'carrinha:XX1003').recolhido).toBe(true);
     expect(bloco(c, 'carrinha:XX1003').lotacao?.ocupados).toBe(1);
-  });
-
-  it('opções das obras: agrupadas pelo cliente, com o nº de pessoas, e "Sem obra" no fim', () => {
-    const opcoes = opcoesObrasQuadro(comObras, indO);
-    expect(opcoes.map((o) => [o.valor, o.grupo, o.contagem])).toEqual([
-      ['obra-a', 'Alfa Obras', 1],
-      ['obra-b', 'Beta Construções', 1],
-      [SEM_OBRA, 'especiais', 6],
-    ]);
-    // Sem obras nenhumas: sem opções (o botão fica "Obra: sem obras", desativado).
-    expect(opcoesObrasQuadro(estado, ind)).toEqual([]);
   });
 });
 
@@ -518,14 +487,6 @@ describe('Quadro por obras (ao lado de Casas e Carrinhas)', () => {
     expect(nomes(sem)).not.toContain('Velho I.');
     expect(sem.pessoas).toHaveLength(6);
     expect(sem.porCliente.reduce((n, p) => n + p.n, 0)).toBe(6);
-  });
-
-  it('o filtro das obras recolhe as outras obras (continuam lá, para largar)', () => {
-    const f: FiltroQuadro = { clientes: new Set(), obras: new Set(['obra-b']) };
-    const s = montarQuadro('obras', comObras, indO, dormidasDasCarrinhas(comObras, indO), f);
-    expect(nomes(bloco(s, 'obra:obra-b'))).toEqual(['Ana B.']);
-    expect(bloco(s, 'obra:obra-a').recolhido).toBe(true);
-    expect(bloco(s, 'sem-obra').recolhido).toBe(true);
   });
 
   it('sem obras nenhumas: só "Sem obra", com toda a gente ativa', () => {
@@ -707,7 +668,7 @@ describe('Quadro por obras: de onde vem cada um, a morada e o filtro dos cliente
   });
 
   it('o filtro de clientes funciona: a obra da Beta fica recolhida com a Alfa; o "Sem obra" filtra', () => {
-    const f: FiltroQuadro = { clientes: new Set(['alfa']), obras: new Set() };
+    const f: FiltroQuadro = { clientes: new Set(['alfa']) };
     const s = montarQuadro('obras', comObras, indO, dormO, f);
     const b = bloco(s, 'obra:obra-b');
     expect(b.recolhido).toBe(true);

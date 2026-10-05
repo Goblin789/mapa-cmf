@@ -3,6 +3,7 @@
 // "Reverter" mostra (prepararReversao).
 
 import type { EntradaHistorico } from '../../dominio/api';
+import { formatarDiaHoraCurto } from '../../dominio/datas';
 import { chaveOperacao, descreverOperacao, type Operacao } from '../../dominio/operacoes';
 import { type ImpossivelReverter, planearReversao, podeReverter } from '../../dominio/reverter';
 import type { Estado } from '../../dominio/tipos';
@@ -105,22 +106,8 @@ export const DESCRICOES_VISIVEIS = 8;
 
 // --- M2: frases juntas, etiquetas de reversão e o diálogo "Reverter" (docs/m2.md, "Reverter") ----------------
 
-const formatoDiaHora = new Intl.DateTimeFormat('pt-PT', {
-  timeZone: FUSO,
-  day: '2-digit',
-  month: '2-digit',
-  hour: '2-digit',
-  minute: '2-digit',
-  hourCycle: 'h23',
-});
-
-/** "2026-10-03T15:01:00Z" → "03/10 17:01" (hora do Luxemburgo, sem o ano). Texto inválido passa como veio. */
-export function formatarDiaHoraCurto(iso: string): string {
-  const data = new Date(iso);
-  if (Number.isNaN(data.getTime())) return iso;
-  const partes = Object.fromEntries(formatoDiaHora.formatToParts(data).map((p) => [p.type, p.value]));
-  return `${partes.day}/${partes.month} ${partes.hour}:${partes.minute}`;
-}
+/** "2026-10-03T15:01:00Z" → "03/10 17:01" (no domínio: as frases dos conflitos do servidor também o usam). */
+export { formatarDiaHoraCurto };
 
 /** Uma frase do histórico a mostrar e quantas linhas seguidas do lote a deram. */
 export interface FraseHistorico {
@@ -166,6 +153,14 @@ export function lembrarGravacoes(entradas: readonly LoteParaEtiqueta[]): void {
 /** As gravações conhecidas nesta sessão (cópia), para nomeDaGravacao. */
 export function gravacoesConhecidas(): LoteParaEtiqueta[] {
   return [...gravacoesVistas.values()];
+}
+
+/**
+ * As gravações revertidas no rascunho, com a data e o autor guardados na reversão (sobrevivem a recarregar
+ * a página, ao contrário das que o Histórico mostrou nesta sessão).
+ */
+export function gravacoesDasReversoes(reversoes: readonly ReversaoPendente[]): LoteParaEtiqueta[] {
+  return reversoes.flatMap((r) => (r.gravacao ? [{ loteId: r.loteId, ...r.gravacao }] : []));
 }
 
 /** "a gravação de 03/10 17:01 (Ana Exemplo)" se o lote estiver na lista carregada; senão "a gravação nº 12". */
@@ -235,12 +230,16 @@ export function etiquetaRevertida(
   return { texto: 'Revertida', dica: `Revertida ${juntarComE(nomes)}` };
 }
 
-/** O lote mostra o botão "Reverter…": gravado no programa e aplicado (podeReverter), e fora da reunião. */
+/**
+ * O lote mostra o botão "Reverter…": gravado no programa e aplicado (podeReverter), ainda não revertido (o
+ * servidor recusa reverter outra vez; uma reversão que foi revertida a seguir já não vem em `revertidoPor`)
+ * e fora da reunião.
+ */
 export function mostraReverter(
-  entrada: Pick<EntradaHistorico, 'autor' | 'estado' | 'tipo'>,
+  entrada: Pick<EntradaHistorico, 'autor' | 'estado' | 'tipo' | 'revertidoPor'>,
   reuniao: boolean,
 ): boolean {
-  return !reuniao && podeReverter(entrada);
+  return !reuniao && (entrada.revertidoPor ?? []).length === 0 && podeReverter(entrada);
 }
 
 /** O que o diálogo "Reverter" mostra (funções puras; o componente só desenha). */
@@ -265,11 +264,12 @@ export interface VistaReversao {
  * Planeia a reversão de um lote sobre o estado VISÍVEL (o gravado com o rascunho que já houver) com TODAS
  * as linhas do lote (planearReversao) e prepara o que o diálogo mostra. `jaNoRascunho` = a reversão do lote
  * ainda vai no Guardar (lotesDaReversaoAEnviar): pôr outra vez não faz sentido. Se ela foi toda anulada por
- * mudanças depois dela, já não conta como estando no rascunho.
+ * mudanças depois dela, já não conta como estando no rascunho. Uma gravação já revertida (`revertidoPor`) não
+ * vai para o rascunho.
  */
 export function prepararReversao(
   estadoVisivel: Estado,
-  entrada: Pick<EntradaHistorico, 'alteracoes' | 'loteId'>,
+  entrada: Pick<EntradaHistorico, 'alteracoes' | 'loteId' | 'revertidoPor'>,
   jaNoRascunho = false,
 ): VistaReversao {
   const plano = planearReversao(estadoVisivel, entrada.alteracoes);
@@ -277,7 +277,10 @@ export function prepararReversao(
     plano.operacoes.map((op) => ({ descricao: descreverOperacao(estadoVisivel, op) })),
   );
   let explicacao: string | null = null;
-  if (jaNoRascunho) {
+  if ((entrada.revertidoPor ?? []).length > 0) {
+    // O servidor recusa reverter outra vez (400): o que ficou de fora vê-se na gravação que a reverteu.
+    explicacao = 'Esta gravação já foi revertida: não se reverte outra vez.';
+  } else if (jaNoRascunho) {
     explicacao =
       'A reversão desta gravação já está no rascunho. Carrega em Guardar para a gravar; Ctrl+Z desfaz.';
   } else if (plano.erros.length > 0) {

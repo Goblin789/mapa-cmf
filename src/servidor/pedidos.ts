@@ -31,7 +31,10 @@ const mensagensPt = z.locales.pt().localeError;
 
 const id = z.string().min(1).max(200);
 
-const operacaoMover = z.object({
+// Tudo o que chega em POST /api/lotes é `strictObject` (o pedido, cada operação e cada registo): um campo a
+// mais é recusado (400), não se deita fora em silêncio (ex.: um "motivo" ao lado de uma operação).
+
+const operacaoMover = z.strictObject({
   tipo: z.literal('mover'),
   pessoaId: id,
   campo: z.enum(['casaId', 'carrinhaId', 'obraId']),
@@ -40,7 +43,7 @@ const operacaoMover = z.object({
 });
 
 /** Definir (para = pessoa) ou tirar (para = null) o condutor de uma carrinha. */
-const operacaoCondutor = z.object({
+const operacaoCondutor = z.strictObject({
   tipo: z.literal('condutor'),
   carrinhaId: id,
   de: id.nullable(),
@@ -54,7 +57,7 @@ const chaveDormida = z
   .regex(/^(casa|local):.+$/, { error: 'Onde dorme tem de ser "casa:<id>", "local:<id>" ou null.' });
 
 /** Mudar onde dorme uma carrinha. */
-const operacaoDormida = z.object({
+const operacaoDormida = z.strictObject({
   tipo: z.literal('dormida'),
   carrinhaId: id,
   de: chaveDormida.nullable(),
@@ -74,7 +77,7 @@ const valorCampo = z.union([
 
 /** Mudar um campo de uma ficha: só os de CAMPOS_EDITAVEIS, com um valor que serve (validarValorCampo). */
 const operacaoCampo = z
-  .object({
+  .strictObject({
     tipo: z.literal('campo'),
     entidade: z.enum(ENTIDADES_EDITAVEIS),
     id,
@@ -151,7 +154,7 @@ const REGISTOS = {
 /** Criar (de = null) ou apagar (para = null) um registo de uma entidade. */
 function operacaoRegistoDe<E extends EntidadeCriavel>(entidade: E, registo: (typeof REGISTOS)[E]) {
   return z
-    .object({
+    .strictObject({
       tipo: z.literal('registo'),
       entidade: z.literal(entidade),
       id,
@@ -208,7 +211,7 @@ const operacao = z.discriminatedUnion('tipo', [
   operacaoRegisto,
 ]);
 
-const pedidoGuardar = z.object({
+const pedidoGuardar = z.strictObject({
   /**
    * Os conflitos detetam-se pelo `de` de cada operação; a versão só serve para os que a regra do condutor
    * esconde (ver conflitosDoCondutor em lotes.ts).

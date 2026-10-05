@@ -84,6 +84,7 @@ import {
   carrinhasQueDormemEm,
   casasDasPessoas,
   haFichaDaPessoa,
+  notaDaLotacao,
   outrasCasasNoLocal,
   type VistaFicha,
 } from './fichas';
@@ -359,7 +360,8 @@ function FichaPessoa({ pessoa, indices }: { pessoa: Pessoa; indices: Indices }) 
  * No modo de edição, os campos da casa: nome, morada (o LOCAL, com o aviso de morada partilhada e "Mudar
  * para outra morada…"), apartamento, lotação, máx. do contrato, tolerado, nota do contrato, senhorio (só o
  * contacto da casa) e equipamento. Os "lugares iguais aos moradores" (sempreCheia) não se mostram nem se mudam
- * aqui (pedido do Rafael, 05/10/2026: não quer ver isso em lado nenhum); ficam nos dados e no sincronizar.
+ * aqui (pedido do Rafael, 04/10/2026: não quer ver isso em lado nenhum); ficam nos dados e no sincronizar.
+ * Nessas casas a lotação não conta: a nota por baixo dela diz porquê (notaDaLotacao).
  */
 function CamposDaCasa({ casa, indices }: { casa: Casa; indices: Indices }) {
   const local = indices.locais.get(casa.localId);
@@ -383,6 +385,7 @@ function CamposDaCasa({ casa, indices }: { casa: Casa; indices: Indices }) {
         campo="lotacao"
         valor={casa.lotacao}
         editor={inteiro(false)}
+        nota={notaDaLotacao(casa)}
         mostrar={
           <span className="inline-flex flex-wrap items-center gap-1.5">
             {casa.lotacao}
@@ -508,7 +511,9 @@ function FichaCasa({
           <ul className="space-y-0.5">
             {carrinhas.map(({ carrinha, n }) => (
               <li key={carrinha.id} className="flex items-baseline gap-2">
-                <BotaoFoco foco={{ tipo: 'carrinha', id: carrinha.id }}>{carrinha.matricula}</BotaoFoco>
+                <BotaoFoco foco={{ tipo: 'carrinha', id: carrinha.id }}>
+                  {formatarMatricula(carrinha.matricula)}
+                </BotaoFoco>
                 <span className="text-xs text-slate-700">{comPlural(n, 'morador', 'moradores')}</span>
               </li>
             ))}
@@ -529,7 +534,9 @@ function FichaCasa({
           <ul className="space-y-0.5">
             {dormem.map(({ carrinha, confianca }) => (
               <li key={carrinha.id} className="flex items-baseline gap-2">
-                <BotaoFoco foco={{ tipo: 'carrinha', id: carrinha.id }}>{carrinha.matricula}</BotaoFoco>
+                <BotaoFoco foco={{ tipo: 'carrinha', id: carrinha.id }}>
+                  {formatarMatricula(carrinha.matricula)}
+                </BotaoFoco>
                 {confianca === 'sugerida' && <span className="text-xs text-slate-700">(sugerida)</span>}
               </li>
             ))}

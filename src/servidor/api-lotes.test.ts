@@ -269,7 +269,7 @@ describe('POST /api/lotes — condutor', () => {
     const segundo = await postar({ versaoBase: 1, operacoes: [condutor('car-2', null, 'p-ze')] });
     expect(segundo.status).toBe(409);
     expect(await segundo.json()).toStrictEqual({
-      erro: 'Alguém mudou entretanto algumas destas pessoas ou carrinhas. Nada foi gravado.',
+      erro: 'Alguém gravou mudanças nestas mesmas coisas entretanto. Nada foi gravado.',
       conflitos: [
         {
           tipo: 'condutor',
@@ -277,7 +277,7 @@ describe('POST /api/lotes — condutor', () => {
           esperado: null,
           atual: 'p-ze',
           descricao:
-            'ZZ 0002 — condutor: esperavas que não tivesse condutor, mas agora é Zé Teste (alguém mudou entretanto)',
+            'ZZ 0002 — condutor: esperavas que não tivesse condutor, mas agora é Zé Teste (Este computador, 03/10 10:30)',
         },
       ],
     });
@@ -297,7 +297,7 @@ describe('POST /api/lotes — condutor', () => {
         esperado: null,
         atual: 'p-ze',
         descricao:
-          'ZZ 0002 — condutor: esperavas que não tivesse condutor, mas agora é Zé Teste (alguém mudou entretanto)',
+          'ZZ 0002 — condutor: esperavas que não tivesse condutor, mas agora é Zé Teste (Este computador, 03/10 10:30)',
       },
     ]);
     // O mesmo pedido sobre a versão atual é mal feito (faltava tirar o condutor): 400.
@@ -372,7 +372,7 @@ describe('POST /api/lotes — onde dorme', () => {
     });
     expect(segundo.status).toBe(409);
     expect(await segundo.json()).toStrictEqual({
-      erro: 'Alguém mudou entretanto algumas destas pessoas ou carrinhas. Nada foi gravado.',
+      erro: 'Alguém gravou mudanças nestas mesmas coisas entretanto. Nada foi gravado.',
       conflitos: [
         {
           tipo: 'dormida',
@@ -380,7 +380,7 @@ describe('POST /api/lotes — onde dorme', () => {
           esperado: 'casa:casa-monte',
           atual: null,
           descricao:
-            'ZZ 0002 — onde dorme: esperavas Casa Monte, mas agora está por definir (alguém mudou entretanto)',
+            'ZZ 0002 — onde dorme: esperavas Casa Monte, mas agora está por definir (Este computador, 03/10 10:30)',
         },
       ],
     });
@@ -461,7 +461,7 @@ describe('POST /api/lotes — conflitos (409)', () => {
     expect(resposta.status).toBe(409);
     const corpo = (await resposta.json()) as { erro: string; conflitos: ConflitoServidor[] };
     expect(corpo).toStrictEqual({
-      erro: 'Alguém mudou entretanto algumas destas pessoas. Nada foi gravado.',
+      erro: 'Alguém gravou mudanças nestas mesmas coisas entretanto. Nada foi gravado.',
       conflitos: [
         {
           tipo: 'mover',

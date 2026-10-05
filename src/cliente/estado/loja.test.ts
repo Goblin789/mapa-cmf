@@ -696,6 +696,10 @@ describe('M2: reverter no rascunho', () => {
     expect(useLoja.getState().reverte).toEqual([]);
     // Nada a reverter: não entra no rascunho.
     expect(useLoja.getState().iniciarReversao(6, [])).toBe(false);
+    // A data e o autor da gravação vão com a reversão (para o rascunho guardado e a nota do Guardar).
+    const gravacao = { criadoEm: '2026-10-05T07:12:00.000Z', autor: 'local', autorNome: 'Este computador' };
+    expect(useLoja.getState().iniciarReversao(7, [VOLTA_ANA], gravacao)).toBe(true);
+    expect(reversoesDoRascunho().find((r) => r.loteId === 7)?.gravacao).toEqual(gravacao);
     useLoja.getState().cancelarEdicao();
     expect(useLoja.getState().reverte).toEqual([]);
   });
@@ -785,5 +789,50 @@ describe('M2: reverter no rascunho', () => {
     guardarRegisto({ autor: 'local' });
     await useLoja.getState().carregar();
     expect(useLoja.getState().modoEdicao).toBe(true);
+  });
+});
+
+describe('M2: seleção sem quem saiu da empresa', () => {
+  const SAI_ANA: Operacao = {
+    tipo: 'campo',
+    entidade: 'pessoa',
+    id: 'p-ana',
+    campo: 'ativa',
+    de: true,
+    para: false,
+  };
+
+  it('quem passa a inativo sai da seleção; Desfazer não o volta a selecionar', async () => {
+    await comEstadoEEdicao([]);
+    useLoja.getState().definirSelecao(['p-ana', 'p-bruno']);
+    useLoja.getState().aplicar([SAI_ANA]);
+    expect([...useLoja.getState().selecao]).toEqual(['p-bruno']);
+    useLoja.getState().desfazer();
+    expect([...useLoja.getState().selecao]).toEqual(['p-bruno']);
+  });
+
+  it('sem ninguém inativo, a seleção fica a mesma (o mesmo objeto)', async () => {
+    await comEstadoEEdicao([]);
+    useLoja.getState().definirSelecao(['p-ana']);
+    const antes = useLoja.getState().selecao;
+    useLoja.getState().aplicar([MOVER_ANA]);
+    expect(useLoja.getState().selecao).toBe(antes);
+  });
+
+  it('a saída gravada por outra pessoa também a tira da seleção', async () => {
+    await comEstadoEEdicao([]);
+    useLoja.getState().definirSelecao(['p-ana', 'p-bruno']);
+    pedirEstado = async () =>
+      respostaJson(
+        200,
+        estadoNaVersao(9, (e) => ({
+          ...e,
+          pessoas: e.pessoas.map((p) =>
+            p.id === 'p-ana' ? { ...p, ativa: false, casaId: null, carrinhaId: null } : p,
+          ),
+        })),
+      );
+    await useLoja.getState().carregar();
+    expect([...useLoja.getState().selecao]).toEqual(['p-bruno']);
   });
 });

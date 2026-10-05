@@ -59,7 +59,16 @@ describe('índices e ocupação com indisponíveis (M2)', () => {
       { pessoaId: 'p-ana', ate: '2026-10-12' },
       { pessoaId: 'p-bruno', ate: null },
     ]);
-    expect(textoLugaresTemporarios(lugares)).toBe('3 livres até 09/10');
+    // Quem não tem data de regresso não está livre "até 09/10": vai à parte.
+    expect(textoLugaresTemporarios(lugares)).toBe('2 livres até 09/10 · 1 sem data de regresso');
+    expect(textoLugaresTemporarios(lugares.slice(0, 2))).toBe('2 livres até 09/10');
+    expect(textoLugaresTemporarios(lugares.slice(1))).toBe('1 livre até 12/10 · 1 sem data de regresso');
+    expect(
+      textoLugaresTemporarios([
+        { pessoaId: 'a', ate: null },
+        { pessoaId: 'b', ate: null },
+      ]),
+    ).toBe('2 livres (sem data de regresso)');
     expect(lugaresTemporarios(ind, 'zz1003')).toEqual([]);
     expect(lugaresTemporarios(ind, 'nao-existe')).toEqual([]);
   });

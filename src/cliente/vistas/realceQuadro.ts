@@ -172,7 +172,7 @@ export function blocoTemAlteracoes(
 }
 
 /**
- * O filtro do Quadro (clientes, obras) esconde tudo o que se ia acender: há chaves e são todas de pessoas
+ * O filtro do Quadro (os clientes) esconde tudo o que se ia acender: há chaves e são todas de pessoas
  * que não passam (os blocos das casas, carrinhas e obras ficam sempre, mesmo recolhidos). Quem pediu para
  * mostrar limpa então o filtro, como a Tabela faz com os dela. Com alguma à vista, acende-se essa e o filtro
  * fica.

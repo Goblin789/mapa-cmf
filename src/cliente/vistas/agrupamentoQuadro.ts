@@ -20,7 +20,7 @@
 // blocos das obras os nomes vêm pela casa de onde vem cada um, que se lê em letra pequena por baixo (deOnde;
 // no "Sem obra", que hoje tem toda a gente, não, para não encher o Quadro).
 //
-// Filtro do Quadro (clientes e obras, vários de cada; ver FiltroQuadro): ficam SÓ as pessoas que passam.
+// Filtro do Quadro (só os clientes, vários; ver FiltroQuadro): ficam SÓ as pessoas que passam.
 // Os blocos continuam todos lá, com a lotação real (não filtrada: é para lá que se larga no modo de
 // edição); os que não têm ninguém do filtro ficam recolhidos (só o título e a pastilha).
 
@@ -30,7 +30,7 @@ import { compararPessoas, type Indices } from '../../dominio/indices';
 import { formatarMatricula } from '../../dominio/matricula';
 import { type NivelLotacao, ocupacaoDaCarrinha, ocupacaoDaCasa } from '../../dominio/ocupacao';
 import type { Carrinha, Casa, Cliente, Estado, Id, Local, Obra, Pais, Pessoa } from '../../dominio/tipos';
-import { GRUPO_ESPECIAIS, type OpcaoFiltro, passaFiltro } from '../comum/escolhaMultipla';
+import { passaFiltro } from '../comum/escolhaMultipla';
 import {
   condutorPrimeiro,
   ordenarPorClienteENome,
@@ -155,63 +155,28 @@ export interface SeccaoQuadro {
 
 // --- Filtro ---------------------------------------------------------------------------------------
 
-/** Valor da opção "Sem obra" do filtro das obras (os outros valores são ids de obras). */
-export const SEM_OBRA = 'sem-obra';
-
 /**
- * O filtro do Quadro: clientes (o efetivo: o da obra, ou o da pessoa sem obra) e obras (ids ou SEM_OBRA).
- * Vazio = sem filtro. Dentro de cada um é OU; entre os dois é E.
+ * O filtro do Quadro: só os clientes (o efetivo: o da obra, ou o da pessoa sem obra), vários (OU). Vazio =
+ * sem filtro. As obras não têm filtro à parte: são um agrupamento (pedido do Rafael, 04/10/2026).
  */
 export interface FiltroQuadro {
   clientes: ReadonlySet<Id>;
-  obras: ReadonlySet<string>;
 }
 
-export const SEM_FILTRO: FiltroQuadro = { clientes: new Set(), obras: new Set() };
+export const SEM_FILTRO: FiltroQuadro = { clientes: new Set() };
 
 export function filtroQuadroAtivo(f: FiltroQuadro): boolean {
-  return f.clientes.size > 0 || f.obras.size > 0;
+  return f.clientes.size > 0;
 }
 
-/**
- * A obra da pessoa para o filtro: o id, ou SEM_OBRA sem obra ou com uma obra que não se conhece (apagada,
- * ou a meio de uma importação). O mesmo critério conta o "Sem obra" (opcoesObrasQuadro).
- */
-function obraDoFiltro(pessoa: Pessoa, obras: Map<Id, Obra>): string {
-  return pessoa.obraId !== null && obras.has(pessoa.obraId) ? pessoa.obraId : SEM_OBRA;
+/** A pessoa conta como "Sem obra": sem obra ou com uma obra que não se conhece (apagada, ou a meio de uma importação). */
+function semObraConhecida(pessoa: Pessoa, obras: Map<Id, Obra>): boolean {
+  return pessoa.obraId === null || !obras.has(pessoa.obraId);
 }
 
-/** A pessoa passa no filtro (o cliente efetivo E a obra). */
+/** A pessoa passa no filtro (o cliente efetivo). */
 export function passaFiltroQuadro(pessoa: Pessoa, f: FiltroQuadro, obras: Map<Id, Obra>): boolean {
-  return (
-    passaFiltro(f.clientes, clienteEfetivoId(pessoa, obras)) &&
-    passaFiltro(f.obras, obraDoFiltro(pessoa, obras))
-  );
-}
-
-/**
- * Opções do filtro das obras: as obras agrupadas pelo cliente (título pequeno com o nome dele, pela ordem
- * dos clientes) e, no fim, "Sem obra". Sem obras nenhuma: lista vazia (o botão fica "Obra: sem obras").
- */
-export function opcoesObrasQuadro(estado: Estado, ind: Indices): OpcaoFiltro[] {
-  if (estado.obras.length === 0) return [];
-  const ordemCliente = (id: Id) => ind.clientes.get(id)?.ordem ?? Number.POSITIVE_INFINITY;
-  const obras = [...estado.obras].sort(
-    (a, b) => ordemCliente(a.clienteId) - ordemCliente(b.clienteId) || a.nome.localeCompare(b.nome, 'pt'),
-  );
-  const opcoes: OpcaoFiltro[] = obras.map((o) => {
-    const cliente = ind.clientes.get(o.clienteId);
-    return {
-      valor: o.id,
-      rotulo: o.nome,
-      grupo: cliente?.nome ?? 'Cliente desconhecido',
-      contagem: ind.trabalhadores.get(o.id)?.length ?? 0,
-      termos: cliente ? `${cliente.nome} ${cliente.sigla}` : undefined,
-    };
-  });
-  const semObra = estado.pessoas.filter((p) => p.ativa && obraDoFiltro(p, ind.obras) === SEM_OBRA);
-  opcoes.push({ valor: SEM_OBRA, rotulo: 'Sem obra', grupo: GRUPO_ESPECIAIS, contagem: semObra.length });
-  return opcoes;
+  return passaFiltro(f.clientes, clienteEfetivoId(pessoa, obras));
 }
 
 /** Larguras mínimas de sempre (em) de um nome e de um bloco. */
@@ -708,7 +673,7 @@ function seccoesObras(estado: Estado, ind: Indices, filtro: FiltroQuadro | undef
       obrasDoCliente.map((o) => blocoObra(o, ind, filtro)),
     ),
   );
-  const semObra = estado.pessoas.filter((p) => p.ativa && obraDoFiltro(p, ind.obras) === SEM_OBRA);
+  const semObra = estado.pessoas.filter((p) => p.ativa && semObraConhecida(p, ind.obras));
   seccoes.push(seccaoLarga(blocoLargo('sem-obra', semObra, ind, filtro)));
   return seccoes;
 }

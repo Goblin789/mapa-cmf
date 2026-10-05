@@ -282,6 +282,15 @@ export function ativoValido(escolhiveis: readonly { chave: string }[], atual: st
   return escolhiveis[0]?.chave ?? null;
 }
 
+/**
+ * Os separadores do "Mover para…" (null = Tudo). Obras só aparece quando há obras, ou quando o diálogo abriu
+ * já nele ("Mudar obra…" da ficha): sem obras, o separador diz como se cria uma.
+ */
+export function separadoresDoMover(temObras: boolean, filtro: TipoDestino | null): (TipoDestino | null)[] {
+  const tipos: (TipoDestino | null)[] = [null, 'casa', 'carrinha', 'obra'];
+  return tipos.filter((t) => t !== 'obra' || temObras || filtro === 'obra');
+}
+
 /** Título do diálogo: "Mudar a casa de Ana", "Mover 3 pessoas para…". */
 export function tituloMover(nomes: readonly string[], tipo: TipoDestino | null): string {
   const quem = nomes.length === 1 ? (nomes[0] as string) : comPlural(nomes.length, 'pessoa', 'pessoas');

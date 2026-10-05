@@ -71,7 +71,6 @@ function Lote({
               className="rounded border border-violet-300 bg-violet-50 px-1.5 text-[11px] leading-4 font-medium text-violet-900"
             >
               {revertida.texto}
-              <span className="sr-only"> ({revertida.dica})</span>
             </span>
           )}
           {nota && (
@@ -124,6 +123,13 @@ function Lote({
           >
             {tudo ? 'Mostrar menos' : `Mostrar todas (${n})`}
           </button>
+        )}
+        {/* Já revertida: em vez do "Reverter…", quem a reverteu e quando (o servidor recusa outra vez). */}
+        {revertida && (
+          <p className="mt-2 flex items-start justify-end gap-1.5 text-right text-xs text-violet-900">
+            <IconeReverter className="mt-px h-3.5 w-3.5 shrink-0" />
+            {revertida.dica}
+          </p>
         )}
         {reverter && n > 0 && (
           <div className="mt-2 flex justify-end">

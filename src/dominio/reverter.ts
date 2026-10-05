@@ -72,6 +72,28 @@ export function podeReverter(entrada: Pick<EntradaHistorico, 'autor' | 'estado' 
   );
 }
 
+/**
+ * Quem reverteu cada lote, contando só as reversões que ainda estão em vigor: uma reversão que foi ela
+ * própria revertida deixa de contar, e o lote que ela revertia volta a estar em vigor (pode reverter-se
+ * outra vez). Ex.: 9 reverte 8 e 10 reverte 9 → 8 não está revertido; 9 está, por 10.
+ * O revertedor tem sempre um nº maior do que o que reverte, por isso basta ir do mais recente para trás.
+ * @param lotes os lotes com `reverte` (qualquer ordem; os outros não interessam).
+ * @returns lote revertido → os lotes em vigor que o reverteram (por ordem); quem não está não foi revertido.
+ */
+export function revertidosEmVigor(
+  lotes: readonly { id: number; reverte: readonly number[] }[],
+): Map<number, number[]> {
+  const revertidoPor = new Map<number, number[]>();
+  for (const lote of [...lotes].sort((a, b) => b.id - a.id)) {
+    // Os que reverteram este já foram vistos (têm nº maior): se algum está em vigor, este não conta.
+    if (revertidoPor.has(lote.id)) continue;
+    for (const id of new Set(lote.reverte)) {
+      if (id < lote.id) revertidoPor.set(id, [lote.id, ...(revertidoPor.get(id) ?? [])]);
+    }
+  }
+  return revertidoPor;
+}
+
 /** Valor guardado em JSON (texto que não é JSON, que não devia acontecer, fica como está). */
 function lerJson(texto: string | null): unknown {
   if (texto === null) return null;

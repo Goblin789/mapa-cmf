@@ -94,7 +94,9 @@ describe('indisponível (M2)', () => {
     const lugares = lugaresTemporarios(ind, 'zz1001');
     expect(lugares).toEqual([{ pessoaId: 'p-ana', ate: '2026-10-12' }]);
     expect(textoLugaresTemporarios(lugares)).toBe('1 livre até 12/10');
-    expect(textoLugaresTemporarios([...lugares, { pessoaId: 'x', ate: null }])).toBe('2 livres até 12/10');
+    expect(textoLugaresTemporarios([...lugares, { pessoaId: 'x', ate: null }])).toBe(
+      '1 livre até 12/10 · 1 sem data de regresso',
+    );
     expect(textoLugaresTemporarios([{ pessoaId: 'x', ate: null }])).toBe('1 livre (sem data de regresso)');
     expect(textoLugaresTemporarios(lugaresTemporarios(indexar(estado, null), 'zz1001'))).toBeNull();
   });

@@ -17,6 +17,7 @@ import {
   encontrarRegisto,
   ROTULO_CAMPO,
 } from '../dominio/campos';
+import { formatarDiaHoraCurto } from '../dominio/datas';
 import {
   aplicarOperacoes,
   CAMPO_CONDUTOR,
@@ -38,7 +39,7 @@ import {
   validarOperacoes,
   valorLegivel,
 } from '../dominio/operacoes';
-import { operacaoDaAlteracao, podeReverter } from '../dominio/reverter';
+import { operacaoDaAlteracao, podeReverter, revertidosEmVigor } from '../dominio/reverter';
 import type { Carrinha, Estado, Id, Pessoa } from '../dominio/tipos';
 import { descreverAlteracaoDosDados } from '../importacao/sincronizar';
 import * as esquema from './db/esquema';
@@ -175,53 +176,66 @@ const ARTIGO_REGISTO: Readonly<Record<EntidadeEditavel, string>> = {
 };
 
 /**
+ * O que vai entre parênteses no fim da frase de um conflito: quem gravou por último e quando ("Michael
+ * Exemplo, 05/10 09:12", de `autoriaDoConflito`); sem isso, "alguém mudou entretanto" (ou apagou, ou criou).
+ */
+function entretanto(autoria: string | null | undefined, acao: string): string {
+  return autoria ? `(${autoria})` : `(alguém ${acao} entretanto)`;
+}
+
+/**
  * Ex.: "Ana T. — carrinha: esperavas ZZ 1002, mas agora está em ZZ 1001 (alguém mudou entretanto)";
  * "Casa Um — lotação: esperavas 8, mas agora é 10 (alguém mudou entretanto)";
  * "Obra X — já não existe (alguém apagou entretanto)";
  * "ZZ 1001 — condutor: esperavas Ana T., mas agora é Rui S. (alguém mudou entretanto)";
  * "ZZ 1001 — onde dorme: esperavas Casa Um, mas agora dorme em Parque (alguém mudou entretanto)".
+ * Com `autoria` (quem gravou por último essa coisa e quando, autoriaDoConflito), o parêntese diz quem foi:
+ * "Casa Um — lotação: esperavas 8, mas agora é 10 (Michael Exemplo, 05/10 09:12)".
  */
-export function descreverConflito(estado: Estado, conflito: Conflito): string {
+export function descreverConflito(estado: Estado, conflito: Conflito, autoria?: string | null): string {
+  const mudou = entretanto(autoria, 'mudou');
   if (conflito.tipo === 'dormida') {
     const carrinha = nomeDoValor(estado, 'carrinhaId', conflito.carrinhaId);
     const esperado =
       conflito.esperado === null ? 'que estivesse por definir' : nomeDaDormida(estado, conflito.esperado);
     const agora =
       conflito.atual === null ? 'está por definir' : `dorme em ${nomeDaDormida(estado, conflito.atual)}`;
-    return `${carrinha} — onde dorme: esperavas ${esperado}, mas agora ${agora} (alguém mudou entretanto)`;
+    return `${carrinha} — onde dorme: esperavas ${esperado}, mas agora ${agora} ${mudou}`;
   }
   if (conflito.tipo === 'condutor') {
     const carrinha = nomeDoValor(estado, 'carrinhaId', conflito.carrinhaId);
     const esperado =
       conflito.esperado === null ? 'que não tivesse condutor' : nomeDaPessoa(estado, conflito.esperado);
     const agora = conflito.atual === null ? 'não tem condutor' : `é ${nomeDaPessoa(estado, conflito.atual)}`;
-    return `${carrinha} — condutor: esperavas ${esperado}, mas agora ${agora} (alguém mudou entretanto)`;
+    return `${carrinha} — condutor: esperavas ${esperado}, mas agora ${agora} ${mudou}`;
   }
   if (conflito.tipo === 'campo') {
     const { entidade, campo } = conflito;
     const registo = encontrarRegisto(estado, entidade, conflito.id);
     if (!conflito.existe || !registo) {
-      return `${ARTIGO_REGISTO[entidade]} que estavas a mudar já não existe (alguém apagou entretanto)`;
+      return `${ARTIGO_REGISTO[entidade]} que estavas a mudar já não existe ${entretanto(autoria, 'apagou')}`;
     }
     const quem = nomeDeRegisto(estado, entidade, registo as unknown as Record<string, unknown>);
     const rotulo = (ROTULO_CAMPO[entidade] as Record<string, string>)[campo] ?? campo;
     const valor = (v: typeof conflito.atual) => valorLegivel(estado, entidade, campo, v);
-    return `${quem} — ${rotulo}: esperavas ${valor(conflito.esperado)}, mas agora é ${valor(conflito.atual)} (alguém mudou entretanto)`;
+    return `${quem} — ${rotulo}: esperavas ${valor(conflito.esperado)}, mas agora é ${valor(conflito.atual)} ${mudou}`;
   }
   if (conflito.tipo === 'registo') {
     const registo = (conflito.atual ?? conflito.esperado) as unknown as Record<string, unknown> | null;
     const quem = registo
       ? nomeDeRegisto(estado, conflito.entidade, registo)
       : ARTIGO_REGISTO[conflito.entidade];
-    if (conflito.esperado === null) return `${quem} — já existe (alguém o criou entretanto)`;
-    if (conflito.atual === null) return `${quem} — já não existe (alguém apagou entretanto)`;
-    return `${quem} — alguém mudou entretanto (não se apaga sem veres o que mudou)`;
+    if (conflito.esperado === null) return `${quem} — já existe ${entretanto(autoria, 'o criou')}`;
+    if (conflito.atual === null) return `${quem} — já não existe ${entretanto(autoria, 'apagou')}`;
+    return autoria
+      ? `${quem} — mudou entretanto (${autoria}): não se apaga sem veres o que mudou`
+      : `${quem} — alguém mudou entretanto (não se apaga sem veres o que mudou)`;
   }
   const { campo, esperado, atual } = conflito;
   const agora = atual === null ? SEM_VALOR[campo] : `em ${nomeDoValor(estado, campo, atual)}`;
   return (
     `${nomeDaPessoa(estado, conflito.pessoaId)} — ${NOME_CAMPO[campo]}: ` +
-    `esperavas ${nomeDoValor(estado, campo, esperado)}, mas agora está ${agora} (alguém mudou entretanto)`
+    `esperavas ${nomeDoValor(estado, campo, esperado)}, mas agora está ${agora} ${mudou}`
   );
 }
 
@@ -518,12 +532,74 @@ function podeSerRevertido(tx: Leitor, loteId: number, chaves: ReadonlySet<string
 }
 
 /**
+ * Quem gravou por último a coisa de um conflito e quando, como no Histórico: "Michael Exemplo, 05/10 09:12"
+ * (o nome é o `autorNome`). Procura a última linha de `alteracoes` (de um lote aplicado) desse campo; nos
+ * registos criados/apagados (e num registo que já não existe), a última linha desse registo. null se não
+ * houver nenhuma (ex.: um valor que veio da importação sem linhas).
+ */
+export function autoriaDoConflito(tx: Leitor, conflito: Conflito): string | null {
+  const alvo: { entidade: string; id: Id; campo: string | null } =
+    conflito.tipo === 'mover'
+      ? { entidade: 'pessoa', id: conflito.pessoaId, campo: conflito.campo }
+      : conflito.tipo === 'condutor'
+        ? { entidade: 'carrinha', id: conflito.carrinhaId, campo: CAMPO_CONDUTOR }
+        : conflito.tipo === 'dormida'
+          ? { entidade: 'carrinha', id: conflito.carrinhaId, campo: CAMPO_DORMIDA }
+          : conflito.tipo === 'campo' && conflito.existe
+            ? { entidade: conflito.entidade, id: conflito.id, campo: conflito.campo }
+            : { entidade: conflito.entidade, id: conflito.id, campo: null };
+  const ultima = tx
+    .select({ autor: esquema.lotes.autor, criadoEm: esquema.lotes.criadoEm })
+    .from(esquema.alteracoes)
+    .innerJoin(esquema.lotes, eq(esquema.lotes.id, esquema.alteracoes.loteId))
+    .where(
+      and(
+        eq(esquema.alteracoes.entidade, alvo.entidade),
+        eq(esquema.alteracoes.entidadeId, alvo.id),
+        alvo.campo === null ? undefined : eq(esquema.alteracoes.campo, alvo.campo),
+        eq(esquema.lotes.estado, 'aplicado'),
+      ),
+    )
+    .orderBy(desc(esquema.alteracoes.id))
+    .limit(1)
+    .get();
+  if (!ultima) return null;
+  const utilizador = tx
+    .select({ nome: esquema.utilizadores.nome })
+    .from(esquema.utilizadores)
+    .where(eq(esquema.utilizadores.email, ultima.autor))
+    .get();
+  const nomes = new Map(utilizador ? [[ultima.autor, utilizador.nome]] : []);
+  return `${nomeDoAutor(ultima.autor, nomes)}, ${formatarDiaHoraCurto(ultima.criadoEm)}`;
+}
+
+/**
+ * Quem reverteu cada lote, só com as reversões em vigor (revertidosEmVigor): uma reversão revertida a seguir
+ * deixa de contar e o lote que ela revertia pode reverter-se outra vez. Lê-se de todos os lotes com
+ * `reverte` (são poucos).
+ */
+function revertidoPorEmVigor(tx: Leitor): Map<number, number[]> {
+  return revertidosEmVigor(
+    tx
+      .select({ id: esquema.lotes.id, reverte: esquema.lotes.reverte })
+      .from(esquema.lotes)
+      .where(isNotNull(esquema.lotes.reverte))
+      .all()
+      .map((l) => ({ id: l.id, reverte: listaDeLotes(l.reverte) })),
+  );
+}
+
+/**
  * Grava as operações num lote, tudo ou nada. Verificação e escrita correm na mesma transação
  * (IMMEDIATE: o bloqueio de escrita é pedido logo ao abrir, por isso ninguém grava pelo meio,
  * nem outro processo como a importação). O estado lê-se COMPLETO (com os períodos e os problemas antigos):
  * conflitos, sobreposições e validação contam com eles.
  *
- * Os conflitos vêm antes da validação: se alguém mudou entretanto as mesmas pessoas ou carrinhas, a
+ * Antes de tudo, um lote de `reverte` que já foi revertido é recusado (400, "A gravação nº N já foi
+ * revertida."): o pedido foi feito sobre um Histórico velho, e a frase diz mais do que os conflitos que as
+ * inversas dariam. Só conta uma reversão em vigor: se ela própria foi revertida, o lote volta a reverter-se.
+ *
+ * Os conflitos vêm antes da validação: se alguém mudou entretanto as mesmas coisas, a
  * resposta certa é "recarrega" (409), mesmo que o rascunho, sobre o estado novo, também deixasse de ser
  * válido (ex.: o condutor escolhido já não vai naquela carrinha). Com `versaoBase`, contam também os
  * conflitos escondidos pela regra do condutor (conflitosDoCondutor). Depois, cada lote de `reverte` tem de
@@ -546,6 +622,18 @@ export function gravarLote(bd: Bd, pedido: PedidoLote): ResultadoGravacao {
       const ops = compactarOperacoes(pedido.operacoes);
       if (ops.length === 0) return { tipo: 'vazio' };
 
+      const reverte = [...new Set(pedido.reverte ?? [])];
+      if (reverte.length > 0) {
+        const revertidos = revertidoPorEmVigor(tx);
+        const jaRevertidos = reverte.filter((id) => revertidos.has(id));
+        if (jaRevertidos.length > 0) {
+          return {
+            tipo: 'invalido',
+            erros: jaRevertidos.map((id) => `A gravação nº ${id} já foi revertida.`),
+          };
+        }
+      }
+
       const conflitos = [
         ...encontrarConflitos(estado, ops),
         ...(pedido.versaoBase === undefined ? [] : conflitosDoCondutor(tx, estado, ops, pedido.versaoBase)),
@@ -553,14 +641,16 @@ export function gravarLote(bd: Bd, pedido: PedidoLote): ResultadoGravacao {
       if (conflitos.length > 0) {
         return {
           tipo: 'conflito',
-          conflitos: conflitos.map((c) => ({ ...c, descricao: descreverConflito(estado, c) })),
+          conflitos: conflitos.map((c) => ({
+            ...c,
+            descricao: descreverConflito(estado, c, autoriaDoConflito(tx, c)),
+          })),
         };
       }
 
       const erros = validarOperacoes(estado, ops);
       if (erros.length > 0) return { tipo: 'invalido', erros: limitarErros(erros) };
 
-      const reverte = [...new Set(pedido.reverte ?? [])];
       const chaves = new Set(ops.map(chaveOperacao));
       const naoRevertiveis = reverte.filter((id) => !podeSerRevertido(tx, id, chaves));
       if (naoRevertiveis.length > 0) {
@@ -783,18 +873,8 @@ export function lerHistorico(bd: Bd, limite: number, agora: Date = new Date()): 
     if (lotes.length === 0) return [];
     // Completo: as frases dos períodos e problemas antigos também têm o nome da pessoa/casa.
     const estado = lerEstado(tx, agora, { completo: true });
-    // Quem reverteu quem: lê-se de todos os lotes (são poucos os que revertem).
-    const revertidoPor = new Map<number, number[]>();
-    for (const l of tx
-      .select({ id: esquema.lotes.id, reverte: esquema.lotes.reverte })
-      .from(esquema.lotes)
-      .where(isNotNull(esquema.lotes.reverte))
-      .orderBy(asc(esquema.lotes.id))
-      .all()) {
-      for (const revertido of listaDeLotes(l.reverte)) {
-        revertidoPor.set(revertido, [...(revertidoPor.get(revertido) ?? []), l.id]);
-      }
-    }
+    // Quem reverteu quem (só as reversões em vigor): lê-se de todos os lotes (são poucos os que revertem).
+    const revertidoPor = revertidoPorEmVigor(tx);
     const linhas = tx
       .select()
       .from(esquema.alteracoes)

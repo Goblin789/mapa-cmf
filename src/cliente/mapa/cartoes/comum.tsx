@@ -1,5 +1,6 @@
 // Peças pequenas partilhadas pelos cartões do mapa.
 
+import type { Id } from '../../../dominio/tipos';
 import type { Retangulo } from '../layout/geometria';
 
 export type Destaque = 'foco' | 'relacionado' | null;
@@ -24,6 +25,14 @@ export function classeDestaque(destaque: Destaque): string {
   if (destaque === 'foco') return 'outline-[2.5px] outline-offset-1 outline-slate-900';
   if (destaque === 'relacionado') return 'outline-2 outline-offset-1 outline-dashed outline-slate-700';
   return '';
+}
+
+/**
+ * O cartão de uma obra esbate-se com a legenda do Mapa: há um cliente aceso (clienteDestacado) e não é o da
+ * obra. A obra em foco nunca se esbate. Os nomes esbatem-se sozinhos (NomeChip); isto é a moldura do cartão.
+ */
+export function obraEsbatida(clienteDestacado: Id | null, clienteDaObra: Id, destaque: Destaque): boolean {
+  return clienteDestacado !== null && clienteDestacado !== clienteDaObra && destaque !== 'foco';
 }
 
 /** Foco do teclado num botão do mapa: um anel (box-shadow), que o Leaflet não apaga. */

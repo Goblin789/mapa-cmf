@@ -7,7 +7,7 @@
 // o rascunho tem indisponibilidades ou problemas e o aviso de avisoTextoSaude enquanto se escreve.
 
 import { useEffect, useId, useRef, useState } from 'react';
-import type { ConflitoServidor } from '../../dominio/api';
+import { type ConflitoServidor, FRASE_CONFLITO } from '../../dominio/api';
 import { clienteEfetivoId } from '../../dominio/cores';
 import { dormidasDasCarrinhas } from '../../dominio/dormidas';
 import { indexar } from '../../dominio/indices';
@@ -19,7 +19,12 @@ import { comPlural, ROTULO_TIPO_VEICULO } from '../paineis/textos';
 import { BOTAO_PERIGO, BOTAO_PRIMARIO, BOTAO_SECUNDARIO } from './classes';
 import { Dialogo } from './Dialogo';
 import { textoDoErro } from './erros';
-import { gravacoesConhecidas, lotesDaReversaoAEnviar, notaReversaoNoGuardar } from './historico';
+import {
+  gravacoesConhecidas,
+  gravacoesDasReversoes,
+  lotesDaReversaoAEnviar,
+  notaReversaoNoGuardar,
+} from './historico';
 import { IconeAviso, IconeDormir, IconeGuardar, IconeRodar } from './icones';
 import {
   agruparAlteracoes,
@@ -54,10 +59,11 @@ function useInstantaneo() {
       m2: agruparAlteracoesM2(estadoServidor, estado, pendentes),
       fraseFixa: fraseFixaDoComentario(pendentes),
       // Só as reversões que vão MESMO no pedido (a regra da loja), pela data e pelo autor da gravação.
-      notaReversao: notaReversaoNoGuardar(
-        lotesDaReversaoAEnviar(reversoesDoRascunho(), pendentes),
-        gravacoesConhecidas(),
-      ),
+      // As do rascunho trazem a data e o autor (também depois de recarregar a página).
+      notaReversao: notaReversaoNoGuardar(lotesDaReversaoAEnviar(reversoesDoRascunho(), pendentes), [
+        ...gravacoesConhecidas(),
+        ...gravacoesDasReversoes(reversoesDoRascunho()),
+      ]),
       condutores: agruparCondutores(estadoServidor, pendentes),
       dormidas: agruparDormidas(estadoServidor, pendentes, dormidasDasCarrinhas(estadoServidor, indServidor)),
       avisos: calcularAvisos(estadoServidor, estado, pendentes, indServidor, indices, hoje),
@@ -68,22 +74,6 @@ function useInstantaneo() {
     };
   });
   return instantaneo;
-}
-
-/** Há conflitos que não são só de pessoas (condutor ou onde dorme de uma carrinha). */
-function conflitoDeCarrinhas(conflitos: readonly ConflitoServidor[] | null): boolean {
-  return conflitos?.some((c) => c.tipo !== 'mover') ?? false;
-}
-
-/** M2: há conflitos em fichas ou registos (obras, períodos, problemas…). */
-function conflitoDeFichas(conflitos: readonly ConflitoServidor[] | null): boolean {
-  return conflitos?.some((c) => c.tipo === 'campo' || c.tipo === 'registo') ?? false;
-}
-
-/** O que mexe nas mesmas … (frase dos conflitos). */
-function oQueMudou(conflitos: readonly ConflitoServidor[] | null): string {
-  if (conflitoDeFichas(conflitos)) return 'coisas';
-  return conflitoDeCarrinhas(conflitos) ? 'pessoas ou carrinhas' : 'pessoas';
 }
 
 /** A parte do resumo do título de cada secção nova ("2 fichas mudam"). */
@@ -137,7 +127,6 @@ function chaveConflito(c: ConflitoServidor): string {
 
 function Conflitos({ aoVoltar, aoDescartar }: { aoVoltar: () => void; aoDescartar: () => void }) {
   const conflitos = useLoja((s) => s.conflitos) ?? [];
-  const erroGuardar = useLoja((s) => s.erroGuardar);
   const caixa = useRef<HTMLDivElement>(null);
   // O botão Guardar desaparece: o foco passa para a explicação (e o leitor de ecrã lê-a).
   useEffect(() => caixa.current?.focus(), []);
@@ -146,11 +135,8 @@ function Conflitos({ aoVoltar, aoDescartar }: { aoVoltar: () => void; aoDescarta
       <div className="rounded-md border border-red-300 bg-red-50 px-3 py-2.5 text-sm text-red-950">
         <p className="flex items-start gap-2 font-semibold">
           <IconeAviso className="mt-0.5 h-4 w-4 text-red-700" />
-          {conflitoDeFichas(conflitos)
-            ? 'Alguém mudou entretanto algumas destas coisas. Nada foi gravado.'
-            : conflitoDeCarrinhas(conflitos)
-              ? 'Alguém mudou entretanto algumas destas pessoas ou carrinhas. Nada foi gravado.'
-              : (erroGuardar ?? 'Alguém mudou entretanto algumas destas pessoas. Nada foi gravado.')}
+          {/* Uma só frase: as de cada conflito, por baixo, dizem o quê, quem e quando. */}
+          {FRASE_CONFLITO}
         </p>
         <ul className="mt-2 list-disc space-y-1 pl-9">
           {frasesDosConflitos(conflitos).map((c) => (
@@ -244,9 +230,7 @@ export function DialogoGuardar({ aoFechar }: { aoFechar: () => void }) {
     <Dialogo
       titulo={emConflito ? 'Não foi possível guardar' : `Guardar ${comPlural(n, 'alteração', 'alterações')}`}
       descricao={
-        emConflito
-          ? `Houve uma gravação entretanto que mexe nas mesmas ${oQueMudou(conflitos)}.`
-          : `${resumo}. Revê antes de gravar.`
+        emConflito ? 'As tuas alterações continuam no rascunho.' : `${resumo}. Revê antes de gravar.`
       }
       aoFechar={aoFechar}
       bloqueado={ocupado}

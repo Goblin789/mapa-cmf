@@ -4,6 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import type { EntidadeEditavel, ValorCampo } from '../../dominio/campos';
 import { indexar } from '../../dominio/indices';
+import { operacoesTerminarPeriodo } from '../../dominio/indisponibilidade';
 import {
   aplicarOperacoes,
   type Operacao,
@@ -388,6 +389,65 @@ describe('calcularAvisos — M2', () => {
     expect(guardar(s, ops).avisos.map((a) => a.texto)).toContain(
       'ZZ 1001 fica com 6/5 quando Filipe Q. e Gil N. voltarem, a 12/10.',
     );
+  });
+
+  it('acabar, encurtar ou apagar um período que deixa a carrinha com gente a mais: forte', () => {
+    // ZZ 1002: 2 lugares; Célia, Duarte e Helena (gravado). A Célia está fora até 12/10: hoje 2/2.
+    const base = estadoExemplo();
+    const comHelena = aplicarOperacoes(
+      base,
+      operacoesParaAlvo(base, ['p-helena'], { tipo: 'carrinha', id: 'zz1002' }),
+    );
+    const s = {
+      ...comHelena,
+      indisponibilidades: [
+        criarIndisponibilidade({
+          id: 'indisp-celia',
+          pessoaId: 'p-celia',
+          inicio: '2026-10-01',
+          fim: '2026-10-12',
+        }),
+      ],
+    };
+    const excesso = {
+      chave: 'carrinha-excesso:zz1002',
+      gravidade: 'forte',
+      texto: 'ZZ 1002 fica com 3 pessoas para 2 lugares (1 a mais).',
+    };
+    // "Já voltou" (fim = ontem).
+    expect(guardar(s, operacoesTerminarPeriodo(s, 'indisp-celia', HOJE)).avisos).toEqual([excesso]);
+    // Apagar o período (engano).
+    expect(guardar(s, [operacaoApagar(s, 'indisponibilidade', 'indisp-celia') as Operacao]).avisos).toEqual([
+      excesso,
+    ]);
+    // Encurtar para outro dia que ainda não chegou não muda o hoje: não avisa.
+    expect(guardar(s, [campo(s, 'indisponibilidade', 'indisp-celia', 'fim', '2026-10-08')]).avisos).toEqual(
+      [],
+    );
+    // Já com gente a mais (o Gil também na ZZ 1002: 3/2), o "Já voltou" da Célia acrescenta 1 e avisa.
+    const gil = aplicarOperacoes(s, operacoesParaAlvo(s, ['p-gil'], { tipo: 'carrinha', id: 'zz1002' }));
+    expect(
+      guardar(gil, operacoesTerminarPeriodo(gil, 'indisp-celia', HOJE)).avisos.map((a) => a.texto),
+    ).toEqual(['ZZ 1002 fica com 4 pessoas para 2 lugares (2 a mais).']);
+    // Um período novo (alguém fica fora) só liberta lugares: não avisa.
+    const novo = operacaoCriar('indisponibilidade', {
+      id: 'indisp-00000000-duarte',
+      pessoaId: 'p-duarte',
+      inicio: HOJE,
+      fim: null,
+    });
+    expect(guardar(gil, [novo]).avisos).toEqual([]);
+  });
+
+  it('acabar o período de quem mora numa casa com gente a mais não avisa (a cama nunca se libertou)', () => {
+    // casa-2 tem 3 moradores para 2 lugares; a Elsa (sem carrinha) está fora.
+    const s = {
+      ...estadoExemplo(),
+      indisponibilidades: [
+        criarIndisponibilidade({ id: 'indisp-elsa', pessoaId: 'p-elsa', inicio: '2026-10-01', fim: null }),
+      ],
+    };
+    expect(guardar(s, operacoesTerminarPeriodo(s, 'indisp-elsa', HOJE)).avisos).toEqual([]);
   });
 
   it('uma obra criada sem ninguém não avisa', () => {

@@ -4,7 +4,7 @@ import { type EntidadeEditavel, ROTULO_CAMPO, type ValorCampo } from '../../domi
 import type { Dormida } from '../../dominio/dormidas';
 import type { Indices } from '../../dominio/indices';
 import { textoAte } from '../../dominio/indisponibilidade';
-import { valorLegivel } from '../../dominio/operacoes';
+import { SEM_DADOS_AINDA, valorLegivel } from '../../dominio/operacoes';
 import { normalizarTexto } from '../../dominio/pesquisa';
 import type {
   Carrinha,
@@ -21,7 +21,7 @@ import type {
 export const ROTULO_FORA_DAS_CASAS = 'Fora das casas CMF';
 export const ROTULO_SEM_TRANSPORTE = 'Sem transporte da empresa';
 export const ROTULO_SEM_OBRA = 'sem obra';
-export const SEM_DADOS = 'sem dados ainda';
+export const SEM_DADOS = SEM_DADOS_AINDA;
 
 /** "1 lugar livre", "3 lugares livres", "0 lugares livres". */
 export function comPlural(n: number, singular: string, plural: string): string {
@@ -162,7 +162,7 @@ export const ROTULO_ESCOLHA_CARTA = { tem: 'Tem', 'nao-tem': 'Não tem', 'nao-se
 
 /**
  * O valor de um campo editável como aparece na ficha: "—" quando está vazio, "Sim"/"Não", a carta
- * "Tem"/"Não tem"/"Não sei", dias dd/mm/aaaa, matrículas formatadas, o nome do cliente e a morada do
+ * "Tem"/"Não tem"/"sem dados ainda" (como no Histórico e no Guardar), dias dd/mm/aaaa, matrículas formatadas, o nome do cliente e a morada do
  * local em vez dos ids (as mesmas regras das frases do Histórico, valorLegivel).
  */
 export function textoValorCampo(
@@ -171,8 +171,13 @@ export function textoValorCampo(
   campo: string,
   valor: ValorCampo,
 ): string {
-  if (campo === 'temCarta')
-    return ROTULO_ESCOLHA_CARTA[valor === true ? 'tem' : valor === false ? 'nao-tem' : 'nao-sei'];
+  if (campo === 'temCarta') {
+    return valor === true
+      ? ROTULO_ESCOLHA_CARTA.tem
+      : valor === false
+        ? ROTULO_ESCOLHA_CARTA['nao-tem']
+        : SEM_DADOS;
+  }
   if (valor === true) return 'Sim';
   if (valor === false) return 'Não';
   return valorLegivel(estado, entidade, campo, valor);

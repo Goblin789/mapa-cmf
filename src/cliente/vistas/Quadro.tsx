@@ -186,7 +186,7 @@ const LIGACAO = `rounded-[0.15em] underline decoration-slate-300 underline-offse
 const ContextoRealceFoco = createContext<ReadonlySet<Id>>(new Set());
 const NINGUEM: ReadonlySet<Id> = new Set();
 
-// --- Filtro (clientes e obras) ---------------------------------------------------------------------
+// --- Filtro (só os clientes) -----------------------------------------------------------------------
 
 interface LojaFiltroQuadro extends FiltroQuadro {
   definirClientes: (clientes: Set<Id>) => void;
@@ -199,9 +199,8 @@ interface LojaFiltroQuadro extends FiltroQuadro {
  */
 const useFiltroQuadro = create<LojaFiltroQuadro>()((set) => ({
   clientes: new Set(),
-  obras: new Set(),
   definirClientes: (clientes) => set({ clientes }),
-  limpar: () => set({ clientes: new Set(), obras: new Set() }),
+  limpar: () => set({ clientes: new Set() }),
 }));
 
 /** Nome dos blocos de cada agrupamento (singular, plural): "3 casas", "outra carrinha". */
@@ -213,7 +212,7 @@ const UNIDADE: Record<Agrupamento, readonly [string, string]> = {
 
 /** Texto que muda quando o filtro muda (para o ajuste ao ecrã voltar a medir no modo de edição). */
 function chaveFiltro(f: FiltroQuadro): string {
-  return `${[...f.clientes].join(',')}|${[...f.obras].join(',')}`;
+  return [...f.clientes].join(',');
 }
 
 /** "40 de 137 pessoas", com o filtro ligado. */
@@ -230,8 +229,7 @@ function ContagemFiltro({ n, total }: { n: number; total: number }) {
 
 function useFiltro(): FiltroQuadro {
   const clientes = useFiltroQuadro((s) => s.clientes);
-  const obras = useFiltroQuadro((s) => s.obras);
-  return useMemo(() => ({ clientes, obras }), [clientes, obras]);
+  return useMemo(() => ({ clientes }), [clientes]);
 }
 
 /** Atributo do grupo de filtros (barra do Quadro, cabeçalho da reunião): o "Limpar filtros" devolve lá o foco. */

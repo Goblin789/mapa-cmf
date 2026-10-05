@@ -442,6 +442,42 @@ describe('POST /api/lotes (M2)', () => {
     expect(completo().indisponibilidades).toHaveLength(4);
   });
 
+  it('um campo a mais numa operação ou no pedido também é recusado (400), não se deita fora', async () => {
+    const versao = estado().versao;
+    const r1 = await postar({
+      versaoBase: 1,
+      operacoes: [{ ...campo('casa', 'casa-monte', 'lotacao', 4, 5), motivo: 'x' }],
+    });
+    expect(r1.status).toBe(400);
+    expect(((await r1.json()) as { erros: string[] }).erros).toEqual([
+      'operacoes[0]: Chave inválida: "motivo"',
+    ]);
+    const r2 = await postar({
+      versaoBase: 1,
+      operacoes: [
+        { ...mover('p-ze', 'obraId', null, null), nota: 'x' },
+        {
+          ...operacaoCriar('indisponibilidade', {
+            id: `indisp-${ID}06`,
+            pessoaId: 'p-ze',
+            inicio: '2026-11-01',
+            fim: null,
+          }),
+          motivo: 'x',
+        },
+      ],
+      extra: 1,
+    });
+    expect(r2.status).toBe(400);
+    expect(((await r2.json()) as { erros: string[] }).erros).toEqual([
+      'operacoes[0]: Chave inválida: "nota"',
+      'operacoes[1]: Chave inválida: "motivo"',
+      'Chave inválida: "extra"',
+    ]);
+    expect(estado().versao).toBe(versao);
+    expect(estado().casas.find((c) => c.id === 'casa-monte')?.lotacao).toBe(4);
+  });
+
   it('local "oficina", campo que não se edita e valor fora dos limites → 400 com frases em português', async () => {
     const r1 = await postar({
       versaoBase: 1,
@@ -473,7 +509,17 @@ describe('POST /api/lotes (M2)', () => {
   });
 
   it('conflitos 409 de "campo" e de "registo", com frases legíveis; nada se grava', async () => {
-    // Alguém mudou a lotação para 6, apagou um problema, mudou o texto de outro e criou a Obra Nova.
+    // Alguém mudou a lotação para 6, apagou um problema, mudou o texto de outro e criou a Obra Nova. Cada
+    // frase diz quem foi (o nome, como no Histórico) e quando.
+    bd.insert(esquema.utilizadores)
+      .values({
+        id: 'oid-ana',
+        email: 'ana@exemplo.lu',
+        nome: 'Ana Exemplo',
+        criadoEm: AGORA.toISOString(),
+        ultimaEntradaEm: AGORA.toISOString(),
+      })
+      .run();
     const problema = completo().problemas.find((p) => p.id === 'problema-aberto1');
     gravar([campo('casa', 'casa-monte', 'lotacao', 4, 6)]);
     gravar([operacaoApagar(completo(), 'problema', 'problema-aberto2') as Operacao]);
@@ -490,13 +536,14 @@ describe('POST /api/lotes (M2)', () => {
       ],
     });
     expect(r.status).toBe(409);
-    const corpo = (await r.json()) as { conflitos: ConflitoServidor[] };
+    const corpo = (await r.json()) as { erro: string; conflitos: ConflitoServidor[] };
     expect(corpo.conflitos.map((c) => c.descricao)).toEqual([
-      'Casa Monte — lotação: esperavas 4, mas agora é 6 (alguém mudou entretanto)',
-      'O problema que estavas a mudar já não existe (alguém apagou entretanto)',
-      'Casa Ribeira — alguém mudou entretanto (não se apaga sem veres o que mudou)',
-      'Obra Nova — já existe (alguém o criou entretanto)',
+      'Casa Monte — lotação: esperavas 4, mas agora é 6 (Ana Exemplo, 04/10 12:00)',
+      'O problema que estavas a mudar já não existe (Ana Exemplo, 04/10 12:00)',
+      'Casa Ribeira — mudou entretanto (Ana Exemplo, 04/10 12:00): não se apaga sem veres o que mudou',
+      'Obra Nova — já existe (Ana Exemplo, 04/10 12:00)',
     ]);
+    expect(corpo.erro).toBe('Alguém gravou mudanças nestas mesmas coisas entretanto. Nada foi gravado.');
     expect({ lotes: bd.select().from(esquema.lotes).all(), estado: completo() }).toStrictEqual(antes);
   });
 
@@ -536,5 +583,58 @@ describe('POST /api/lotes (M2)', () => {
       [1, [], []],
     ]);
     expect(historico[0]?.alteracoes.map((a) => a.descricao)).toEqual(['Casa Monte — lotação: 6 → 4']);
+    // Reverter outra vez a mesma gravação (um Histórico velho noutro separador) → 400 com a frase certa.
+    const outraVez = await postar({ versaoBase: 3, operacoes: plano.operacoes, reverte: [2] });
+    expect(outraVez.status).toBe(400);
+    expect(((await outraVez.json()) as { erros: string[] }).erros).toEqual([
+      'A gravação nº 2 já foi revertida.',
+    ]);
+    expect(bd.select().from(esquema.lotes).all()).toHaveLength(3);
+  });
+
+  it('reverter a reversão: o lote volta a estar em vigor e pode reverter-se outra vez', async () => {
+    const historico = async () =>
+      ((await (await app().request('/api/historico')).json()) as EntradaHistorico[]).map((h) => [
+        h.loteId,
+        h.revertidoPor,
+      ]);
+    expect(gravar([campo('casa', 'casa-monte', 'lotacao', 4, 6)])).toMatchObject({ loteId: 2 });
+    // 3 reverte 2 (6 → 4); 4 reverte 3 (4 → 6): o efeito do 2 está outra vez em vigor.
+    expect(gravar([campo('casa', 'casa-monte', 'lotacao', 6, 4)], { reverte: [2] })).toMatchObject({
+      loteId: 3,
+    });
+    expect(gravar([campo('casa', 'casa-monte', 'lotacao', 4, 6)], { reverte: [3] })).toMatchObject({
+      loteId: 4,
+    });
+    // O 2 já não aparece como revertido (o 3 deixou de estar em vigor); o 3 está, pelo 4.
+    expect(await historico()).toEqual([
+      [4, []],
+      [3, [4]],
+      [2, []],
+      [1, []],
+    ]);
+    // O 3 continua a não se reverter outra vez (o 4 está em vigor).
+    const r3 = await postar({
+      versaoBase: 4,
+      operacoes: [campo('casa', 'casa-monte', 'lotacao', 6, 4)],
+      reverte: [3],
+    });
+    expect(r3.status).toBe(400);
+    expect(((await r3.json()) as { erros: string[] }).erros).toEqual(['A gravação nº 3 já foi revertida.']);
+    // O 2 reverte-se outra vez.
+    const r2 = await postar({
+      versaoBase: 4,
+      operacoes: [campo('casa', 'casa-monte', 'lotacao', 6, 4)],
+      reverte: [2],
+    });
+    expect(r2.status).toBe(201);
+    expect(estado().casas.find((c) => c.id === 'casa-monte')?.lotacao).toBe(4);
+    expect(await historico()).toEqual([
+      [5, []],
+      [4, []],
+      [3, [4]],
+      [2, [5]],
+      [1, []],
+    ]);
   });
 });

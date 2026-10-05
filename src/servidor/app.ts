@@ -18,6 +18,7 @@ import type {
   RespostaGeocodificarInverso,
   RespostaSaude,
 } from '../dominio/api';
+import { FRASE_CONFLITO } from '../dominio/api';
 import { type AmbienteApp, type ConfigAuth, criarAutenticacao } from './auth';
 import type { FetchOidc } from './auth/oidc';
 import type { ServicoCopias } from './copias';
@@ -291,9 +292,7 @@ export function criarApp({
         case 'conflito':
           return c.json(
             {
-              erro: r.conflitos.some((cf) => cf.tipo !== 'mover')
-                ? 'Alguém mudou entretanto algumas destas pessoas ou carrinhas. Nada foi gravado.'
-                : 'Alguém mudou entretanto algumas destas pessoas. Nada foi gravado.',
+              erro: FRASE_CONFLITO,
               conflitos: r.conflitos,
             },
             409,

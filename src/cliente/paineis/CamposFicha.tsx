@@ -9,6 +9,9 @@
 // e CampoOutraMorada (a casa passa para outro local já conhecido).
 // No telemóvel os campos têm letra de 16 px (o iOS não amplia a página) e partem de linha em vez de
 // deslizar de lado.
+// Tempo real: cada editor guarda os valores de quando abriu. Se outra pessoa gravar o mesmo campo com ele
+// aberto, aparece "Mudou entretanto: agora é X." e o `de` do passo é o valor de quando abriu
+// (comDeDeQuandoAbriu): o Guardar dá conflito em vez de escrever por cima em silêncio.
 
 import {
   type FormEvent,
@@ -27,7 +30,7 @@ import {
   type ValorDoCampo,
   validarValorCampo,
 } from '../../dominio/campos';
-import { nomeDoRegisto, operacaoCampo } from '../../dominio/operacoes';
+import { nomeDoRegisto, operacaoCampo, valoresIguais } from '../../dominio/operacoes';
 import type { Casa, Id, Local, Pessoa } from '../../dominio/tipos';
 import { CampoMorada, type ValorMorada } from '../comum/CampoMorada';
 import { formatarMatricula } from '../comum/Matricula';
@@ -39,17 +42,21 @@ import { FOCO_VISIVEL } from './classes';
 import {
   avisoOutraMorada,
   campoPendente,
+  comDeDeQuandoAbriu,
   type EditorCampo,
   type EscolhaCarta,
   erroOutrasMatriculas,
   errosDoPasso,
   escolhaCarta,
   lerValorEditado,
+  mudouDesdeQueAbriu,
+  notaMudouEntretanto,
   opcoesOutraMorada,
   operacoesCarta,
   operacoesMoradaDoLocal,
   teclaDoCampoAberto,
   textoParaEditar,
+  type ValoresAoAbrir,
 } from './fichas';
 import {
   ROTULO_ESCOLHA_CARTA,
@@ -144,6 +151,17 @@ function ErroDoCampo({ id, erro }: { id: string; erro: string | null }) {
     <MensagemDoCampo id={id} papel="alert" texto={erro} classe="mt-0.5 text-xs font-medium text-red-800">
       <span aria-hidden="true">▲ </span>
       {erro}
+    </MensagemDoCampo>
+  );
+}
+
+/** "Mudou entretanto: agora é X." por baixo do campo aberto, quando outra pessoa gravou o mesmo campo. */
+function MudouEntretanto({ texto }: { texto: string | null }) {
+  if (!texto) return null;
+  return (
+    <MensagemDoCampo papel="status" texto={texto} classe="mt-0.5 text-xs font-medium text-amber-900">
+      <span aria-hidden="true">● </span>
+      {texto}
     </MensagemDoCampo>
   );
 }
@@ -318,6 +336,8 @@ export function CampoFicha<E extends EntidadeEditavel, C extends CampoEditavel<E
   const estado = useLoja((s) => s.estado);
   const { aberto, setAberto, erro, setErro, refLapis, refForm, fechar } = useAberto();
   const [texto, setTexto] = useState('');
+  // O valor de quando o editor abriu (tempo real: comDeDeQuandoAbriu).
+  const [aoAbrir, setAoAbrir] = useState<ValorCampo>(null);
   const idCampo = useId();
   const idErro = useId();
   const v = (valor ?? null) as ValorCampo;
@@ -337,6 +357,7 @@ export function CampoFicha<E extends EntidadeEditavel, C extends CampoEditavel<E
             refBotao={refLapis}
             aoAbrir={() => {
               setTexto(textoParaEditar(editor, v, formatarMatricula));
+              setAoAbrir(v);
               setErro(null);
               setAberto(true);
             }}
@@ -366,20 +387,24 @@ export function CampoFicha<E extends EntidadeEditavel, C extends CampoEditavel<E
       setErro(erroValor);
       return;
     }
-    const op = operacaoCampo(atual, entidade, id, campo, lido.valor as ValorDoCampo<E, C>);
-    if (!op) {
+    const calculada = operacaoCampo(atual, entidade, id, campo, lido.valor as ValorDoCampo<E, C>);
+    if (!calculada) {
       fechar();
       return;
     }
-    const erros = errosDoPasso(atual, entidade, id, [op]);
+    const ops = comDeDeQuandoAbriu([calculada], { [campo]: aoAbrir });
+    const erros = errosDoPasso(atual, entidade, id, ops);
     if (erros.length > 0) {
       setErro(erros.join(' '));
       return;
     }
-    aplicarComAviso([op]);
+    aplicarComAviso(ops);
     fechar();
   };
   const aviso = aoEscrever?.(texto) ?? null;
+  const mudou = valoresIguais(aoAbrir, v)
+    ? null
+    : notaMudouEntretanto(textoValorCampo(estado, entidade, campo, v));
   const propsComuns = {
     id: idCampo,
     'aria-invalid': erro ? true : undefined,
@@ -429,6 +454,7 @@ export function CampoFicha<E extends EntidadeEditavel, C extends CampoEditavel<E
         )}
         <BotoesDoCampo aoCancelar={fechar} />
       </form>
+      <MudouEntretanto texto={mudou} />
       {aviso && (
         <MensagemDoCampo papel="status" texto={aviso} classe="mt-0.5 text-xs font-medium text-amber-900">
           {aviso}
@@ -461,6 +487,7 @@ export function CampoCarta({ pessoa }: { pessoa: Pessoa }) {
   const { aberto, setAberto, erro, setErro, refLapis, refForm, fechar } = useAberto();
   const [escolha, setEscolha] = useState<EscolhaCarta>('nao-sei');
   const [validade, setValidade] = useState('');
+  const [aoAbrir, setAoAbrir] = useState<ValoresAoAbrir>({});
   const idGrupo = useId();
   const idValidade = useId();
   const idErro = useId();
@@ -485,6 +512,7 @@ export function CampoCarta({ pessoa }: { pessoa: Pessoa }) {
             aoAbrir={() => {
               setEscolha(escolhaCarta(pessoa.temCarta));
               setValidade(pessoa.cartaValidade ?? '');
+              setAoAbrir({ temCarta: pessoa.temCarta, cartaValidade: pessoa.cartaValidade });
               setErro(null);
               setAberto(true);
             }}
@@ -506,7 +534,7 @@ export function CampoCarta({ pessoa }: { pessoa: Pessoa }) {
         return;
       }
     }
-    const ops = operacoesCarta(atual, pessoa.id, escolha, validade);
+    const ops = comDeDeQuandoAbriu(operacoesCarta(atual, pessoa.id, escolha, validade), aoAbrir);
     if (ops.length === 0) {
       fechar();
       return;
@@ -519,6 +547,12 @@ export function CampoCarta({ pessoa }: { pessoa: Pessoa }) {
     aplicarComAviso(ops);
     fechar();
   };
+  const mudou = mudouDesdeQueAbriu(aoAbrir, {
+    temCarta: pessoa.temCarta,
+    cartaValidade: pessoa.cartaValidade,
+  })
+    ? notaMudouEntretanto(texto)
+    : null;
 
   return (
     <LinhaCampo rotulo="Carta">
@@ -573,6 +607,7 @@ export function CampoCarta({ pessoa }: { pessoa: Pessoa }) {
           <BotoesDoCampo aoCancelar={fechar} />
         </span>
       </form>
+      <MudouEntretanto texto={mudou} />
       <ErroDoCampo id={idErro} erro={erro} />
       {antes}
     </LinhaCampo>
@@ -587,6 +622,7 @@ export function CampoMoradaCasa({ casa, local, outras }: { casa: Casa; local: Lo
   const modoEdicao = useLoja((s) => s.modoEdicao);
   const { aberto, setAberto, erro, setErro, refLapis, refForm, fechar } = useAberto();
   const [valor, setValor] = useState<ValorMorada>({ morada: '', pais: 'LU', lat: null, lng: null });
+  const [aoAbrir, setAoAbrir] = useState<ValoresAoAbrir>({});
   const idErro = useId();
   // Um seletor por campo: devolvem a operação guardada na loja (a mesma referência), não uma lista nova
   // (uma lista nova a cada leitura fazia o React redesenhar sem fim).
@@ -629,6 +665,7 @@ export function CampoMoradaCasa({ casa, local, outras }: { casa: Casa; local: Lo
             refBotao={refLapis}
             aoAbrir={() => {
               setValor({ morada: local.morada, pais: local.pais, lat: local.lat, lng: local.lng });
+              setAoAbrir({ morada: local.morada, pais: local.pais, lat: local.lat, lng: local.lng });
               setErro(null);
               setAberto(true);
             }}
@@ -650,7 +687,7 @@ export function CampoMoradaCasa({ casa, local, outras }: { casa: Casa; local: Lo
     e.preventDefault();
     const atual = useLoja.getState().estado;
     if (!atual) return;
-    const ops = operacoesMoradaDoLocal(atual, local.id, valor);
+    const ops = comDeDeQuandoAbriu(operacoesMoradaDoLocal(atual, local.id, valor), aoAbrir);
     for (const op of ops) {
       const erroValor = validarValorCampo('local', op.campo as CampoEditavel<'local'>, op.para);
       if (erroValor) {
@@ -674,6 +711,12 @@ export function CampoMoradaCasa({ casa, local, outras }: { casa: Casa; local: Lo
     aplicarComAviso(ops, resumo.startsWith(prefixo) ? `${quem} — ${resumo.slice(prefixo.length)}` : resumo);
     fechar();
   };
+  const moradaAgora = { morada: local.morada, pais: local.pais };
+  const mudou = mudouDesdeQueAbriu(aoAbrir, { ...moradaAgora, lat: local.lat, lng: local.lng })
+    ? mudouDesdeQueAbriu({ morada: aoAbrir.morada ?? null, pais: aoAbrir.pais ?? null }, moradaAgora)
+      ? notaMudouEntretanto(textoMorada(local))
+      : 'Mudou entretanto: o pino mudou de sítio.'
+    : null;
 
   return (
     <LinhaCampo rotulo="Morada">
@@ -691,6 +734,7 @@ export function CampoMoradaCasa({ casa, local, outras }: { casa: Casa; local: Lo
           <BotoesDoCampo aoCancelar={fechar} />
         </span>
       </form>
+      <MudouEntretanto texto={mudou} />
       <ErroDoCampo id={idErro} erro={erro} />
       {antes}
     </LinhaCampo>
@@ -707,6 +751,7 @@ export function CampoOutraMorada({ casa }: { casa: Casa }) {
   const estado = useLoja((s) => s.estado);
   const { aberto, setAberto, erro, setErro, refLapis, refForm, fechar } = useAberto();
   const [escolhido, setEscolhido] = useState('');
+  const [aoAbrir, setAoAbrir] = useState<Id>(casa.localId);
   const idCampo = useId();
   const idErro = useId();
   const idAviso = useId();
@@ -722,6 +767,7 @@ export function CampoOutraMorada({ casa }: { casa: Casa }) {
           disabled={opcoes.length === 0}
           onClick={() => {
             setEscolhido('');
+            setAoAbrir(casa.localId);
             setErro(null);
             setAberto(true);
           }}
@@ -741,20 +787,25 @@ export function CampoOutraMorada({ casa }: { casa: Casa }) {
       setErro('Escolhe a morada.');
       return;
     }
-    const op = operacaoCampo(atual, 'casa', casa.id, 'localId', escolhido);
-    if (!op) {
+    const calculada = operacaoCampo(atual, 'casa', casa.id, 'localId', escolhido);
+    if (!calculada) {
       fechar();
       return;
     }
-    const erros = errosDoPasso(atual, 'casa', casa.id, [op]);
+    const ops = comDeDeQuandoAbriu([calculada], { localId: aoAbrir });
+    const erros = errosDoPasso(atual, 'casa', casa.id, ops);
     if (erros.length > 0) {
       setErro(erros.join(' '));
       return;
     }
-    aplicarComAviso([op]);
+    aplicarComAviso(ops);
     fechar();
   };
   const aviso = avisoOutraMorada(opcoes.find((o) => o.valor === escolhido));
+  const mudou =
+    aoAbrir === casa.localId
+      ? null
+      : notaMudouEntretanto(textoValorCampo(estado, 'casa', 'localId', casa.localId));
 
   return (
     <form
@@ -788,6 +839,7 @@ export function CampoOutraMorada({ casa }: { casa: Casa }) {
         </select>
         <BotoesDoCampo aoCancelar={fechar} />
       </span>
+      <MudouEntretanto texto={mudou} />
       {aviso && (
         <MensagemDoCampo
           id={idAviso}

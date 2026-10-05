@@ -65,7 +65,7 @@ export function DialogoSaida({ pessoaId, aoFechar }: { pessoaId: Id; aoFechar: (
             <p>{textoSaida(estado, pessoa)}</p>
             <p>
               Deixa de aparecer no mapa e nas listas. Fica no histórico e na Tabela (com «Mostrar quem saiu»);
-              nada se apaga. Se voltar, usa «Voltou à empresa…» na ficha.
+              nada se apaga. Se voltar, usa «Voltou à empresa…» na linha dela, na Tabela.
             </p>
           </>
         ) : (

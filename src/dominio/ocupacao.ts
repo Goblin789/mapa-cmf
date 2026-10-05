@@ -107,12 +107,19 @@ export function lugaresTemporarios(
   );
 }
 
-/** "1 livre até 12/10", "2 livres até 12/10" (o 1.º a voltar), "1 livre (sem data de regresso)"; null sem nenhum. */
+/**
+ * "1 livre até 12/10", "2 livres até 12/10" (o 1.º a voltar), "1 livre (sem data de regresso)"; com e sem
+ * data, separados: "1 livre até 10/10 · 1 sem data de regresso" (os sem data não estão livres "até 10/10").
+ * null sem nenhum.
+ */
 export function textoLugaresTemporarios(lugares: readonly LugarTemporario[]): string | null {
-  const primeiro = lugares[0];
-  if (!primeiro) return null;
-  const n = lugares.length === 1 ? '1 livre' : `${lugares.length} livres`;
-  return primeiro.ate === null ? `${n} (sem data de regresso)` : `${n} até ${formatarDiaMes(primeiro.ate)}`;
+  const livres = (n: number) => (n === 1 ? '1 livre' : `${n} livres`);
+  const comData = lugares.filter((l): l is LugarTemporario & { ate: string } => l.ate !== null);
+  const semData = lugares.length - comData.length;
+  const primeiro = comData[0];
+  if (!primeiro) return semData === 0 ? null : `${livres(semData)} (sem data de regresso)`;
+  const ate = `${livres(comData.length)} até ${formatarDiaMes(primeiro.ate)}`;
+  return semData === 0 ? ate : `${ate} · ${semData} sem data de regresso`;
 }
 
 /**

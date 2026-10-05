@@ -120,7 +120,8 @@ export function DialogoNovaPessoa({ aoFechar }: { aoFechar: () => void }) {
     const nome = linhaDeTexto(dados.nomeNoMapa);
     if (!aplicarComAviso(passoNovaPessoa(atual, dados, id), `Nova pessoa: ${nome} (por guardar)`)) return;
     aoFechar();
-    // Depois de o diálogo devolver o foco a quem o abriu: a pessoa nova fica em foco (a ficha abre).
+    // Depois de o diálogo devolver o foco a quem o abriu: a pessoa nova fica em foco (no Mapa e no Quadro a
+    // ficha abre; na Tabela, que não tem ficha da pessoa, a linha fica realçada).
     requestAnimationFrame(() => mostrarElemento({ tipo: 'pessoa', id }, { noMapa: 'so-foco' }));
   };
 

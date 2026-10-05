@@ -7,9 +7,19 @@ import {
   filtrarDestinos,
   montarDestinos,
   proximoAtivo,
+  separadoresDoMover,
   textoLivres,
   tituloMover,
 } from './destinos';
+
+describe('separadoresDoMover', () => {
+  it('Obras só com obras, ou quando se abre já nele ("Mudar obra…" da ficha, mesmo sem obras)', () => {
+    expect(separadoresDoMover(true, null)).toEqual([null, 'casa', 'carrinha', 'obra']);
+    expect(separadoresDoMover(false, null)).toEqual([null, 'casa', 'carrinha']);
+    expect(separadoresDoMover(false, 'casa')).toEqual([null, 'casa', 'carrinha']);
+    expect(separadoresDoMover(false, 'obra')).toEqual([null, 'casa', 'carrinha', 'obra']);
+  });
+});
 
 function destinosDe(pessoaIds: string[], estado = estadoExemplo()) {
   return montarDestinos(estado, indexar(estado), pessoaIds);
@@ -106,14 +116,14 @@ describe('montarDestinos com indisponíveis (M2)', () => {
     montarDestinos(estado, ind, ids)[1]?.destinos.find((d) => d.rotulo === rotulo);
 
   it('na carrinha, quem está indisponível hoje não ocupa lugar; diz até quando o lugar está livre', () => {
-    // ZZ 1001: Ana, Bruno, Filipe e Gil (4/5) → 2/5, com 2 lugares livres só até 12/10 (o Bruno volta primeiro).
+    // ZZ 1001: Ana, Bruno, Filipe e Gil (4/5) → 2/5: 1 lugar livre até 12/10 (o Bruno) e 1 sem data (o Gil).
     expect(carrinha(['p-helena'], 'ZZ 1001')?.lotacao).toEqual({
       ocupados: 2,
       lugares: 5,
       nivel: 'livre',
       depois: 3,
       nivelDepois: 'livre',
-      temporarios: '2 livres até 12/10',
+      temporarios: '1 livre até 12/10 · 1 sem data de regresso',
     });
     // A lista continua a ter toda a gente.
     expect(carrinha(['p-helena'], 'ZZ 1001')?.pessoas).toBe(4);

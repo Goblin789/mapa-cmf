@@ -72,7 +72,13 @@ export function DialogoReverter({ entrada, aoFechar }: { entrada: EntradaHistori
     if (!vista?.podePorNoRascunho) return;
     // O Guardar fala deste lote pela data e pelo autor.
     lembrarGravacoes([entrada]);
-    const ok = useLoja.getState().iniciarReversao(entrada.loteId, vista.operacoes);
+    // A data e o autor vão com a reversão (o rascunho guardado também os leva): a nota do Guardar fica igual
+    // depois de recarregar a página.
+    const ok = useLoja.getState().iniciarReversao(entrada.loteId, vista.operacoes, {
+      criadoEm: entrada.criadoEm,
+      autor: entrada.autor,
+      autorNome: entrada.autorNome,
+    });
     if (!ok) {
       avisar('Nada mudou: o que esta gravação mudou já está como estava antes dela.');
       return;
@@ -123,7 +129,7 @@ export function DialogoReverter({ entrada, aoFechar }: { entrada: EntradaHistori
         <div className="space-y-4">
           {revertida && (
             <p className="rounded-md border border-violet-300 bg-violet-50 px-3 py-2 text-sm text-violet-950">
-              {revertida.dica}. O que ainda se pode reverter aparece em baixo.
+              {revertida.dica}. Não se reverte outra vez.
             </p>
           )}
           {!modoEdicao && podePor && (

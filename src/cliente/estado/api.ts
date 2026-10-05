@@ -13,6 +13,7 @@ import type {
   RespostaGuardar,
   ResultadoGeocodificacao,
 } from '../../dominio/api';
+import { FRASE_CONFLITO } from '../../dominio/api';
 import type { Estado, Pais } from '../../dominio/tipos';
 import { useSessao } from '../entrar/sessao';
 
@@ -35,10 +36,10 @@ export class ErroSessao extends Error {
   }
 }
 
-/** O servidor recusou porque alguém mudou entretanto as mesmas pessoas (HTTP 409). Nada foi gravado. */
+/** O servidor recusou porque alguém mudou entretanto as mesmas coisas (HTTP 409). Nada foi gravado. */
 export class ErroConflito extends Error {
   constructor(readonly conflitos: ConflitoServidor[]) {
-    super('Alguém mudou entretanto algumas destas pessoas ou carrinhas. Nada foi gravado.');
+    super(FRASE_CONFLITO);
   }
 }
 

@@ -12,6 +12,7 @@ import {
   etiquetaRevertida,
   formatarDiaHoraCurto,
   gravacoesConhecidas,
+  gravacoesDasReversoes,
   juntarFrasesIguais,
   lembrarGravacoes,
   lotesDaReversaoAEnviar,
@@ -129,6 +130,14 @@ describe('mostraReverter', () => {
     expect(mostraReverter(entrada({ autor: 'importacao', tipo: 'importacao' }), false)).toBe(false);
     expect(mostraReverter(entrada({ autor: 'dados-iniciais', tipo: 'ficha' }), false)).toBe(false);
     expect(mostraReverter(entrada({ estado: 'agendado' }), false)).toBe(false);
+  });
+
+  it('uma gravação já revertida não mostra "Reverter…" (nem o diálogo a deixa pôr no rascunho)', () => {
+    expect(mostraReverter(entrada({ revertidoPor: [12] }), false)).toBe(false);
+    expect(mostraReverter(entrada({ revertidoPor: [] }), false)).toBe(true);
+    const vista = prepararReversao(estadoExemplo(), entrada({ revertidoPor: [12] }));
+    expect(vista.podePorNoRascunho).toBe(false);
+    expect(vista.explicacao).toBe('Esta gravação já foi revertida: não se reverte outra vez.');
   });
 });
 
@@ -268,6 +277,33 @@ describe('reversões que vão no Guardar e os nomes das gravações', () => {
     );
     expect(notaReversaoNoGuardar([8, 12], carregadas)).toBe(
       'Inclui a reversão da gravação de 05/10 00:02 (Ana Exemplo) e da gravação nº 12.',
+    );
+  });
+
+  it('depois de recarregar, a nota do Guardar continua com a data e o autor (guardados na reversão)', () => {
+    const reversoes = [
+      {
+        loteId: 12,
+        passo: 0,
+        chaves: ['x'],
+        gravacao: {
+          criadoEm: '2026-10-05T07:12:00.000Z',
+          autor: 'rui@exemplo.test',
+          autorNome: 'Rui Exemplo',
+        },
+      },
+      { loteId: 13, passo: 0, chaves: ['y'] },
+    ];
+    expect(gravacoesDasReversoes(reversoes)).toEqual([
+      {
+        loteId: 12,
+        criadoEm: '2026-10-05T07:12:00.000Z',
+        autor: 'rui@exemplo.test',
+        autorNome: 'Rui Exemplo',
+      },
+    ]);
+    expect(notaReversaoNoGuardar([12, 13], gravacoesDasReversoes(reversoes))).toBe(
+      'Inclui a reversão da gravação de 05/10 09:12 (Rui Exemplo) e da gravação nº 13.',
     );
   });
 

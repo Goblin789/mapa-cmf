@@ -431,6 +431,25 @@ describe('M2: rascunhos com fichas, registos e reversões', () => {
     expect(lido?.reversoes).toBeUndefined();
   });
 
+  it('a reversão leva a data e o autor da gravação revertida; estragados, só se perdem eles', () => {
+    const a = armazenamentoFalso();
+    const gravacao = {
+      criadoEm: '2026-10-05T07:12:00.000Z',
+      autor: 'ana@exemplo.test',
+      autorNome: 'Ana Exemplo',
+    };
+    const reversoes = [
+      { loteId: 4, passo: 0, chaves: ['chave-da-lotacao'], gravacao },
+      { loteId: 5, passo: 0, chaves: ['outra'], gravacao: { criadoEm: 3 } },
+    ];
+    guardarRascunhoPendente(a, rascunho({ passos: [[CAMPO]], reversoes: reversoes as never }));
+    const [lido] = lerRegistos(a);
+    expect(lido?.reversoes).toStrictEqual([
+      { loteId: 4, passo: 0, chaves: ['chave-da-lotacao'], gravacao },
+      { loteId: 5, passo: 0, chaves: ['outra'] },
+    ]);
+  });
+
   it('um rascunho do modo local (sem login) serve a quem entrar depois com a conta Microsoft', () => {
     expect(autorCompativel('local', 'ana@exemplo.lu')).toBe(true);
     expect(autorCompativel('ana@exemplo.lu', 'ana@exemplo.lu')).toBe(true);

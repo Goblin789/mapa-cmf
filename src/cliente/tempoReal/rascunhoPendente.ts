@@ -80,6 +80,19 @@ export interface ReversaoPendente {
   loteId: number;
   passo: number;
   chaves: string[];
+  /**
+   * A data e o autor da gravação revertida (como no Histórico): depois de recarregar a página, a nota do
+   * Guardar continua a dizer "da gravação de 05/10 09:12 (Ana Exemplo)" e não "nº 12". Opcional: os registos
+   * de antes não a têm.
+   */
+  gravacao?: GravacaoRevertida;
+}
+
+/** A gravação revertida, para as frases (LoteParaEtiqueta sem o id). */
+export interface GravacaoRevertida {
+  criadoEm: string;
+  autor: string;
+  autorNome: string;
 }
 
 /** Um registo tal como se lê: com a origem sempre preenchida. */
@@ -424,10 +437,22 @@ function validarRascunho(valor: unknown): RegistoRascunho | null {
     origem: origem ?? separador ?? `${data}|${autor ?? ''}`,
   };
   if (typeof recuperadoPor === 'string') registo.recuperadoPor = recuperadoPor;
-  // As reversões estragadas não estragam o rascunho: só se perdem elas.
-  const validas = Array.isArray(reversoes) ? reversoes.filter(eReversao) : [];
+  // As reversões estragadas não estragam o rascunho: só se perdem elas (e uma gravação estragada só perde a
+  // data e o autor: a nota do Guardar volta ao "nº N").
+  const validas = Array.isArray(reversoes)
+    ? reversoes.filter(eReversao).map((r) => {
+        const { gravacao, ...resto } = r;
+        return eGravacao(gravacao) ? { ...resto, gravacao } : resto;
+      })
+    : [];
   if (validas.length > 0) registo.reversoes = validas;
   return registo;
+}
+
+function eGravacao(valor: unknown): valor is GravacaoRevertida {
+  if (typeof valor !== 'object' || valor === null) return false;
+  const g = valor as Record<string, unknown>;
+  return typeof g.criadoEm === 'string' && typeof g.autor === 'string' && typeof g.autorNome === 'string';
 }
 
 function eReversao(valor: unknown): valor is ReversaoPendente {

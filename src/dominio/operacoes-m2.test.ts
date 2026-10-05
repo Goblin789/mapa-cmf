@@ -312,7 +312,7 @@ describe('nomes e frases do histórico (M2)', () => {
     expect(d(campo('pessoa', 'p-gil', 'carrinhaAConfirmar', false, true))).toBe(
       'Gil N. — carrinha a confirmar',
     );
-    expect(d(campo('pessoa', 'p-ana', 'temCarta', null, true))).toBe('Ana T. — carta: não sei → sim');
+    expect(d(campo('pessoa', 'p-ana', 'temCarta', null, true))).toBe('Ana T. — carta: sem dados ainda → sim');
     expect(d(campo('pessoa', 'p-ana', 'cartaValidade', null, '2027-03-01'))).toBe(
       'Ana T. — carta válida até: — → 01/03/2027',
     );

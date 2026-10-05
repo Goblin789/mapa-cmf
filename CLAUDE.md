@@ -83,7 +83,7 @@ camadas, lista lateral, **modo de edição** (rascunho, arrastar, Mover para…,
   sozinho: só o "Ver no mapa" da ficha e o botão "Ver no mapa" de cada linha da Tabela levam ao Mapa (na
   Tabela não há ficha da pessoa). O Quadro agrupa por Casas | Carrinhas | Obras e filtra só por clientes
   (`docs/vistas-edicao.md`, `vistas/mostrar.ts`).
-- `POST /api/lotes` grava tudo ou nada (409 se alguém mudou as mesmas pessoas ou carrinhas); operações
+- `POST /api/lotes` grava tudo ou nada (409 se alguém mudou as mesmas coisas; cada frase diz quem e quando); operações
   `mover`, `condutor` e `dormida`. Autor = e-mail (UPN) de quem tem sessão; 'local' no modo local.
   O histórico mostra o nome (`autorNome`).
 - Se a sessão termina a meio de uma edição, o rascunho fica guardado no browser e volta depois de entrar.
