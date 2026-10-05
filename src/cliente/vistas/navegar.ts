@@ -1,6 +1,6 @@
-// "Ver no mapa": o ÚNICO caminho da Tabela e do Quadro para o Mapa (o botão explícito da ficha). Muda
-// para o Mapa, põe a pessoa (casa, carrinha, obra) em foco e leva o mapa até lá, como a pesquisa do
-// cabeçalho (a obra vai para o sítio dela: destinoNoMapa).
+// "Ver no mapa": o ÚNICO caminho da Tabela e do Quadro para o Mapa (o botão explícito da ficha e, na Tabela,
+// o de cada linha, a seguir ao nome). Muda para o Mapa, põe a pessoa (casa, carrinha, obra) em foco e leva o
+// mapa até lá, como a pesquisa do cabeçalho (a obra vai para o sítio dela: destinoNoMapa).
 // Tudo o resto (pesquisa, ligações da ficha, cliques nas vistas) mostra sem mudar de vista:
 // ver vistas/mostrar.ts.
 

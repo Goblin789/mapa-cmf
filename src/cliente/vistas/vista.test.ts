@@ -68,7 +68,7 @@ describe('hashDe', () => {
 });
 
 describe('lerAgrupamento', () => {
-  it('por omissão as casas; "carrinhas" e "obras" (M2) mudam', () => {
+  it('por omissão as casas; "carrinhas" e "obras" mudam', () => {
     expect(lerAgrupamento(null)).toBe('casas');
     expect(lerAgrupamento('lixo')).toBe('casas');
     expect(lerAgrupamento('carrinhas')).toBe('carrinhas');

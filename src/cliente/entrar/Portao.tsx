@@ -100,7 +100,7 @@ export function Portao({ children }: { children: ReactNode }) {
   if (estado === 'a-verificar') return <EcraVerificar />;
   if (estado === 'fora' && !terminou) {
     // O erro da entrada só interessa a quem chegou sem sessão (não depois de Sair).
-    return <EcraEntrar erroEntrada={motivo === 'sem-sessao' ? erroEntrada : null} saiu={motivo === 'saiu'} />;
+    return <EcraEntrar erroEntrada={motivo === 'sem-sessao' ? erroEntrada : null} />;
   }
   return (
     <>

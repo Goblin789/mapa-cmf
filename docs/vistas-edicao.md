@@ -46,7 +46,8 @@ desaparece.
 | Pesquisa do cabeçalho (agora em todas as vistas, fora da reunião) | `mostrarElemento(r, { noMapa: 'ir' })` (+ no Mapa, o nome na lista, como hoje) |
 | Ligações da ficha (casa, carrinha, condutor…) | `mostrarElemento(x, { noMapa: 'so-foco' })` |
 | Nomes dentro da ficha da vista (moradores, passageiros: `NomeChip`) | o `NomeChip` muda o foco; a ficha apanha o clique e chama `seguirPessoaEmFoco(id)` (pedido à vista se a pessoa ficou em foco) |
-| Clique num nome / bloco da vista, ou no ⓘ de uma linha da Tabela | `definirFoco` (já está à vista: não desliza) |
+| Clique num nome / bloco da vista, ou numa ligação Casa/Carrinha de uma linha da Tabela | `definirFoco` (já está à vista: não desliza) |
+| Botão "Ver no mapa" de uma linha da Tabela (a seguir ao nome) | `verNoMapa({ tipo: 'pessoa', id })` (muda para o Mapa) |
 
 ## Peças partilhadas (contratos já no código)
 
@@ -66,15 +67,16 @@ desaparece.
   lado. "Ver tudo ⌃" (ou tocar no título) abre-a toda, até 60 % da área e deixando sempre 6 rem da vista;
   "Recolher ⌄" volta a fechá-la. Recolhe quando o foco muda a partir da vista; as ligações e os nomes dentro da
   ficha não a recolhem. Medido a 375×667, a editar: ficam à vista uns 120–135 px de linhas/blocos (antes ~30);
-  a ler, 284 px. No PC e no Mapa a ficha fica igual. A ficha compacta da pessoa na Tabela (abaixo) nunca
-  recolhe.
-  **Ficha da pessoa compacta na Tabela** (acertos de 04/10/2026; `fichaPessoaCompacta`, `FichaPessoaCompacta`,
-  `data-compacta`): só o que a linha não tem — o cabeçalho (Pessoa, nome, "no mapa: …" só quando o nome do
-  mapa é mesmo outro, sem contar acentos e maiúsculas, "Ver no mapa", ✕), o aviso "Conduz, mas não tem carta."
-  e o telefone e a carta **só se existirem**; sem nada disto fica só o cabeçalho (≈54 px, sem linhas "sem
-  dados"). Sem Nº, Cliente nem Casa → Carrinha → Obra e sem os botões Mudar…/condutor (no modo de edição estão
-  nas células). No Mapa e no Quadro a ficha da pessoa é a completa; as fichas de casa e de carrinha são
-  completas em todas as vistas. A vista decide-se no `PainelFoco` (prop `vista`, senão a vista ativa).
+  a ler, 284 px. No PC e no Mapa a ficha fica igual.
+  **Na Tabela não há ficha da pessoa** (04/10/2026, `haFichaDaPessoa`; antes era uma ficha compacta aberta
+  pelo ⓘ, que o Rafael achou inútil: só o "Ver no mapa" servia, e passou a ser o botão da linha). Uma pessoa
+  em foco na Tabela (pesquisa, nome na ficha de uma casa) só realça a linha. No Mapa e no Quadro a ficha da
+  pessoa é a completa; as fichas de casa e de carrinha abrem em todas as vistas. A vista decide-se no
+  `PainelFoco` (prop `vista`, senão a vista ativa).
+  **Aviso do contrato só na ficha da casa** (04/10/2026): no resumo (ficha recolhida) e no corpo. Não aparece
+  nos cartões nem nas pastilhas de resumo do Mapa, na lista lateral, no Quadro (nem na reunião) nem na
+  Tabela; fica também no diálogo Guardar, quando uma mudança põe uma casa acima do contrato. A etiqueta
+  "sempre cheia" não aparece em lado nenhum (as casas continuam a contar como cheias: sem "livre").
   **Ficha arrastável (04/10/2026), no PC (a partir de 640 px), no Mapa, no Quadro e na Tabela**: pega-se pelo
   cabeçalho (a pega de 6 pontos, a linha do tipo ou o espaço vazio; o título e a morada continuam a
   selecionar-se e a copiar-se) e vai para qualquer sítio dentro da área da vista ou do mapa, sempre a 8 px das
@@ -117,24 +119,39 @@ desaparece.
 
 ## Quadro
 
+- **Casas | Carrinhas | Obras** (04/10/2026, pedido do Rafael: "Obras" ao lado de Casas e Carrinhas, e não à
+  parte): o alternador da barra (e do cabeçalho da reunião) tem as três opções, lembradas no browser
+  (`mapa-cmf:quadro`). **Por obras** (`agrupamentoQuadro.ts`, `seccoesObras`): uma secção por cliente (pela
+  ordem dos clientes; "Cliente desconhecido" no fim), um bloco por obra pelo nome (título = nome da obra; por
+  baixo, fora da reunião, a morada do local ou, sem ela, o nome do local quando não é o da obra; sem lotação,
+  a pastilha é o nº de pessoas; o título abre a ficha da obra, M2; os nomes vêm pela casa de onde vem cada
+  um, que se lê em letra pequena por baixo do nome, sem alargar a coluna) e, no fim, o bloco largo **"Sem obra"** (por cliente; conta também quem tem uma obra
+  que não se conhece, como o filtro; sem a casa de onde vem: hoje tem toda a gente). Cada bloco é um alvo de largar (`obra:<id>`, `sem-obra`: muda a obra,
+  com a previsão "Obra X: 5 + 1 = 6" e o "●" de alterado). Sem obras nenhumas (hoje), só "Sem obra" com toda
+  a gente e a nota "Ainda não há obras…", como na lista lateral. Uma casa ou carrinha em foco ou mostrada no
+  Quadro por obras realça os moradores/passageiros (não há blocos de casas nem de carrinhas para as ligações;
+  sem ninguém, "Casa X: ninguém mora lá." / "Carrinha X: ninguém vai nela."). O Quadro **não tem filtro
+  "Obra"** à parte (05/10/2026: era a "aba separada" de que o Rafael não gostava; as obras veem-se pelo
+  agrupamento). Para caber: no telemóvel o alternador fica só com o texto (com os ícones a barra passava a três
+  linhas; fica em duas, 89 px), e no cabeçalho da reunião também de 1280 a 1919 px (com eles os filtros, ao
+  lado da hora, passavam a mais uma linha: a 1680 px, 94 → 154 px); a 1920 px (a TV) tem os ícones. Medido:
+  cabeçalho da reunião 75 px de 1280 a 1536 px e 94 px a 1680 e 1920 px, como antes.
 - **Ler**: clicar num nome abre a ficha da pessoa; clicar no título de um bloco abre a da casa/carrinha (já
   não "Ver no mapa"). O que está em foco tem um anel; casa/carrinha em foco que não tem bloco no agrupamento
   atual (ex.: casa no Quadro por carrinhas) realça os nomes dos moradores/passageiros. Se não houver nada a que chegar (casa sem moradores e sem carrinhas a dormir lá no Quadro por
   carrinhas; carrinha sem passageiros e sem casa no Quadro por casas), um aviso curto diz porquê
   (`avisoSemNadaNoQuadro`, `useUiEdicao.avisar`); o agrupamento não muda.
-- **Filtros (04/10/2026)**: Clientes e Obra, vários ao mesmo tempo. No PC as pastilhas dos clientes na barra
-  são o filtro: cada clique liga/desliga esse cliente (sem Shift) e "Todos" (só aparece com clientes **e**
-  obras escolhidos; só limpa os clientes) passa o foco para a 1.ª pastilha; no telemóvel é um `FiltroMultiplo` "Cliente". "Obra" é um `FiltroMultiplo` com
-  as obras por cliente e "Sem obra" (só quando há obras; sem nenhuma, "Obra: sem obras" desativado). Ficam
-  **só** as pessoas que passam (OU dentro do filtro, E entre clientes e obras); o cliente que conta é o
+- **Filtros (04/10/2026; o "Obra" saiu a 05/10)**: Clientes, vários ao mesmo tempo. No PC as pastilhas dos
+  clientes na barra são o filtro: cada clique liga/desliga esse cliente (sem Shift); no telemóvel é um
+  `FiltroMultiplo` "Cliente". Ficam **só** as pessoas que passam; o cliente que conta é o
   efetivo (o da obra, se tiver). Os blocos continuam todos, com a lotação e os lugares livres reais: os que
   não têm ninguém do filtro ficam recolhidos numa fila por baixo da grelha de cada parte (título e pastilha;
   continuam alvos de largar e abrem a ficha); os outros mostram "+N fora do filtro". A barra diz "N de M
-  pessoas" e, com algum filtro, "Limpar filtros" (clientes e obras, como na Tabela; o foco passa para a 1.ª
+  pessoas" e, com algum filtro, "Limpar filtros" (como na Tabela; o foco passa para a 1.ª
   pastilha ou para o botão "Cliente"). Quando o filtro não deixa ninguém, aparece por cima dos blocos
   (que ficam, recolhidos: continuam alvos de largar) "Ninguém corresponde ao filtro. Limpar filtros"
   (role=status). Na reunião os mesmos filtros (só para ver): a partir de 1280 px no próprio cabeçalho da
-  reunião, ao lado da hora (listas "Cliente" e "Obra" até 1919 px; as pastilhas a partir de 1920 px), com
+  reunião, ao lado da hora (a lista "Cliente" até 1919 px; as pastilhas a partir de 1920 px), com
   "N de M pessoas" e "Limpar filtros"; abaixo de 1280 px, uma barra fina por cima do Quadro. Medido a 1920:
   cabeçalho 94 px e sem barra (antes 80 + 46), área do Quadro 954 → 987 px; a 1280, 67 + 37 → 75 px. O filtro fica em memória (o
   mesmo dentro e fora da reunião; não fica guardado ao recarregar). Mostrar alguém que o filtro esconde
@@ -191,25 +208,29 @@ desaparece.
   pelo nome curto e pelos nomes alternativos. Largura da etiqueta: 12 rem no telemóvel (9 rem a editar),
   16 rem no PC, 18,5 rem a partir de 1536 px; o nome inteiro está no title. A folha Pessoas do Excel segue a
   Tabela (uma só coluna Nome).
-- **Ler** (04/10/2026: a linha já mostra tudo, a ficha só abre a pedido): clicar numa linha **só a realça**
-  (fundo azul claro e barra à esquerda; outro clique tira o realce) e **não abre a ficha**. O botão **ⓘ**, a
-  seguir ao nome (na célula presa à esquerda), abre e fecha a ficha da pessoa (aria-pressed). **Clicar numa
-  linha nunca abre nem muda a ficha** (acertos de 04/10/2026; antes, com a ficha de uma pessoa aberta, passava-a
-  para a linha clicada, que era a informação repetida de que o Rafael se queixou): só o ⓘ a abre ou a passa
-  para essa pessoa, e o ⓘ da pessoa aberta fecha-a (`marcadaDepoisDoClique`). A ficha da pessoa na Tabela é a
-  **compacta** (ver Peças partilhadas). Clicar na linha da pessoa da ficha não lhe tira o realce: ao fechar a
-  ficha, ela continua realçada. O nome deixou de ser botão (o teclado usa o ⓘ e as caixas). Os valores de Casa
-  e Carrinha são ligações que abrem a ficha (completa) da casa/carrinha. A linha da pessoa da ficha tem a
-  barra azul-escura (#1d4ed8) e a linha só realçada pelo clique uma barra mais clara (#60a5fa), para se ver
-  qual é a da ficha; com uma casa/carrinha em foco, as linhas dela levemente. Com a ficha aberta na origem, a
-  caixa da tabela reserva espaço à direita para ela (`reservaDaFicha`); com a ficha arrastada (`data-movida`)
-  não reserva. No telemóvel reserva em baixo 10 rem com a ficha (compacta) de uma pessoa e 60 % com a de uma
-  casa/carrinha.
+- **Ler** (04/10/2026: a linha já mostra tudo): clicar numa linha **só a realça** (fundo azul claro e barra
+  à esquerda; outro clique tira o realce) e **nunca abre ficha**. **Na Tabela não há ficha da pessoa**
+  (pedido do Rafael, 04/10/2026: a ficha que o ⓘ abria era inútil, só o "Ver no mapa" servia). A seguir ao
+  nome (na célula presa à esquerda, à vista em qualquer largura e no modo de edição) está o botão **"Ver no
+  mapa"**: cinzento, sempre à vista; no PC o ícone do mapa e o texto "Ver no mapa", no telemóvel (< 768 px) só
+  o ícone, para a coluna presa não crescer (title e aria-label "Ver <nome> no mapa"; 28 px de altura, com o
+  alvo de toque alargado a 40 × 32 px sem sair da linha), que chama `verNoMapa` (muda para o Mapa e lá põe
+  a pessoa em foco; fora do modo de edição a linha fica marcada para quando se voltar). Na linha de quem saiu
+  da empresa (M2, "Mostrar quem saiu"; não está no mapa) o mesmo sítio tem "Voltou à empresa…" ("Voltou…" no
+  telemóvel; `botaoDaLinha`, `abrirVoltouAEmpresa`): entra no modo de edição, se preciso, e abre o diálogo de
+  quem volta. Uma pessoa em foco
+  na Tabela (pesquisa do cabeçalho, nome na ficha de uma casa) só realça a linha (barra azul-escura,
+  #1d4ed8); um clique numa linha tira-lhe o foco e fica só a linha marcada (barra mais clara, #60a5fa;
+  `marcadaDepoisDoClique`: na linha dela o clique não tira o realce). O nome não é botão (o teclado usa o
+  "Ver no mapa" e as caixas). Os valores de Casa e Carrinha são ligações que abrem a ficha da casa/carrinha
+  (a da casa tem o aviso do contrato); com uma casa/carrinha em foco, as linhas dela ficam levemente
+  realçadas. Com essa ficha aberta na origem, a caixa da tabela reserva espaço à direita para ela
+  (`reservaDaFicha`); com a ficha arrastada (`data-movida`) não reserva. No telemóvel reserva 60 % em baixo.
   O realce por cliente da legenda do Mapa (`clienteDestacado`) **não conta na Tabela** (ela tem o filtro
   Cliente): nem esbate linhas nem mostra "Só <cliente> · Todos". Nas fichas abertas na Tabela e no Quadro
   também não esbate os nomes (`NomeChip` só esbate no Mapa).
 - **Editar**: coluna de caixas de seleção (e "todas as visíveis" no cabeçalho); clique na linha = seleção
-  como nos nomes (Ctrl/⌘, Shift pela ordem visível), **sem abrir a ficha** (o ⓘ abre-a). Células **Casa, Carrinha, Obra** passam a listas
+  como nos nomes (Ctrl/⌘, Shift pela ordem visível), **sem abrir ficha**. Células **Casa, Carrinha, Obra** passam a listas
   (`<select>` nativo: funciona no telemóvel e no teclado) com a lotação da simulação ("Casa 2 · 6/6"), e
   "Fora das casas CMF" / "Sem transporte da empresa" / "Sem obra"; mudar = `moverComAviso` (um passo, Ctrl+Z
   desfaz). **Condutor**: botão que liga/desliga (`definirCondutorComAviso`). Células alteradas a âmbar com

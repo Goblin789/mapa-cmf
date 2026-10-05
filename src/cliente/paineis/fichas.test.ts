@@ -3,7 +3,7 @@ import { dormidasDasCarrinhas } from '../../dominio/dormidas';
 import { indexar } from '../../dominio/indices';
 import type { Operacao } from '../../dominio/operacoes';
 import { estadoExemplo } from '../../dominio/teste-fabrica';
-import { estadoFicticio, pessoaFicticia } from './dadosFicticios';
+import { estadoFicticio } from './dadosFicticios';
 import {
   avisoNomeNoMapa,
   avisoOutraMorada,
@@ -17,14 +17,11 @@ import {
   erroOutrasMatriculas,
   erroSemNome,
   escolhaCarta,
-  extrasDaPessoa,
-  fichaCompactaTemCorpo,
-  fichaPessoaCompacta,
+  haFichaDaPessoa,
   opcoesOutraMorada,
   operacoesMoradaDoLocal,
   outraComNomeNoMapa,
   outrasCasasNoLocal,
-  resumoDasCasas,
   teclaDoCampoAberto,
 } from './fichas';
 
@@ -110,47 +107,11 @@ function pessoa(id: string) {
   return p;
 }
 
-describe('ficha compacta da pessoa (Tabela)', () => {
-  it('só na Tabela; no Mapa e no Quadro a ficha é completa', () => {
-    expect(fichaPessoaCompacta('tabela')).toBe(true);
-    expect(fichaPessoaCompacta('quadro')).toBe(false);
-    expect(fichaPessoaCompacta('mapa')).toBe(false);
-  });
-
-  it('sem telefone nem carta conhecidos, nada a mostrar', () => {
-    const p = pessoaFicticia({ id: 'x1', nomeCurto: 'Zé T.', nome: 'Zé', apelidos: 'Teste' });
-    expect(extrasDaPessoa(p, '2026-10-04')).toEqual({ nomeNoMapa: 'Zé T.', telefone: null, carta: null });
-  });
-
-  it('mostra o telefone e a carta quando existem, e não repete o nome do mapa igual ao completo', () => {
-    const p = pessoaFicticia({
-      id: 'x2',
-      nomeCurto: 'Zé Teste',
-      nome: 'Zé',
-      apelidos: 'Teste',
-      telefone: ' +352 600 000 000 ',
-      temCarta: true,
-      cartaValidade: '2026-01-31',
-    });
-    const extras = extrasDaPessoa(p, '2026-10-04');
-    expect(extras.nomeNoMapa).toBeNull();
-    expect(extrasDaPessoa({ ...p, nomeCurto: 'ZE TESTE' }, '2026-10-04').nomeNoMapa).toBeNull();
-    expect(extras.telefone).toBe('+352 600 000 000');
-    expect(extras.carta).toBe('Caducou a 31/01/2026');
-    expect(extrasDaPessoa({ ...p, telefone: '  ', temCarta: false }, '2026-10-04')).toMatchObject({
-      telefone: null,
-      carta: 'Não tem',
-    });
-  });
-
-  it('sem telefone, carta nem aviso, não tem corpo (só o cabeçalho, sem linha "sem dados")', () => {
-    const p = pessoaFicticia({ id: 'x3', nomeCurto: 'Zé T.', nome: 'Zé', apelidos: 'Teste' });
-    const extras = extrasDaPessoa(p, '2026-10-04');
-    expect(fichaCompactaTemCorpo(extras, false)).toBe(false);
-    // Quem conduz sem carta tem o aviso (e a carta "Não tem").
-    expect(fichaCompactaTemCorpo(extras, true)).toBe(true);
-    expect(fichaCompactaTemCorpo({ ...extras, telefone: '+352 600 000 000' }, false)).toBe(true);
-    expect(fichaCompactaTemCorpo({ ...extras, carta: 'Não tem' }, false)).toBe(true);
+describe('ficha da pessoa por vista', () => {
+  it('na Tabela não há ficha da pessoa (só "Ver no mapa" na linha); no Mapa e no Quadro há', () => {
+    expect(haFichaDaPessoa('tabela')).toBe(false);
+    expect(haFichaDaPessoa('quadro')).toBe(true);
+    expect(haFichaDaPessoa('mapa')).toBe(true);
   });
 });
 
@@ -258,25 +219,6 @@ describe('destinoNoMapa', () => {
   it('casa: o seu local', () => {
     expect(destinoNoMapa({ tipo: 'casa', id: 'casa-b' }, ind, dormidas)).toEqual({ lat: 49.7, lng: 6.1 });
     expect(destinoNoMapa({ tipo: 'casa', id: 'casa-c' }, ind, dormidas)).toBeNull();
-  });
-});
-
-describe('resumoDasCasas', () => {
-  it('lista as casas com lugares livres, mais livres primeiro', () => {
-    const { comLivres } = resumoDasCasas(estado.casas, ind);
-    expect(comLivres.map((r) => [r.casa.id, r.ocupacao.livres])).toEqual([
-      ['casa-b', 2],
-      ['casa-c', 1],
-    ]);
-  });
-
-  it('lista as casas acima do contrato, primeiro as acima do tolerado', () => {
-    const casas = estado.casas.map((c) => (c.id === 'casa-c' ? { ...c, maxContrato: 1, tolerado: 2 } : c));
-    const { acimaContrato } = resumoDasCasas(casas, ind);
-    expect(acimaContrato.map((r) => [r.casa.id, r.ocupacao.aviso])).toEqual([
-      ['casa-c', 'acima_tolerado'],
-      ['casa-a', 'acima_maximo'],
-    ]);
   });
 });
 

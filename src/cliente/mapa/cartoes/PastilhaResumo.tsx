@@ -1,6 +1,7 @@
 // Resumo (zoom afastado ou ecrã pequeno): uma pastilha por local (ou locais juntos), com o nome e, numa
 // linha, ícone + "ocupados/lugares" das casas, das carrinhas e das obras. Carregar abre o local com os
-// nomes. A lotação agregada fica a vermelho se alguma casa/carrinha tiver gente a mais.
+// nomes. A lotação agregada fica a vermelho se alguma casa/carrinha tiver gente a mais. Sem aviso do
+// contrato (só na ficha da casa).
 // M2: as carrinhas não contam quem está indisponível hoje (ocupacaoDaCarrinha); os problemas abertos das
 // casas e carrinhas do local entram no tooltip (a pastilha é pequena demais para mais um ícone).
 
@@ -50,9 +51,6 @@ export function PastilhaResumo({ disposto, esquerda, topo, destaque }: Props) {
     return casa ? [ocupacaoCasa(casa, indices.moradores.get(id)?.length ?? 0)] : [];
   });
   const casas = somar(ocCasas.map((o) => ({ ocupados: o.ocupados, lugares: o.lotacao, nivel: o.nivel })));
-  const acimaContrato = ocCasas.filter(
-    (o) => o.aviso === 'acima_maximo' || o.aviso === 'acima_tolerado',
-  ).length;
   const carrinhas = somar(
     carrinhasIds.flatMap((id) => {
       const c = indices.carrinhas.get(id);
@@ -70,7 +68,6 @@ export function PastilhaResumo({ disposto, esquerda, topo, destaque }: Props) {
     casasIds.length > 0
       ? `${contar(casasIds.length, 'casa', 'casas')}: ${casas.ocupados}/${casas.lugares}`
       : null,
-    acimaContrato > 0 ? `${contar(acimaContrato, 'casa', 'casas')} acima do contrato` : null,
     carrinhasIds.length > 0
       ? `${contar(carrinhasIds.length, 'carrinha', 'carrinhas')}: ${carrinhas.ocupados}/${carrinhas.lugares}`
       : null,
@@ -106,11 +103,6 @@ export function PastilhaResumo({ disposto, esquerda, topo, destaque }: Props) {
             <span className="flex items-center gap-0.5">
               <IconeCasa tamanho={11} />
               <PastilhaLotacao ocupados={casas.ocupados} lugares={casas.lugares} nivel={casas.nivel} />
-              {acimaContrato > 0 && (
-                <span className="text-[9px] text-amber-700" title="Acima do contrato">
-                  ▲
-                </span>
-              )}
             </span>
           )}
           {carrinhasIds.length > 0 && (

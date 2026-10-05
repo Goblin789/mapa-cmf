@@ -600,7 +600,9 @@ const NOME_CAMPO: Readonly<Record<string, string>> = {
   maxContrato: 'máximo do contrato',
   tolerado: 'tolerado',
   notaContrato: 'nota do contrato',
-  sempreCheia: 'sempre cheia',
+  // Sem a etiqueta "sempre cheia" (pedido do Rafael, 04/10/2026: não aparece em lado nenhum; o Histórico
+  // usa estes nomes).
+  sempreCheia: 'lugares iguais aos moradores',
   senhorio: 'senhorio',
   equipamento: 'equipamento',
   matricula: 'matrícula',

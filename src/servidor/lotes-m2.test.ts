@@ -401,7 +401,7 @@ describe('gravarLote: operações novas', () => {
     const frases = lerHistorico(bd, 1)[0]?.alteracoes.map((a) => a.descricao);
     expect(frases).toEqual([
       'ZZ 0002 — outras matrículas: ZZ 9999 → ZZ 9999, ZZ 8888',
-      'Casa Monte — sempre cheia: não → sim',
+      'Casa Monte — lugares iguais aos moradores: não → sim',
       'Casa Monte — lotação: 4 → 5',
       'Álvaro Exemplo — carta: não → sim',
       'Álvaro Exemplo — carta válida até: — → 31/05/2029',

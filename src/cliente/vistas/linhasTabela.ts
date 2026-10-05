@@ -438,16 +438,19 @@ export function textoContagem(mostradas: number, total: number, comFiltros: bool
 
 // --- Foco e "mostrar" -----------------------------------------------------------------------------
 
-/** O que está em foco (a ficha aberta): uma pessoa, casa, carrinha ou (M2) obra. */
+/**
+ * O que está em foco: uma pessoa (na Tabela, sem ficha: só o realce da linha), casa, carrinha ou (M2)
+ * obra.
+ */
 export type FocoTabela = { tipo: 'pessoa' | 'casa' | 'carrinha' | 'obra'; id: Id } | null;
 
 /** O que o realce precisa de uma linha (a obra só para o foco numa obra, M2). */
 type LinhaParaRealce = Pick<LinhaTabela, 'pessoa' | 'casa' | 'carrinha'> & Partial<Pick<LinhaTabela, 'obra'>>;
 
 /**
- * Realce persistente de uma linha: 'foco' = a pessoa da ficha; 'marcada' = a linha em que se clicou
- * (clicar numa linha realça-a sem abrir a ficha); 'ligada' = mora na casa (ou vai na carrinha, ou trabalha
- * na obra) da ficha; null = nenhum.
+ * Realce persistente de uma linha: 'foco' = a pessoa em foco (pesquisa, nome na ficha de uma casa);
+ * 'marcada' = a linha em que se clicou (clicar numa linha só a realça); 'ligada' = mora na casa (ou vai
+ * na carrinha, ou trabalha na obra) da ficha; null = nenhum.
  */
 export function realceDaLinha(
   linha: LinhaParaRealce,
@@ -464,11 +467,20 @@ export function realceDaLinha(
 export type RealceLinha = 'foco' | 'marcada' | 'ligada' | null;
 
 /**
+ * O botão a seguir ao nome (na célula presa): "Ver no mapa" (verNoMapa) ou, na linha de quem saiu da empresa
+ * (só com "Mostrar quem saiu"; não está no mapa), "Voltou à empresa…" (abrirVoltouAEmpresa). Na Tabela não
+ * há ficha da pessoa: é por aqui que quem saiu volta.
+ */
+export function botaoDaLinha(linha: Pick<LinhaTabela, 'saiu'>): 'ver-no-mapa' | 'voltou' {
+  return linha.saiu ? 'voltou' : 'ver-no-mapa';
+}
+
+/**
  * A linha realçada depois de um clique numa linha (docs/vistas-edicao.md). A linha já mostra tudo, por
- * isso o clique NUNCA abre nem muda a ficha (só o ⓘ a seguir ao nome): fora da edição realça a linha
- * (outro clique na mesma tira o realce); no modo de edição a seleção é o realce (o clique seleciona) e
- * não fica nenhuma marcada. Na linha da pessoa da ficha (`focoPessoaId`) o clique não alterna: ela fica
- * marcada, para continuar realçada depois de a ficha fechar (o realce 'foco' tapava a mudança).
+ * isso o clique NUNCA abre ficha (na Tabela não há ficha da pessoa): fora da edição realça a linha (outro
+ * clique na mesma tira o realce); no modo de edição a seleção é o realce (o clique seleciona) e não fica
+ * nenhuma marcada. Na linha da pessoa em foco (`focoPessoaId`) o clique não alterna: ela fica marcada,
+ * para continuar realçada quando o clique lhe tira o foco (o realce 'foco' tapava a mudança).
  */
 export function marcadaDepoisDoClique(
   id: Id,

@@ -16,7 +16,7 @@ import { reversoesDoRascunho, useLoja } from '../estado/loja';
 import { comPlural } from '../paineis/textos';
 import { operacaoConfirmarSugestao, operacoesConfirmarSugestoes } from './ondeDorme';
 import { resumirPasso } from './resumo';
-import { useUiEdicao } from './ui';
+import { abrirSaida, useUiEdicao } from './ui';
 
 function avisar(texto: string): void {
   useUiEdicao.getState().avisar(texto);
@@ -176,4 +176,13 @@ export function aplicarComAviso(ops: readonly Operacao[], texto?: string): boole
 export function entrarEdicaoComAviso(): void {
   useLoja.getState().entrarEdicao();
   avisar('Modo de edição: as mudanças só ficam gravadas quando carregares em Guardar.');
+}
+
+/**
+ * "Voltou à empresa…" de quem saiu (a linha da Tabela com "Mostrar quem saiu"): o DialogoSaida só abre no
+ * modo de edição, por isso fora dele entra-se primeiro (como os "Mudar…" da ficha).
+ */
+export function abrirVoltouAEmpresa(pessoaId: Id): void {
+  if (!useLoja.getState().modoEdicao) entrarEdicaoComAviso();
+  abrirSaida(pessoaId);
 }

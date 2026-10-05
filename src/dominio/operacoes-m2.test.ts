@@ -325,7 +325,9 @@ describe('nomes e frases do histórico (M2)', () => {
 
   it('casas, carrinhas e locais', () => {
     expect(d(campo('casa', 'casa-1', 'lotacao', 8, 9))).toBe('Casa Um — lotação: 8 → 9');
-    expect(d(campo('casa', 'casa-1', 'sempreCheia', false, true))).toBe('Casa Um — sempre cheia: não → sim');
+    expect(d(campo('casa', 'casa-1', 'sempreCheia', false, true))).toBe(
+      'Casa Um — lugares iguais aos moradores: não → sim',
+    );
     expect(d(campo('casa', 'casa-1', 'localId', 'local-a', 'local-b'))).toBe(
       'Casa Um — morada: 1 Rue Fictícia, L-0000 Lugar local-a → 1 Rue Fictícia, L-0000 Lugar local-b',
     );

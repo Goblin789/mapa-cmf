@@ -212,7 +212,9 @@ export const ROTULO_CAMPO: { readonly [E in EntidadeEditavel]: Readonly<Record<C
       maxContrato: 'máx. do contrato',
       tolerado: 'tolerado',
       notaContrato: 'nota do contrato',
-      sempreCheia: 'sempre cheia',
+      // Sem a etiqueta "sempre cheia" (pedido do Rafael, 04/10/2026: não aparece em lado nenhum, nem no
+      // Histórico nem no Guardar): o mesmo nome do NOME_CAMPO de importacao/sincronizar.ts.
+      sempreCheia: 'lugares iguais aos moradores',
       senhorio: 'senhorio',
       equipamento: 'equipamento',
     },

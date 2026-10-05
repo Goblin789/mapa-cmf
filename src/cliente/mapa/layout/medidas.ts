@@ -13,7 +13,7 @@ import type { Retangulo } from './geometria';
 /** Célula de um nome (NomeChip compacto): largura, altura e passo entre linhas. */
 export const NOME = { largura: 84, altura: 12, passo: 13, entreColunas: 2 } as const;
 
-/** Linha de estado (pastilha da lotação, aviso de contrato, marca "sugerido"). */
+/** Linha de estado (pastilha da lotação, marca "sugerido"). */
 const LINHA_ESTADO = 12;
 
 const CASA = {
@@ -89,7 +89,7 @@ export interface GeometriaCasa {
   corpo: Retangulo;
   /** Onde se escreve o nome da casa, dentro do frontão. */
   frontao: Retangulo;
-  /** Linha de estado: aviso de contrato à esquerda, pastilha da lotação à direita. */
+  /** Linha de estado: a pastilha da lotação à direita. */
   estado: Retangulo;
   /** Um retângulo por lugar desenhado (duas colunas), pela ordem dos moradores. */
   lugares: Retangulo[];

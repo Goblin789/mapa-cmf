@@ -21,10 +21,10 @@
 // copiam-se). No mapa, arrastada, continua a acabar por cima da legenda. No telemóvel fica como estava.
 // Cada vista (Mapa, Tabela, Quadro) lembra a sua posição: na Tabela a ficha arrastada para a esquerda tapa
 // a coluna dos nomes, no Quadro não.
-// Na Tabela a ficha da PESSOA é compacta (fichas.ts, fichaPessoaCompacta): a linha já tem o Nº, o cliente,
-// a casa → carrinha → obra e, no modo de edição, as listas e o condutor; a ficha só mostra o que a linha
-// não tem ("Ver no mapa", o nome do mapa, avisos, telefone e carta quando existem) e nunca recolhe. As
-// fichas de casa e carrinha são as completas. A vista sai da loja da vista (ou da prop `vista`).
+// Na Tabela não há ficha da PESSOA (fichas.ts, haFichaDaPessoa): a linha já mostra tudo e tem o seu botão
+// "Ver no mapa"; uma pessoa em foco na Tabela só realça a linha. As fichas de casa e carrinha abrem em
+// todas as vistas. A vista sai da loja da vista (ou da prop `vista`).
+// O aviso do contrato de uma casa só aparece aqui, na ficha da casa (fora dela, só no diálogo Guardar).
 // M2 (docs/m2.md): a moldura e as peças do corpo estão em MolduraFicha.tsx; a ficha da obra (FichaObra.tsx),
 // a secção Indisponível da pessoa (SeccaoIndisponivel.tsx) e a dos problemas da casa/carrinha
 // (SeccaoProblemas.tsx) são ficheiros próprios, montados aqui. A lotação da carrinha não conta quem está
@@ -33,7 +33,8 @@
 // muda-se no sítio (CamposFicha.tsx: lápis → campo → Enter/✓ = um passo; Esc cancela; "antes: …" por baixo
 // do que mudou). A morada da casa edita o LOCAL (aviso quando é partilhado). Fora do modo de edição as
 // fichas só se leem, com os campos que têm valor. A validade da carta compara com loja.hoje (o dia no
-// Luxemburgo). Quem saiu da empresa tem a marca "Saiu da empresa" e "Voltou à empresa…".
+// Luxemburgo). Quem saiu da empresa não está no mapa nem nas listas: só na Tabela, com "Mostrar quem saiu",
+// onde o botão da linha é "Voltou à empresa…" (vistas/Tabela.tsx).
 
 import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { LIMITES } from '../../dominio/campos';
@@ -58,7 +59,6 @@ import {
 import { IconeVolante } from '../comum/IconeVolante';
 import { ESTILO_AVISO_CONTRATO } from '../comum/lotacao';
 import { formatarMatricula } from '../comum/Matricula';
-import { BOTAO_PEQUENO } from '../edicao/classes';
 import {
   AcoesDormida,
   AcoesPessoa,
@@ -72,7 +72,6 @@ import {
   useSitioAlterado,
   ValorGravado,
 } from '../edicao/PecasFoco';
-import { abrirSaida } from '../edicao/ui';
 import { useLoja } from '../estado/loja';
 import { useVista } from '../vistas/vista';
 import { CampoCarta, CampoFicha, CampoMoradaCasa } from './CamposFicha';
@@ -84,9 +83,7 @@ import {
   carrinhasDasPessoas,
   carrinhasQueDormemEm,
   casasDasPessoas,
-  extrasDaPessoa,
-  fichaCompactaTemCorpo,
-  fichaPessoaCompacta,
+  haFichaDaPessoa,
   outrasCasasNoLocal,
   type VistaFicha,
 } from './fichas';
@@ -141,8 +138,7 @@ const TEXTO_LONGO = { tipo: 'texto', opcional: true, max: LIMITES.textoLongo } a
 
 /**
  * No modo de edição, os campos de quem a pessoa é: nº, nome, apelidos, nome no mapa (com o aviso de repetido
- * enquanto se escreve) e cliente (com a nota da cor da obra, quando tem obra). Na ficha completa e na
- * compacta da Tabela.
+ * enquanto se escreve) e cliente (com a nota da cor da obra, quando tem obra).
  */
 function CamposDaPessoa({ pessoa, indices }: { pessoa: Pessoa; indices: Indices }) {
   const estado = useLoja((s) => s.estado);
@@ -360,93 +356,10 @@ function FichaPessoa({ pessoa, indices }: { pessoa: Pessoa; indices: Indices }) 
 }
 
 /**
- * A ficha da pessoa na Tabela: só o que a linha não mostra. Sem Nº, cliente nem casa → carrinha → obra
- * (estão nas colunas) e sem os botões "Mudar…" e de condutor (no modo de edição são as listas e o botão
- * das células). Fica: o tipo, o nome, "no mapa: …" (se for outro), "Ver no mapa" e ✕ no cabeçalho; o aviso
- * de quem conduz sem carta; o telefone e a carta, se existirem. Sem nenhum deles, só o cabeçalho (quem saiu
- * da empresa tem sempre o "Voltou à empresa…", por baixo do telefone e da carta).
- * (M2: o indisponível está na coluna da Tabela, não aqui.) No modo de edição (M2) tem os campos que se
- * mudam na ficha (nº, nome, apelidos, nome no mapa, cliente, telefone, carta) e "Saiu da empresa…"; a casa
- * → carrinha → obra e o condutor continuam nas células.
- */
-function FichaPessoaCompacta({ pessoa, indices }: { pessoa: Pessoa; indices: Indices }) {
-  const alterada = usePessoaAlterada(pessoa.id);
-  const hoje = useLoja((s) => s.hoje);
-  const modoEdicao = useLoja((s) => s.modoEdicao);
-  const extras = extrasDaPessoa(pessoa, hoje);
-  // (Quem não tem carta tem sempre a linha Carta: "Não tem".)
-  const semCarta = pessoa.temCarta === false && carrinhaConduzida(pessoa, indices) !== null;
-  const noMapa = extras.nomeNoMapa ? `no mapa: ${extras.nomeNoMapa}` : undefined;
-  return (
-    <Moldura
-      tipo="Pessoa"
-      titulo={nomeComMaiusculasNormais(nomeCompleto(pessoa))}
-      subtitulo={
-        pessoa.ativa ? (
-          noMapa
-        ) : (
-          <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-0.5">
-            {noMapa}
-            <MarcaSaiu />
-          </span>
-        )
-      }
-      alterado={alterada}
-      compacta
-    >
-      {modoEdicao ? (
-        <>
-          {semCarta && (
-            <p className="mb-1 rounded border border-red-500 bg-red-100 px-2 py-1 text-xs font-medium text-red-900">
-              <span aria-hidden="true">▲ </span>
-              Conduz, mas não tem carta.
-            </p>
-          )}
-          <dl>
-            <CamposDaPessoa pessoa={pessoa} indices={indices} />
-            <ContactosDaPessoa pessoa={pessoa} foraDaEdicao="com-valor" />
-          </dl>
-          <AcoesDaCompacta pessoa={pessoa} />
-        </>
-      ) : /* Sem nada para mostrar, a ficha fica só com o cabeçalho (a Moldura não põe o corpo). Quem saiu
-         tem sempre corpo: o telefone e a carta (se existirem) e "Voltou à empresa…". */
-      !pessoa.ativa || fichaCompactaTemCorpo(extras, semCarta) ? (
-        <>
-          {semCarta && (
-            <p className="mb-1 rounded border border-red-500 bg-red-100 px-2 py-1 text-xs font-medium text-red-900">
-              <span aria-hidden="true">▲ </span>
-              Conduz, mas não tem carta.
-            </p>
-          )}
-          {(extras.telefone || extras.carta) && (
-            <dl>
-              {extras.telefone && <Linha rotulo="Telefone">{extras.telefone}</Linha>}
-              {extras.carta && <Linha rotulo="Carta">{extras.carta}</Linha>}
-            </dl>
-          )}
-          {!pessoa.ativa && <AcoesPessoa pessoa={pessoa} />}
-        </>
-      ) : null}
-    </Moldura>
-  );
-}
-
-/** Na ficha compacta, no modo de edição: só "Saiu da empresa…" (ou "Voltou à empresa…"). */
-function AcoesDaCompacta({ pessoa }: { pessoa: Pessoa }) {
-  if (!pessoa.ativa) return <AcoesPessoa pessoa={pessoa} />;
-  return (
-    <div className="mt-2 border-t border-slate-200 pt-2">
-      <button type="button" onClick={() => abrirSaida(pessoa.id)} className={BOTAO_PEQUENO}>
-        Saiu da empresa…
-      </button>
-    </div>
-  );
-}
-
-/**
  * No modo de edição, os campos da casa: nome, morada (o LOCAL, com o aviso de morada partilhada e "Mudar
- * para outra morada…"), apartamento, lotação, máx. do contrato, tolerado, nota do contrato, sempre cheia,
- * senhorio (só o contacto da casa) e equipamento.
+ * para outra morada…"), apartamento, lotação, máx. do contrato, tolerado, nota do contrato, senhorio (só o
+ * contacto da casa) e equipamento. Os "lugares iguais aos moradores" (sempreCheia) não se mostram nem se mudam
+ * aqui (pedido do Rafael, 05/10/2026: não quer ver isso em lado nenhum); ficam nos dados e no sincronizar.
  */
 function CamposDaCasa({ casa, indices }: { casa: Casa; indices: Indices }) {
   const local = indices.locais.get(casa.localId);
@@ -498,14 +411,6 @@ function CamposDaCasa({ casa, indices }: { casa: Casa; indices: Indices }) {
         campo="notaContrato"
         valor={casa.notaContrato}
         editor={TEXTO_LONGO}
-      />
-      <CampoFicha
-        entidade="casa"
-        id={casa.id}
-        campo="sempreCheia"
-        valor={casa.sempreCheia}
-        editor={{ tipo: 'simNao' }}
-        nota="Os lugares são os moradores (sem vagas)."
       />
       <CampoFicha
         entidade="casa"
@@ -577,7 +482,6 @@ function FichaCasa({
             <PastilhaLotacao ocupados={oc.ocupados} lugares={oc.lotacao} nivel={oc.nivel} />
           </Linha>
           <Linha rotulo="Máx. contrato">{textoContrato(casa)}</Linha>
-          {casa.sempreCheia && <Linha rotulo="Sempre cheia">Sim</Linha>}
           {casa.senhorio && <Linha rotulo="Senhorio">{casa.senhorio}</Linha>}
           {casa.equipamento && <Linha rotulo="Equipamento">{casa.equipamento}</Linha>}
         </dl>
@@ -857,7 +761,7 @@ function FichaCarrinha({
 
 /**
  * @param lugar 'mapa' (sobre o mapa, no App) ou 'vista' (a Tabela e o Quadro montam-na por cima da sua área).
- * @param vista na vista, qual delas é ('tabela' = ficha da pessoa compacta). Por omissão, a vista ativa
+ * @param vista na vista, qual delas é ('tabela' = sem ficha da pessoa). Por omissão, a vista ativa
  *   (vistas/vista.ts): cada vista só está montada enquanto é a ativa.
  */
 export function PainelFoco({
@@ -926,7 +830,7 @@ function Ficha() {
   const indices = useLoja((s) => s.indices);
   const dormidas = useLoja((s) => s.dormidas);
   const definirFoco = useLoja((s) => s.definirFoco);
-  const compacta = fichaPessoaCompacta(useContext(ContextoVistaFicha));
+  const comFichaDaPessoa = haFichaDaPessoa(useContext(ContextoVistaFicha));
   const temFoco = foco !== null;
 
   // Esc fecha a ficha, a não ser que outro elemento já o tenha tratado (pesquisa, popovers).
@@ -943,12 +847,9 @@ function Ficha() {
 
   if (foco.tipo === 'pessoa') {
     const pessoa = indices.pessoas.get(foco.id);
-    if (!pessoa) return null;
-    return compacta ? (
-      <FichaPessoaCompacta key={pessoa.id} pessoa={pessoa} indices={indices} />
-    ) : (
-      <FichaPessoa key={pessoa.id} pessoa={pessoa} indices={indices} />
-    );
+    // Na Tabela, nada: a linha da pessoa fica realçada (e tem o seu "Ver no mapa").
+    if (!pessoa || !comFichaDaPessoa) return null;
+    return <FichaPessoa key={pessoa.id} pessoa={pessoa} indices={indices} />;
   }
   if (foco.tipo === 'casa') {
     const casa = indices.casas.get(foco.id);

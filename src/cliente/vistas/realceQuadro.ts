@@ -1,12 +1,12 @@
 // Vista Quadro: o que se acende para mostrar uma pessoa, casa, carrinha ou obra (pedidos de vistas/mostrar.ts
 // e o foco da ficha) e que blocos têm alterações por guardar. Funções puras.
 //
-// Uma casa no Quadro por carrinhas não tem bloco (nem uma carrinha no Quadro por casas): acendem-se os
-// nomes de quem lá mora (ou de quem lá vai), que é o que interessa ver. Sem ninguém, acende-se a ligação
-// que o rodapé mostra: a casa onde a carrinha dorme, ou as carrinhas que dormem na casa. Se nem isso
-// houver, a vista não tem nada para acender e diz porquê num aviso curto (avisoSemNadaNoQuadro).
-// M2 (obras): a obra só tem bloco no Quadro por obras; nos outros acendem-se as pessoas dela. No Quadro por
-// obras, as casas e as carrinhas não têm bloco: acendem-se os moradores ou os passageiros.
+// Uma casa no Quadro por carrinhas ou por obras não tem bloco (nem uma carrinha no Quadro por casas ou por
+// obras): acendem-se os nomes de quem lá mora (ou de quem lá vai), que é o que interessa ver. Sem ninguém,
+// acende-se a ligação que o rodapé mostra (só nas casas e nas carrinhas): a casa onde a carrinha dorme, ou
+// as carrinhas que dormem na casa. Se nem isso houver, a vista não tem nada para acender e diz porquê num
+// aviso curto (avisoSemNadaNoQuadro). A obra só tem bloco no Quadro por obras; nos outros acendem-se as
+// pessoas dela.
 
 import type { Dormida } from '../../dominio/dormidas';
 import type { Indices } from '../../dominio/indices';

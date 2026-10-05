@@ -1,17 +1,18 @@
 // Casa vista de frente: telhado de duas águas com beirais e chaminé, o nome no frontão, uma linha de
-// estado (aviso de contrato à esquerda, "ocupados/lotação" à direita) e os nomes em duas colunas.
+// estado ("ocupados/lotação" à direita) e os nomes em duas colunas.
 // Neutra: só a pastilha da lotação tem a cor do nível. Os nomes têm a cor do cliente.
+// O aviso do contrato não aparece no mapa (pedido do Rafael, 04/10/2026): só na ficha da casa (PainelFoco).
 // Uma casa que conta sempre como cheia (Walferdange, Schifflange) não tem lugares vazios: os lugares são
 // os moradores (ocupacaoCasa) e a pastilha mostra n/n.
 // Clicar na casa põe-na em foco; no modo de edição é um alvo onde se largam pessoas (data-alvo).
-// M2: o ícone dos problemas abertos fica na linha de estado, antes da pastilha (o aviso do contrato encolhe
-// para lhe dar lugar). Quem está indisponível continua a ocupar a cama: a lotação da casa não muda.
+// M2: o ícone dos problemas abertos fica na linha de estado, antes da pastilha. Quem está indisponível
+// continua a ocupar a cama: a lotação da casa não muda.
 
 import { ocupacaoCasa } from '../../../dominio/ocupacao';
 import { chaveAlvo } from '../../../dominio/operacoes';
-import type { Casa, Id } from '../../../dominio/tipos';
+import type { Id } from '../../../dominio/tipos';
 import { descricaoProblemas, IconeProblemas, useProblemasAbertos } from '../../comum/IconeProblemas';
-import { ESTILO_AVISO_CONTRATO, ESTILO_NIVEL } from '../../comum/lotacao';
+import { ESTILO_NIVEL } from '../../comum/lotacao';
 import { useLoja } from '../../estado/loja';
 import { chaveCasa } from '../layout/grupos';
 import type { GeometriaCasa } from '../layout/medidas';
@@ -80,12 +81,6 @@ function Silhueta({ g, destaque }: { g: GeometriaCasa; destaque: Destaque }) {
   );
 }
 
-function textoAviso(casa: Casa, forte: boolean): string {
-  return forte && casa.tolerado !== null
-    ? `contrato ${casa.maxContrato} (tol. ${casa.tolerado})`
-    : `contrato ${casa.maxContrato}`;
-}
-
 export function CartaoCasa({ casaId, geometria: g, x, y, destaque }: Props) {
   const indices = useLoja((s) => s.indices);
   const definirFoco = useLoja((s) => s.definirFoco);
@@ -96,21 +91,14 @@ export function CartaoCasa({ casaId, geometria: g, x, y, destaque }: Props) {
   const moradores = indices.moradores.get(casaId) ?? [];
   const oc = ocupacaoCasa(casa, moradores.length);
   const estilo = ESTILO_NIVEL[oc.nivel];
-  const aviso = ESTILO_AVISO_CONTRATO[oc.aviso];
-  const forte = oc.aviso === 'acima_tolerado';
   const emFoco = destaque === 'foco';
   const local = indices.locais.get(casa.localId);
   // No mapa, o nome sem o que já se lê no rótulo do local ("Casa 2 Rue de la Forêt" → "Casa 2").
   const nomeMostrado = nomeCurtoCasa(casa.nome, local ? `${local.nome} ${local.morada}` : '');
-  const descricaoAviso = aviso
-    ? `${aviso.rotulo}: ${oc.usados} lugares para um máximo de ${casa.maxContrato}` +
-      `${casa.tolerado !== null ? ` (tolerado ${casa.tolerado})` : ''}.${casa.notaContrato ? ` ${casa.notaContrato}` : ''}`
-    : '';
   const descricao = [
     casa.nome,
     `${oc.ocupados}/${oc.lotacao} lugares`,
     estilo.rotulo,
-    casa.sempreCheia ? 'conta sempre como cheia' : null,
     // O ícone dos problemas está numa linha sem rato (o title dele não se vê): a lista vai aqui.
     descricaoProblemas(problemas) || null,
   ]
@@ -129,8 +117,8 @@ export function CartaoCasa({ casaId, geometria: g, x, y, destaque }: Props) {
       <button
         type="button"
         className={`absolute inset-0 cursor-pointer rounded-sm ${CLASSE_FOCO_TECLADO}`}
-        title={`${descricao}${descricaoAviso ? ` · ${descricaoAviso}` : ''}`}
-        aria-label={`${descricao}${descricaoAviso ? `. ${descricaoAviso}` : ''}. Mostrar as ligações desta casa.`}
+        title={descricao}
+        aria-label={`${descricao}. Mostrar as ligações desta casa.`}
         aria-pressed={emFoco}
         onClick={() => definirFoco(emFoco ? null : { tipo: 'casa', id: casaId })}
       />
@@ -144,19 +132,6 @@ export function CartaoCasa({ casaId, geometria: g, x, y, destaque }: Props) {
         className="pointer-events-none absolute flex items-center justify-end gap-1"
         style={posicao(g.estado)}
       >
-        {aviso && (
-          <span
-            className={[
-              'mr-auto flex min-w-0 items-center gap-0.5 truncate text-[10px] font-semibold leading-3',
-              forte ? 'text-red-700' : 'text-amber-700',
-            ].join(' ')}
-          >
-            <span aria-hidden="true" className="text-[8px]">
-              ▲
-            </span>
-            <span className="truncate">{textoAviso(casa, forte)}</span>
-          </span>
-        )}
         <IconeProblemas alvo={{ tipo: 'casa', id: casaId }} tamanho="mapa" />
         <PastilhaLotacao ocupados={oc.ocupados} lugares={oc.lotacao} nivel={oc.nivel} />
       </div>

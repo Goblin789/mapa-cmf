@@ -1,10 +1,11 @@
 // Cabeçalho do modo reunião, pensado para uma TV 1920×1080 vista de longe: a marca, o dia e a hora,
-// "Atualizado às HH:MM", Quadro | Mapa (e Casas | Carrinhas no Quadro) e "Sair da reunião".
+// "Atualizado às HH:MM", Quadro | Mapa (e Casas | Carrinhas | Obras no Quadro) e "Sair da reunião".
 // Sem Editar: a reunião é só para ver. O Histórico abre (M2), mas sem "Reverter…" (DialogoHistorico).
 // "Ecrã inteiro" e "Histórico" só com o ícone (o nome na dica e para os leitores de ecrã): com os nomes, a
-// 1920 px fora do ecrã inteiro os filtros passavam a uma 2.ª linha (cabeçalho de 94 para 161 px). Sem os contadores (Livres nas casas, Sem transporte…):
-// saíram a pedido do Rafael (04/10/2026) e o Quadro/Mapa da TV fica com esse espaço. No Quadro, a partir de
-// xl, os filtros dos clientes e das obras ficam aqui, a seguir à hora (FiltrosReuniao, em Quadro.tsx).
+// 1920 px fora do ecrã inteiro os filtros passavam a uma 2.ª linha (cabeçalho de 94 para 161 px). Sem os
+// contadores (Livres nas casas, Sem transporte…): saíram a pedido do Rafael (04/10/2026) e o Quadro/Mapa da
+// TV fica com esse espaço. No Quadro, a partir de xl, o filtro dos clientes fica aqui, a seguir à hora
+// (FiltrosReuniao, em Quadro.tsx; sem filtro "Obra": as obras veem-se pelo agrupamento).
 
 import { useEffect, useState } from 'react';
 import { Marca } from '../comum/Marca';
@@ -73,8 +74,8 @@ export function CabecalhoReuniao() {
             {atualizado}
           </p>
         )}
-        {/* No Quadro, a partir de xl, os filtros (clientes e obras) vêm para aqui, a seguir à hora (passam
-            à linha de baixo se não couberem): o Quadro da TV fica com a altura da barra que tinham. */}
+        {/* No Quadro, a partir de xl, o filtro dos clientes vem para aqui, a seguir à hora (passa
+            à linha de baixo se não couber): o Quadro da TV fica com a altura da barra que tinha. */}
         {vista === 'quadro' && <FiltrosReuniao className="hidden self-center xl:flex" />}
       </div>
       <div className="col-span-full flex flex-wrap items-center gap-2 xl:col-span-1 xl:justify-end">

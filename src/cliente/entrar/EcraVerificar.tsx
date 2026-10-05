@@ -38,7 +38,7 @@ export function EcraVerificar() {
   return (
     <FundoEntrada>
       <div className={passouAtraso || erro ? undefined : 'invisible'}>
-        <CartaoMarca titulo="Mapa CMF">
+        <CartaoMarca>
           {erro ? (
             <div className="mt-5 space-y-3">
               <CaixaErro>

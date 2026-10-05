@@ -15,6 +15,7 @@ import { NomeChip } from '../comum/NomeChip';
 import { useLoja } from '../estado/loja';
 import { artigoDoVeiculo, comPlural, deArtigoDoVeiculo } from '../paineis/textos';
 import {
+  abrirVoltouAEmpresa,
   aplicarComAviso,
   confirmarSugestaoComAviso,
   definirCondutorComAviso,
@@ -233,22 +234,15 @@ export function AcoesPessoa({ pessoa }: { pessoa: Pessoa }) {
 }
 
 /**
- * A quem já saiu da empresa (aberto da Tabela com "Mostrar quem saiu"): "Voltou à empresa…". Fora do modo de
- * edição entra nele primeiro (o diálogo só existe lá).
+ * Na ficha de quem já saiu da empresa: "Voltou à empresa…" (abrirVoltouAEmpresa: fora do modo de edição entra
+ * nele primeiro, o diálogo só existe lá). Quem saiu não está no mapa nem nas listas; na Tabela, com "Mostrar
+ * quem saiu", o mesmo botão está na linha (na Tabela não há ficha da pessoa).
  */
 function AcoesQuemSaiu({ pessoa }: { pessoa: Pessoa }) {
-  const modoEdicao = useLoja((s) => s.modoEdicao);
   return (
     <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-slate-200 pt-2 text-xs text-slate-600">
       <span className="min-w-0 flex-1">Saiu da empresa: não aparece no mapa nem nas listas.</span>
-      <button
-        type="button"
-        onClick={() => {
-          if (!modoEdicao) entrarEdicaoComAviso();
-          abrirSaida(pessoa.id);
-        }}
-        className={BOTAO_PEQUENO}
-      >
+      <button type="button" onClick={() => abrirVoltouAEmpresa(pessoa.id)} className={BOTAO_PEQUENO}>
         Voltou à empresa…
       </button>
     </div>

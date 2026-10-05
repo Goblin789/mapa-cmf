@@ -35,7 +35,7 @@ export type LugarFicha = 'mapa' | 'vista';
 
 export const ContextoLugar = createContext<LugarFicha>('mapa');
 
-/** A vista onde a ficha está (Mapa, Tabela ou Quadro): a posição lembrada e a ficha compacta da pessoa. */
+/** A vista onde a ficha está (Mapa, Tabela ou Quadro): a posição lembrada e se há ficha da pessoa. */
 export const ContextoVistaFicha = createContext<VistaFicha>('mapa');
 
 /**
@@ -121,7 +121,6 @@ export function Moldura({
   alterado = false,
   resumo,
   acoes,
-  compacta = false,
   children,
 }: {
   tipo: string;
@@ -133,9 +132,6 @@ export function Moldura({
   resumo?: ReactNode;
   /** Ficha recolhida: as ações principais (as mesmas que o corpo tem no fim). */
   acoes?: ReactNode;
-  /** Ficha compacta (pessoa na Tabela): já é curta, nunca recolhe (sem "Ver tudo"). */
-  compacta?: boolean;
-  /** null = sem corpo: só o cabeçalho (a ficha compacta sem nada a mostrar). */
   children: ReactNode;
 }) {
   const definirFoco = useLoja((s) => s.definirFoco);
@@ -143,10 +139,8 @@ export function Moldura({
   const idCorpo = useId();
   const alturaLegenda = useAlturaLegenda();
   const lugar = useContext(ContextoLugar);
-  const recolherDoLugar = useContext(ContextoRecolher);
-  const recolher = compacta ? null : recolherDoLugar;
+  const recolher = useContext(ContextoRecolher);
   const recolhida = recolher !== null && !recolher.inteira;
-  const temCorpo = recolhida || (children !== null && children !== undefined);
   const altura = lugar === 'vista' ? ALTURA_VISTA_TELEMOVEL[recolhida ? 'recolhida' : 'inteira'] : '';
   const janela = useJanelaArrastavel(
     useContext(ContextoPosicao),
@@ -163,7 +157,6 @@ export function Moldura({
       // Na vista, quem desliza até um elemento (vistas/mostrar.ts) deixa-o fora da ficha.
       {...{ [ATRIBUTO_FICHA]: lugar }}
       data-movida={janela.movida ? '' : undefined}
-      data-compacta={compacta ? '' : undefined}
       data-a-arrastar={janela.arrastando ? '' : undefined}
       // Arrastada, manda a posição que se escolheu. Na origem, no mapa, a ficha acaba por cima da legenda
       // (canto inferior esquerdo) em vez de a tapar.
@@ -184,7 +177,7 @@ export function Moldura({
     >
       <header
         {...janela.pega}
-        className={`flex items-start gap-2 px-3 ${temCorpo ? 'border-b border-slate-200' : ''} ${recolhida ? 'py-1.5' : 'py-2'} ${
+        className={`flex items-start gap-2 border-b border-slate-200 px-3 ${recolhida ? 'py-1.5' : 'py-2'} ${
           janela.ativa ? CLASSES_CABECALHO_ARRASTAVEL : ''
         }`}
       >
@@ -236,22 +229,19 @@ export function Moldura({
           <IconeFechar />
         </button>
       </header>
-      {/* Sem corpo, a ficha arrastável mede só a <section> (useJanelaArrastavel aceita refConteudo a null). */}
-      {temCorpo && (
-        <div id={idCorpo} className="min-h-0 flex-1 overflow-y-auto px-3 py-2">
-          {/* Invólucro sem estilo: a ficha arrastável mede-o para saber a altura do conteúdo todo. */}
-          <div ref={janela.refConteudo}>
-            {recolhida ? (
-              <>
-                {resumo}
-                {acoes && <div className={ACOES_RECOLHIDA}>{acoes}</div>}
-              </>
-            ) : (
-              children
-            )}
-          </div>
+      <div id={idCorpo} className="min-h-0 flex-1 overflow-y-auto px-3 py-2">
+        {/* Invólucro sem estilo: a ficha arrastável mede-o para saber a altura do conteúdo todo. */}
+        <div ref={janela.refConteudo}>
+          {recolhida ? (
+            <>
+              {resumo}
+              {acoes && <div className={ACOES_RECOLHIDA}>{acoes}</div>}
+            </>
+          ) : (
+            children
+          )}
         </div>
-      )}
+      </div>
     </section>
   );
 }

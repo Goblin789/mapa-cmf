@@ -21,7 +21,7 @@ servidor aplica a 0004 e faz a cópia automática em `dados/copias/`).
   Forêt (4 casas) — morada: …").
 - *Pessoa nova*: nome **e** apelidos obrigatórios; o nome no mapa é proposto ("Nome A.") e não se repete.
 - *Saiu da empresa*: tira da casa, da carrinha (e de conduzir) e da obra num só passo; a pessoa fica na Tabela
-  com "Mostrar quem saiu" (só de leitura) e volta com "Voltou à empresa…". Tirar alguém que já saiu de uma
+  com "Mostrar quem saiu" (só de leitura) e volta com o botão "Voltou à empresa…" da linha dela. Tirar alguém que já saiu de uma
   casa, carrinha ou obra é válido; pô-lo numa é recusado.
 - *Indisponível*: só as datas. Os nomes mostram "até 12/10" em todo o lado menos nos cartões do Mapa (só o
   símbolo). O lugar na carrinha fica livre ("8/9"; "1 livre até 10/10" na ficha da carrinha, no Mover para… e
@@ -37,7 +37,7 @@ servidor aplica a 0004 e faz a cópia automática em `dados/copias/`).
   nome da obra e acompanha-o. Tirar o estacionamento apaga a morada dele se foi criada no programa e mais nada
   a usa. Editar obra só manda o que se mudou (não desfaz o que outra pessoa gravou entretanto). Na ficha da
   obra: "quem vem para esta obra e de onde" e "Trazer as N selecionadas para aqui". Quadro por obras: cada nome
-  com a casa de onde vem, também no "Sem obra".
+  com a casa de onde vem, em letra pequena, só nos blocos das obras (ver "Juntar com a main").
 - *Moradas*: no Luxemburgo o geoportail.lu, em França o IGN, na Bélgica e na Alemanha o Nominatim (1 pedido/s;
   aí quase sempre se pede para confirmar o pino, salvo com nº de porta). Para ensaios, `MORADAS=desligadas`.
 - *Histórico e Reverter*: "Reverter…" em cada gravação feita no programa; o que já não se pode reverter
@@ -57,6 +57,25 @@ servidor aplica a 0004 e faz a cópia automática em `dados/copias/`).
   casa ou veículo que sai tiver problemas por resolver. `sincronizar`, `importar` e `sessoes` nunca migram a
   BD: só o arranque do servidor, com a cópia antes.
 
+**Juntar com a main (05/10/2026)**: a main tinha avançado com as decisões do Rafael de 04/10 (entrada abaixo)
+e do ecrã de entrada e do ícone; as decisões dele mandam na interface e o M2 no resto.
+- *Quadro por obras*: fica UMA implementação, a da main (`seccoesObras`, `blocoObra`, "Sem obra" largo,
+  alvos `obra:<id>`/`sem-obra`), com o que o M2 lhe juntou: o título da obra abre a ficha da obra, o ícone dos
+  problemas nos blocos das casas e carrinhas, as marcas de indisponível, as caixas iguais às do cartão do Mapa
+  e, nos blocos das obras, a casa de onde vem cada nome (letra pequena, sem alargar a coluna; no "Sem obra",
+  que hoje tem toda a gente, não, para não encher o Quadro). Por baixo do título da obra vai a morada do
+  local (sem morada, o nome do local, se não for o da obra: as obras criadas no programa têm um local com o
+  nome delas). Sem filtro "Obra" no Quadro nem no cabeçalho da reunião (a Tabela tem-no).
+- *"Sempre cheia"*: saiu também do que o M2 acrescentava (o campo editável e a linha "Sempre cheia: Sim" da
+  ficha da casa); o campo continua nos dados e no sincronizar. No Histórico e no Guardar o rótulo é "lugares
+  iguais aos moradores" (`ROTULO_CAMPO` em `dominio/campos.ts`, como o `NOME_CAMPO` do sincronizar).
+- *Aviso do contrato*: só na ficha da casa e no Guardar; os acrescentos do M2 nos cartões e na lista lateral
+  (o ícone dos problemas) ficam sem ele.
+- *Tabela*: sem ficha da pessoa (saiu a ficha compacta, onde o M2 tinha os campos de quem saiu): a seguir ao
+  nome, "Ver no mapa"; na linha de quem saiu ("Mostrar quem saiu") o mesmo sítio tem "Voltou à empresa…"
+  (no telemóvel "Voltou…"), que entra no modo de edição, se preciso, e abre o diálogo
+  (`abrirVoltouAEmpresa`). Os dados de quem saiu (telefone, carta…) mudam-se depois de voltar, na ficha.
+
 *Por confirmar com o Rafael*:
 - se os **apelidos** devem ser opcionais na pessoa nova (hoje são obrigatórios);
 - se uma casa pode ter uma **morada só sua criada no programa** (ex.: uma casa da Himeling que mude de rua;
@@ -67,8 +86,43 @@ servidor aplica a 0004 e faz a cópia automática em `dados/copias/`).
   percebem;
 - um ensaio pontual com os **serviços de moradas verdadeiros** (só foram ensaiados com respostas fictícias,
   menos 2 pedidos feitos no ensaio das obras);
+- se lhe serve a casa de onde vem cada nome no Quadro por obras (ou se prefere os nomes sós, como nas casas);
 - continua por decidir a partir de quando o Excel do Michael deixa de ser mantido (agora já se criam pessoas
   no programa).
+
+## 04/10/2026 — Obras no Quadro, aviso do contrato, "sempre cheia" e "Ver no mapa" na Tabela
+
+Pedidos do Rafael (desenho em `docs/vistas-edicao.md`):
+- **Quadro: Casas | Carrinhas | Obras** ("devia ter obras também, não devia ser uma aba como está, em que
+  obras está separado"): "Obras" passa a ser a 3.ª opção do alternador do Quadro (também na reunião), ao lado
+  de Casas e Carrinhas. Por obras: uma secção por cliente, um bloco por obra (com quem lá trabalha; arrastar
+  para um bloco muda a obra) e "Sem obra" no fim. O filtro "Obra" à parte **saiu do Quadro** (era a "aba
+  separada" de que ele falava; na barra e no cabeçalho da reunião fica só o filtro dos clientes); a Tabela
+  continua com o filtro "Obra". Hoje ainda não há obras: o Quadro por obras mostra só "Sem obra" com toda a
+  gente e uma nota.
+- **"Ver no mapa" na Tabela**: no PC o botão a seguir ao nome diz "Ver no mapa" (ícone e texto); no telemóvel
+  só o ícone, para a coluna presa do nome não crescer.
+- **Aviso do contrato só na ficha da casa** ("no mapa não é preciso mostrar"): o aviso (acima do máximo /
+  acima do tolerado) aparece só na ficha da casa (`PainelFoco`, ao carregar na casa), em qualquer vista. Saiu
+  dos cartões do Mapa (e do title deles), do ▲ das pastilhas de resumo do Mapa, da lista lateral e do rodapé
+  dos blocos do Quadro (também na reunião). A Tabela não o mostrava. Fica o aviso no diálogo Guardar ("Casa X
+  passa o máximo do contrato…"), que é na hora de decidir e não "no mapa". O domínio (`ocupacao.ts`) não mudou.
+- **"Sempre cheia" em lado nenhum**: saiu a etiqueta do rodapé dos blocos do Quadro, a "conta sempre como
+  cheia" da lista lateral e do title dos cartões do Mapa. O comportamento fica igual (Walferdange e
+  Schifflange contam como cheias: lugares = moradores, sem "livre"); os dados e o domínio não mudaram.
+- **Tabela: "Ver no mapa" em vez do ⓘ** ("a janela que abre é inútil"): o botão a seguir ao nome passa a ser
+  "Ver no mapa" (ícone do mapa, "Ver <nome> no mapa"), que muda para o Mapa e lá põe a pessoa em foco. Ficou
+  no mesmo sítio, a seguir ao nome (onde o olho procura a pessoa; a célula está presa à esquerda, por isso
+  vê-se em qualquer largura e no modo de edição). A ficha compacta da pessoa foi apagada e **na Tabela não há
+  ficha da pessoa**: uma pessoa em foco (pesquisa do cabeçalho, nome na ficha de uma casa) só realça a linha;
+  um clique numa linha tira-lhe o foco (fica só a linha marcada). Clicar numa linha continua só a realçá-la
+  (seleciona, no modo de edição). As ligações Casa e Carrinha continuam a abrir as fichas da casa e da
+  carrinha (a da casa é onde está o aviso do contrato). No Mapa e no Quadro a ficha da pessoa fica igual.
+- "Sempre cheia" também saiu do Histórico: o campo `sempreCheia`, quando a sincronização dos dados iniciais o
+  muda, aparece como "lugares iguais aos moradores" (`NOME_CAMPO` em `importacao/sincronizar.ts`; o relatório
+  da sincronização usa o mesmo nome).
+- Apagado o `resumoDasCasas` (`paineis/fichas.ts`, sem uso desde que saíram os contadores): calculava as casas
+  acima do contrato fora da ficha da casa.
 
 ## 04/10/2026 — pedidos do Rafael (cabeçalho, Tabela, filtros, Quadro, ficha arrastável)
 
@@ -81,7 +135,7 @@ Pedidos ditados pelo Rafael (saiu e não pôde responder; decidido com bom senso
   telemóvel no Mapa: 264 → 137 px). `paineis/Contadores.tsx` foi apagado; os números continuam calculados
   (`dominio/contadores.ts`), porque a legenda do Mapa usa o nº de pessoas por cliente. Ficaram sem uso, mas não
   se apagaram (podem voltar a servir se o Rafael quiser os números noutro sítio): `divisaoPorCliente`
-  (`paineis/agrupar.ts`), `resumoDasCasas` (`paineis/fichas.ts`) e `contadoresServidor` (loja).
+  (`paineis/agrupar.ts`), `resumoDasCasas` (`paineis/fichas.ts`; apagado depois, ver acima) e `contadoresServidor` (loja).
 - **B. Tabela sem informação repetida**: clicar numa linha só a realça e **não abre a ficha** (a linha já tem
   tudo); no modo de edição o clique seleciona como antes (clique, Ctrl/⌘, Shift, caixas), sem ficha. Um botão
   pequeno ⓘ a seguir ao nome abre/fecha a ficha da pessoa (para "Ver no mapa", Mudar onde dorme, etc.). Fica a
